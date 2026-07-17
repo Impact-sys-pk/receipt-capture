@@ -86,6 +86,7 @@ def init_db():
             filename            TEXT NOT NULL,
             file_path           TEXT NOT NULL,
             file_hash           TEXT NOT NULL,
+            filed_path          TEXT,
             status              TEXT DEFAULT 'pending',
             created_at          TEXT NOT NULL
         );
@@ -145,5 +146,7 @@ def init_db():
         conn.execute("ALTER TABLE receipts ADD COLUMN client_code TEXT DEFAULT 'UNKNOWN'")
     if "source" not in existing_receipt_columns:
         conn.execute("ALTER TABLE receipts ADD COLUMN source TEXT DEFAULT 'email'")
+    if "filed_path" not in existing_receipt_columns:
+        conn.execute("ALTER TABLE receipts ADD COLUMN filed_path TEXT")
     conn.commit()
     conn.close()

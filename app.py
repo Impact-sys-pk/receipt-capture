@@ -1,10 +1,13 @@
 import base64
 import json
 import logging
+import os
+import sqlite3
 import sys
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import config
 from worker.categorisation.engine import CategorisationEngine
@@ -75,14 +78,148 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, extraction_s
         f.write(json.dumps(entry) + "\n")
 
 
+def _count_review_items() -> int:
+    review_root = config.CLIENTS_ROOT
+    if not review_root.exists():
+        return 0
+    count = 0
+    for path in review_root.rglob("Review/*"):
+        if path.is_file():
+            count += 1
+    return count
+
+
+def _write_pipeline_status(last_run: str, processed_today: int, review_count: int, last_error: str | None):
+    payload = {
+        "last_run": last_run,
+        "processed_today": processed_today,
+        "review_count": review_count,
+        "last_error": last_error,
+    }
+    config.PIPELINE_STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _resolve_client_name(client_code: str) -> str:
+    if not client_code:
+        return "UNKNOWN"
+    return config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)
+
+
+def _file_unfiled_ok_receipts(repo: Repository, stats: dict[str, int]) -> None:
+    unfiled = repo.get_unfiled_ok_receipts()
+    if not unfiled:
+        return
+
+    logger.info(f"recovering {len(unfiled)} validated receipts that are not yet filed")
+    for receipt in unfiled:
+        receipt_id = receipt["receipt_id"]
+        try:
+            extraction = repo.get_extraction_for_receipt(receipt_id)
+            if not extraction:
+                logger.warning(f"receipt {receipt_id} is marked ok but has no extraction record")
+                continue
+
+            source_path = Path(receipt["file_path"])
+            if not source_path.exists():
+                logger.warning(f"source file missing for receipt {receipt_id}: {source_path}")
+                continue
+
+            client_name = _resolve_client_name(receipt["client_code"])
+            invoice_date = extraction.get("invoice_date") or datetime.now(timezone.utc).date().isoformat()
+            tax_year = determine_tax_year(invoice_date)
+            supplier = extraction.get("supplier_name") or "unknown"
+            gross = extraction.get("gross_amount") if extraction.get("gross_amount") is not None else 0.0
+            currency = extraction.get("currency") or "GBP"
+            sidecar_payload = make_enriched_sidecar(
+                receipt_id=receipt_id,
+                source=receipt["source"],
+                client_code=receipt["client_code"],
+                client_name=client_name,
+                capture_date=datetime.now(timezone.utc).isoformat(),
+                invoice_date=invoice_date,
+                supplier=supplier,
+                net=extraction.get("net_amount"),
+                vat=extraction.get("vat_amount"),
+                gross=gross,
+                currency=currency,
+                category=None,
+                confidence="high",
+                validation_status="ok",
+                asserted=None,
+                original_filename=receipt["filename"],
+                claimed_client_code=None,
+            )
+            dest_path, sidecar_path = file_receipt(
+                source_path,
+                client_name,
+                tax_year,
+                supplier,
+                gross,
+                receipt["filename"],
+                sidecar_payload,
+            )
+            repo.mark_receipt_filed(receipt_id, dest_path)
+            stats["recovery_filed"] = stats.get("recovery_filed", 0) + 1
+            logger.info(f"receipt {receipt_id} recovered and filed to {dest_path}")
+        except Exception as exc:
+            logger.error(f"failed to file recovered receipt {receipt_id}: {exc}", exc_info=True)
+
+
+def _cleanup_old_backups():
+    backups = sorted(config.BACKUPS_ROOT.glob("receipts-*.db"))
+    if len(backups) <= 14:
+        return
+    for old in backups[:-14]:
+        try:
+            old.unlink()
+        except OSError:
+            logger.warning(f"Could not remove old backup: {old}")
+
+
+def _create_daily_backup(repo: Repository):
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    backup_path = config.BACKUPS_ROOT / f"receipts-{today}.db"
+    if backup_path.exists():
+        return
+    config.BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
+    repo.backup_db(backup_path)
+    _cleanup_old_backups()
+
+
+def acquire_lock() -> bool:
+    lock_path = config.PIPELINE_LOCKFILE
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    if lock_path.exists():
+        age = datetime.now(timezone.utc) - datetime.fromtimestamp(lock_path.stat().st_mtime, timezone.utc)
+        if age.total_seconds() > 86400:
+            logger.warning("Stale lock file older than 24h detected, removing")
+            lock_path.unlink()
+        else:
+            logger.error("Another pipeline process is already running")
+            return False
+    try:
+        with lock_path.open("x", encoding="utf-8") as f:
+            f.write(f"pid={os.getpid()}\n")
+            f.write(f"started_at={datetime.now(timezone.utc).isoformat()}\n")
+        return True
+    except FileExistsError:
+        logger.error("Failed to acquire pipeline lock")
+        return False
+
+
+def release_lock() -> None:
+    try:
+        config.PIPELINE_LOCKFILE.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def process_once():
     run_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
     logger.info(f"--- run {run_id[:8]}... start ---")
-    repo = Repository()
-    extractor = OpenAIVisionExtractor()
-    engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
-
+    repo = None
+    errors = None
     stats = {
         "messages_found": 0,
         "attachments_processed": 0,
@@ -94,6 +231,11 @@ def process_once():
     }
 
     try:
+        repo = Repository()
+        extractor = OpenAIVisionExtractor()
+        engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
+        _file_unfiled_ok_receipts(repo, stats)
+
         intake_records = scan_inbox()
         logger.info(f"capture inbox files found: {len(intake_records)}")
 
@@ -251,7 +393,7 @@ def process_once():
                     else:
                         tax_year = determine_tax_year(datetime.now(timezone.utc).date().isoformat())
 
-                    file_receipt(
+                    dest_path, sidecar_path = file_receipt(
                         intake.source_path,
                         client_name,
                         tax_year,
@@ -260,6 +402,7 @@ def process_once():
                         intake.filename,
                         sidecar_payload,
                     )
+                    repo.mark_receipt_filed(receipt_id, dest_path)
                     stats["extractions_succeeded"] += 1
                 else:
                     file_review(
@@ -436,6 +579,52 @@ def process_once():
                     )
                     logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
 
+                    invoice_date = extraction.invoice_date or datetime.now(timezone.utc).date().isoformat()
+                    gross = extraction.gross_amount if extraction.gross_amount is not None else 0.0
+                    sidecar_payload = make_enriched_sidecar(
+                        receipt_id=receipt_id,
+                        source="email",
+                        client_code=client_code,
+                        client_name=client_name,
+                        capture_date=datetime.now(timezone.utc).isoformat(),
+                        invoice_date=invoice_date,
+                        supplier=extraction.supplier_name or "unknown",
+                        net=extraction.net_amount,
+                        vat=extraction.vat_amount,
+                        gross=gross,
+                        currency=extraction.currency,
+                        category=None,
+                        confidence="high" if validation.status == "ok" else "low",
+                        validation_status=validation.status,
+                        asserted=None,
+                        original_filename=filename,
+                        claimed_client_code=None,
+                    )
+
+                    if validation.status == "ok":
+                        tax_year = determine_tax_year(invoice_date)
+                        dest_path, sidecar_path = file_receipt(
+                            file_path,
+                            client_name,
+                            tax_year,
+                            extraction.supplier_name or "unknown",
+                            gross,
+                            filename,
+                            sidecar_payload,
+                        )
+                        repo.mark_receipt_filed(receipt_id, dest_path)
+                        stats["extractions_succeeded"] += 1
+                    elif validation.status == "needs_review":
+                        file_review(
+                            file_path,
+                            client_name,
+                            filename,
+                            validation.status,
+                            validation.notes,
+                            sidecar_payload,
+                        )
+                        stats["review_flags_issued"] += 1
+
                     # Categorise if validation passed
                     if validation.status == "ok" and extraction.supplier_name:
                         categorisation = engine.categorise(
@@ -453,7 +642,7 @@ def process_once():
                             extraction_id=extraction_id,
                             client_id=client_id,
                             business_type=categorisation.business_type,
-                            vendor_key=categorisation.vendor_key,
+                            vendor_code=categorisation.vendor_code,
                             suggested_code=categorisation.suggested_code,
                             suggested_name=categorisation.suggested_name,
                             confidence=categorisation.confidence,
@@ -463,11 +652,6 @@ def process_once():
                             categorised_at=datetime.now(timezone.utc).isoformat()
                         )
                         logger.info(f"{receipt_id[:8]}... categorised: {categorisation.suggested_code} ({categorisation.confidence})")
-
-                    if validation.status == "ok":
-                        stats["extractions_succeeded"] += 1
-                    elif validation.status == "needs_review":
-                        stats["review_flags_issued"] += 1
 
                     _log_receipt(
                         receipt_id, message_id, filename, "extracted",
@@ -509,8 +693,21 @@ def process_once():
 
                 repo.mark_processed(message_id, att_id, file_hash, receipt_id)
 
+    except Exception as exc:
+        errors = exc
+        logger.error(f"process_once failed: {exc}", exc_info=True)
+        raise
     finally:
-        repo.close()
+        processed_today = stats.get("receipts_created", 0)
+        review_count = _count_review_items()
+        last_error = None if errors is None else str(errors)
+        _write_pipeline_status(datetime.now(timezone.utc).isoformat(), processed_today, review_count, last_error)
+        if repo is not None:
+            try:
+                _create_daily_backup(repo)
+            except Exception as backup_exc:
+                logger.warning(f"Daily backup failed: {backup_exc}")
+            repo.close()
         finished_at = datetime.now(timezone.utc).isoformat()
         duration = (datetime.fromisoformat(finished_at) - datetime.fromisoformat(started_at)).total_seconds()
         stats["duration_seconds"] = round(duration, 2)
@@ -520,13 +717,19 @@ def process_once():
 
 def main():
     logger.info(f"receipt capture started — poll every {config.POLL_INTERVAL_SECONDS}s")
-    while True:
-        try:
-            process_once()
-        except Exception as exc:
-            logger.error(f"run failed: {exc}", exc_info=True)
-        logger.info(f"sleeping {config.POLL_INTERVAL_SECONDS}s")
-        time.sleep(config.POLL_INTERVAL_SECONDS)
+    if not acquire_lock():
+        logger.error("Exiting because another pipeline instance is active")
+        return
+    try:
+        while True:
+            try:
+                process_once()
+            except Exception as exc:
+                logger.error(f"run failed: {exc}", exc_info=True)
+            logger.info(f"sleeping {config.POLL_INTERVAL_SECONDS}s")
+            time.sleep(config.POLL_INTERVAL_SECONDS)
+    finally:
+        release_lock()
 
 
 if __name__ == "__main__":

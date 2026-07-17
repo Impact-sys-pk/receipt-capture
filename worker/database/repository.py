@@ -100,6 +100,26 @@ class Repository:
         ).fetchone()
         return row["statement_id"] if row else None
 
+    def get_unfiled_ok_receipts(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT receipt_id, client_id, firm_id, client_code, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_extraction_for_receipt(self, receipt_id: str) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",
+            (receipt_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def mark_receipt_filed(self, receipt_id: str, filed_path: str):
+        self._conn.execute(
+            "UPDATE receipts SET filed_path = ? WHERE receipt_id = ?",
+            (str(filed_path), receipt_id)
+        )
+        self._conn.commit()
+
     def save_receipt(
         self, receipt_id, message_id, email_subject, email_from,
         email_received_at, filename, file_path, file_hash,
@@ -109,10 +129,10 @@ class Repository:
         self._conn.execute("""
             INSERT INTO receipts
                 (receipt_id, firm_id, client_id, client_code, source, message_id, email_subject, email_from,
-                 email_received_at, filename, file_path, file_hash, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                 email_received_at, filename, file_path, file_hash, filed_path, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
         """, (receipt_id, firm_id, client_id, client_code, source, message_id, email_subject, email_from,
-              email_received_at, filename, str(file_path), file_hash, now))
+              email_received_at, filename, str(file_path), file_hash, None, now))
         self._conn.commit()
 
     def save_extraction(
@@ -145,6 +165,20 @@ class Repository:
             VALUES (?, ?, ?, ?, ?)
         """, (message_id, attachment_id, file_hash, now, receipt_id))
         self._conn.commit()
+
+    def count_processed_today(self) -> int:
+        row = self._conn.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM receipts WHERE DATE(created_at) = DATE('now','utc'))
+                + (SELECT COUNT(*) FROM statements WHERE DATE(created_at) = DATE('now','utc'))
+                AS total
+        """).fetchone()
+        return row[0] if row else 0
+
+    def backup_db(self, destination_path):
+        with sqlite3.connect(str(destination_path)) as dest_conn:
+            self._conn.backup(dest_conn)
+            dest_conn.commit()
 
     def get_delta_link(self) -> Optional[str]:
         row = self._conn.execute(

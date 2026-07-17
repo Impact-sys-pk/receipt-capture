@@ -19,8 +19,14 @@ ONEDRIVE_ROOT = Path(os.environ.get(
     "ONEDRIVE_ROOT",
     r"C:\Users\PDK7\OneDrive - Intellitax Accounting Limited"
 ))
-RECEIPT_INBOX_ROOT = ONEDRIVE_ROOT / "Receipt Inbox"
+SYSTEM_ROOT = ONEDRIVE_ROOT / "IntelliBooks"
+RECEIPT_INBOX_ROOT = SYSTEM_ROOT / "Receipt Inbox"
+CLIENTS_CSV = SYSTEM_ROOT / "clients.csv"
+FIRMS_CSV = SYSTEM_ROOT / "firms.csv"
 CLIENTS_ROOT = ONEDRIVE_ROOT / "Clients"
+BACKUPS_ROOT = SYSTEM_ROOT / "Backups"
+PIPELINE_STATUS_PATH = SYSTEM_ROOT / "pipeline-status.json"
+PIPELINE_LOCKFILE = SYSTEM_ROOT / "pipeline.lock"
 
 IMAP_HOST = os.environ["IMAP_HOST"]
 IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
@@ -36,6 +42,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+SYSTEM_ROOT.mkdir(parents=True, exist_ok=True)
+BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def load_clients():

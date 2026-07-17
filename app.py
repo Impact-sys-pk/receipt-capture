@@ -172,6 +172,7 @@ def process_once():
             )
             _log_receipt(receipt_id, f"capture:{intake.original_name}", intake.filename, "created", firm_id=intake.firm_id, client_id=intake.client_id, run_id=run_id)
 
+            client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
             try:
                 extraction = extractor.extract(str(file_path), intake.filename)
                 validation = validate(extraction)

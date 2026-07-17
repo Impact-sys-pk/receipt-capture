@@ -1,5 +1,259 @@
 # CLAUDE.md — Receipt Capture
 
+# Claude Guidance for Your Projects
+
+## ⬜ UNIVERSAL SECTION (Copy-paste to all projects)
+
+This section applies to all your Claude Code projects. Copy the content below into each project's CLAUDE.md file.
+
+---
+
+### Git Command Communication
+
+When explaining git commands, always provide in this order:
+
+1. **Terminal Command** - The exact command to run
+2. **Plain English Explanation** - What it does in simple terms
+3. **VS Code GUI Instructions** - How to do it in VS Code interface (not terminal)
+
+**Example format:**
+
+```
+## Step: Commit changes
+
+**Terminal command:**
+git commit -m "Your message"
+
+**Plain English:** Creates a save point with a description of your changes.
+
+**In VS Code GUI:**
+1. Open Source Control (Ctrl+Shift+G)
+2. Write message in the "Message" box
+3. Press Ctrl+Enter or click checkmark
+```
+
+**Why this format?**
+
+- Gives you options (terminal OR GUI)
+- Helps you understand what's happening behind the scenes
+- Makes git operations less intimidating
+- You can choose your preferred method
+
+---
+
+### Destructive Git Operations
+
+**CRITICAL: Always warn before destructive commands**
+
+Operations that require explicit user approval:
+
+- `git reset --hard`
+- `git push --force` or `git push -f`
+- `git rebase -i` (interactive rebase)
+- `git checkout .` or `git restore .` (discard changes)
+- `git clean -f` (delete untracked files)
+- `git branch -D` (force delete branch)
+- Amending published commits
+
+**Warning Protocol:**
+
+1. Explain exactly what will be lost/changed
+2. Show the command that will be run
+3. Ask explicit confirmation
+4. Wait for user approval before executing
+5. Never use `--force`, `--no-verify`, or skip safety checks without explicit request
+
+**Example:**
+
+```
+⚠️ WARNING: This will DISCARD all uncommitted changes in [files]
+Command: git checkout .
+Are you sure you want to proceed? (yes/no)
+```
+
+---
+
+### Context Management & Task Handover
+
+**Monitor context usage in every session:**
+
+1. **At session start:** Note token budget and context window
+2. **During work:** Estimate context usage based on tool calls
+3. **When approaching 70% context usage:** Begin preparing handover documentation
+4. **When approaching 80% context usage:** Stop taking new tasks, finalize handover
+
+**Handover Protocol:**
+When context is running low (70%+):
+
+1. Stop new work
+2. Summarize progress:
+   - What was completed
+   - What's pending
+   - Exact file locations and line numbers
+   - Copy-paste ready instructions for next session
+3. Create handover document: `[DATE]_HANDOVER_TO_NEXT_SESSION.md`
+4. Include:
+   - Current state of all files
+   - Tests passed/failed
+   - What's next (specific steps)
+   - Any blockers or gotchas
+5. **Commit all work before drafting handover:** Use message like "Session X: [summary of work completed]"
+6. Verify nothing is uncommitted before handing off
+
+---
+
+### Testing Preferences
+
+**Testing Philosophy:**
+
+- Syntax verification first: Always run `python -m py_compile` on new Python files
+- Import testing: Verify modules can be imported before claiming they work
+- Functional testing: Can be deferred to dedicated testing sessions
+- Real data validation: Test with actual workflows, not mocked data
+
+**When to Test vs. When to Defer:**
+
+Test immediately:
+
+- Python syntax on new/modified files
+- File creation and basic integrity
+- Import chains
+- Service startup
+
+Defer to next session:
+
+- Full functional workflows
+- End-to-end integration
+- API behavior with data
+- UI interaction and state management
+
+---
+
+### Communication Preferences
+
+**Response Style:**
+
+- Be concise: One or two sentences for simple updates
+- Provide context: When something changes direction, explain why
+- Use bullet points: For task lists and summaries
+- Show your work: For complex operations, explain the logic
+- No unnecessary summaries: Don't recap what you just did unless asked
+
+**When to Ask Questions:**
+
+Ask before:
+
+- Deleting or modifying existing code beyond clear bug fixes
+- Making architectural decisions
+- Adding dependencies
+- Creating new directories/modules
+- Large refactors
+
+Don't ask for:
+
+- Fixing obvious syntax errors
+- Creating intermediate test files
+- Reading documentation
+- Extracting content from provided sources
+
+---
+
+### Session Management
+
+**Session Start:**
+
+- Check git status
+- Review any prior handover documents
+- Verify memory files are loaded
+- Note the current date/time
+
+**Session End:**
+
+- Commit all work with descriptive message (e.g., "End of session: [summary]")
+- Ensure code is in runnable state (tests passing, syntax valid)
+- Create handover if context is getting tight
+- Document any blockers or next steps in handover document
+
+**Commit Frequency During Session:**
+Commit after each logical unit completes:
+
+- After each file is created and syntax-verified
+- After a feature/component is working
+- After tests pass
+- When switching to a different type of work
+
+**Target:** 3-5 commits per session minimum. Small, focused commits are better than large batches.
+
+---
+
+### Memory System
+
+**What to Store in Project Memory:**
+
+- How you like git explained
+- Your testing preferences
+- Your communication style
+- Current implementation state
+- Known blockers
+- Architectural decisions made
+- Where data/outputs are stored
+
+**What NOT to store:**
+
+- Git history (check `git log`)
+- File paths that change
+- Code snippets (check the actual files)
+- Ephemeral state (current progress, in-session notes)
+
+---
+
+### Maintaining This Document
+
+CLAUDE.md is a living document. When you display strong, consistent preferences that appear likely to continue, I will suggest adding them to this file.
+
+**I'll suggest additions when:**
+
+- A preference shows up in multiple sessions or across different task types
+- It's a pattern you've demonstrated, not a one-off choice
+- It would benefit future sessions (not ephemeral)
+
+**I won't suggest changes for:**
+
+- Preferences you've only mentioned once
+- Task-specific decisions
+- Things already covered by memory or git history
+
+You have final say on what goes in CLAUDE.md. If you don't want me suggesting, just let me know.
+
+---
+
+### Cost Analysis for New Commitments
+
+**Before introducing any new commitment** (AWS services, external dependencies, infrastructure, storage solutions, etc.), conduct a cost analysis covering:
+
+1. **Testing/Development Costs** — What will this cost during the development and testing phases?
+2. **Production Costs** — What are the projected ongoing costs in production?
+3. **Alternatives** — What are other options and their costs?
+4. **Scalability** — How do costs change as usage grows?
+
+**This applies especially to:**
+
+- AWS services (compute, storage, data transfer, etc.)
+- Third-party APIs and SaaS tools
+- Infrastructure commitments
+- Storage solutions
+- Any service with recurring fees
+
+Document the analysis before committing to the design. This prevents surprise cost escalation and ensures decisions are made with full visibility of financial impact.
+
+---
+
+## 🟦 PROJECT-SPECIFIC SECTION (This Project Only)
+
+This section is specific to the Uber Phase 1 Ingestion Worker project.
+
+---
+
 ## Purpose
 
 This is a local receipt ingestion and extraction system.
@@ -33,6 +287,7 @@ Automatic GL code assignment via 6-layer lookup strategy:
 6. **Unmatched** — Marked for manual review
 
 **Key features:**
+
 - Preserves all vendor variants with UUID keys (audit trail)
 - Fast lookups via indexes on (client_id, vendor_code)
 - Supports custom rules with regex conditions
@@ -54,11 +309,13 @@ Automatic GL code assignment via 6-layer lookup strategy:
 ### 2. Duplicate Prevention
 
 **File-level deduplication:**
+
 - Track processed attachments by message_id + attachment_id
 - File-hash matching catches exact duplicate files across emails
 - Duplicate reason: `message_id_match` (same email) or `file_hash_match` (different email, same file)
 
 **Semantic deduplication:**
+
 - After successful extraction, check for existing receipts with matching (supplier_name, invoice_date, gross_amount)
 - Marks as `duplicate_reason: "transaction_match"` but still stores (append-only)
 - Allows audit trail of duplicate invoice formats (e.g., invoice + receipt for same transaction)
@@ -156,54 +413,54 @@ Status assignment:
 
 ### email_delta
 
-| Field      | Type      | Notes                              |
-| ---------- | --------- | ---------------------------------- |
-| key        | TEXT (PK) | `last_uid` (IMAP UID tracking)     |
-| value      | TEXT      | IMAP UID value                     |
-| updated_at | TEXT      | ISO timestamp                      |
+| Field      | Type      | Notes                          |
+| ---------- | --------- | ------------------------------ |
+| key        | TEXT (PK) | `last_uid` (IMAP UID tracking) |
+| value      | TEXT      | IMAP UID value                 |
+| updated_at | TEXT      | ISO timestamp                  |
 
 ### categorisations_client_vendors
-
-| Field         | Type      | Notes                                      |
-| ------------- | --------- | ------------------------------------------ |
-| vendor_key    | TEXT (PK) | UUID, unique per variant                   |
-| client_id     | TEXT      | Client identifier                          |
-| vendor_code   | TEXT      | Normalised merchant code (apcoa, amazon)   |
-| vendor_name   | TEXT      | Original vendor name from import           |
-| detail        | TEXT      | Additional details (audit trail)           |
-| nominal_code  | TEXT      | GL code mapping                            |
-| account_name  | TEXT      | GL account name                            |
-| times_seen    | INTEGER   | Frequency count                            |
-| last_updated  | TEXT      | ISO timestamp                              |
-
-### categorisations_firm_vendors
 
 | Field        | Type      | Notes                                    |
 | ------------ | --------- | ---------------------------------------- |
 | vendor_key   | TEXT (PK) | UUID, unique per variant                 |
-| business_type| TEXT      | PHV_DRIVER, CONTRACTOR, UNSPECIFIED      |
-| vendor_code  | TEXT      | Normalised merchant code                 |
-| vendor_name  | TEXT      | Original vendor name                     |
+| client_id    | TEXT      | Client identifier                        |
+| vendor_code  | TEXT      | Normalised merchant code (apcoa, amazon) |
+| vendor_name  | TEXT      | Original vendor name from import         |
+| detail       | TEXT      | Additional details (audit trail)         |
 | nominal_code | TEXT      | GL code mapping                          |
 | account_name | TEXT      | GL account name                          |
 | times_seen   | INTEGER   | Frequency count                          |
 | last_updated | TEXT      | ISO timestamp                            |
 
+### categorisations_firm_vendors
+
+| Field         | Type      | Notes                               |
+| ------------- | --------- | ----------------------------------- |
+| vendor_key    | TEXT (PK) | UUID, unique per variant            |
+| business_type | TEXT      | PHV_DRIVER, CONTRACTOR, UNSPECIFIED |
+| vendor_code   | TEXT      | Normalised merchant code            |
+| vendor_name   | TEXT      | Original vendor name                |
+| nominal_code  | TEXT      | GL code mapping                     |
+| account_name  | TEXT      | GL account name                     |
+| times_seen    | INTEGER   | Frequency count                     |
+| last_updated  | TEXT      | ISO timestamp                       |
+
 ### categorisations_client_rules
 
-| Field             | Type      | Notes                                   |
-| ----------------- | --------- | --------------------------------------- |
-| rule_id           | TEXT (PK) | UUID, unique rule identifier            |
-| client_id         | TEXT      | Which client this rule applies to       |
-| rule_name         | TEXT      | Human-readable rule name                |
-| priority          | INTEGER   | Execution order (higher = first)        |
-| vendor_code       | TEXT      | Filter match (NULL = match any vendor)  |
-| condition_type    | TEXT      | contains, exact_match, startswith, regex|
-| condition_field   | TEXT      | detail or vendor_code                   |
-| condition_value   | TEXT      | Pattern to match                        |
-| nominal_code      | TEXT      | GL code if rule matches                 |
-| account_name      | TEXT      | GL account name                         |
-| created_at        | TEXT      | ISO timestamp                           |
+| Field           | Type      | Notes                                    |
+| --------------- | --------- | ---------------------------------------- |
+| rule_id         | TEXT (PK) | UUID, unique rule identifier             |
+| client_id       | TEXT      | Which client this rule applies to        |
+| rule_name       | TEXT      | Human-readable rule name                 |
+| priority        | INTEGER   | Execution order (higher = first)         |
+| vendor_code     | TEXT      | Filter match (NULL = match any vendor)   |
+| condition_type  | TEXT      | contains, exact_match, startswith, regex |
+| condition_field | TEXT      | detail or vendor_code                    |
+| condition_value | TEXT      | Pattern to match                         |
+| nominal_code    | TEXT      | GL code if rule matches                  |
+| account_name    | TEXT      | GL account name                          |
+| created_at      | TEXT      | ISO timestamp                            |
 
 ---
 

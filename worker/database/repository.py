@@ -29,6 +29,12 @@ class Repository:
             "SELECT receipt_id FROM processed_attachments WHERE file_hash = ? LIMIT 1",
             (file_hash,)
         ).fetchone()
+        if row:
+            return row["receipt_id"]
+        row = self._conn.execute(
+            "SELECT receipt_id FROM receipts WHERE file_hash = ? LIMIT 1",
+            (file_hash,)
+        ).fetchone()
         return row["receipt_id"] if row else None
 
     def find_by_transaction(self, supplier_name: str, invoice_date: str, gross_amount: float) -> Optional[str]:
@@ -45,33 +51,67 @@ class Repository:
         ).fetchone()
         return row["receipt_id"] if row else None
 
-    def resolve_client_id(self, email_from: str) -> tuple[str, str]:
-        """Match email_from to client in clients.csv, return (client_id, firm_id)."""
+    def resolve_client_info(self, email_from: str) -> tuple[str, str, str]:
+        """Match email_from to client in clients.csv, return (client_id, firm_id, client_code)."""
         if not email_from:
-            return ("UNKNOWN", "INTELLITAX")
+            return ("UNKNOWN", "INTELLITAX", "UNKNOWN")
 
-        # Extract email from "Name <email@domain>" format
         email = email_from.strip().lower()
         if "<" in email and ">" in email:
             email = email.split("<")[1].split(">")[0].strip()
 
         client = config.CLIENTS.get(email)
         if client:
-            return (client["client_id"], client["firm_id"])
-        return ("UNKNOWN", "INTELLITAX")
+            return (client["client_id"], client["firm_id"], client.get("client_code", "UNKNOWN"))
+        return ("UNKNOWN", "INTELLITAX", "UNKNOWN")
+
+    def resolve_client_id(self, email_from: str) -> tuple[str, str]:
+        client_id, firm_id, _ = self.resolve_client_info(email_from)
+        return client_id, firm_id
+
+    def resolve_client_by_code(self, client_code: str) -> tuple[str, str, str]:
+        """Match client_code from folder intake to client data."""
+        if not client_code:
+            return ("UNKNOWN", "INTELLITAX", "UNKNOWN")
+
+        client = config.CLIENTS_BY_CODE.get(client_code.upper())
+        if client:
+            return (client["client_id"], client["firm_id"], client.get("client_code", client_code.upper()))
+        return ("UNKNOWN", "INTELLITAX", client_code.upper())
+
+    def save_statement(
+        self, statement_id, client_id, client_code, platform,
+        week_ending, source, file_hash, file_path, status="filed"
+    ):
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute("""
+            INSERT INTO statements
+                (statement_id, client_id, client_code, platform, week_ending,
+                 source, file_hash, file_path, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (statement_id, client_id, client_code, platform, week_ending,
+              source, file_hash, str(file_path), status, now))
+        self._conn.commit()
+
+    def find_statement_by_hash(self, file_hash: str) -> Optional[str]:
+        row = self._conn.execute(
+            "SELECT statement_id FROM statements WHERE file_hash = ? LIMIT 1",
+            (file_hash,)
+        ).fetchone()
+        return row["statement_id"] if row else None
 
     def save_receipt(
         self, receipt_id, message_id, email_subject, email_from,
         email_received_at, filename, file_path, file_hash,
-        firm_id="INTELLITAX", client_id="UNKNOWN"
+        firm_id="INTELLITAX", client_id="UNKNOWN", client_code="UNKNOWN", source="email"
     ):
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute("""
             INSERT INTO receipts
-                (receipt_id, firm_id, client_id, message_id, email_subject, email_from,
+                (receipt_id, firm_id, client_id, client_code, source, message_id, email_subject, email_from,
                  email_received_at, filename, file_path, file_hash, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-        """, (receipt_id, firm_id, client_id, message_id, email_subject, email_from,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        """, (receipt_id, firm_id, client_id, client_code, source, message_id, email_subject, email_from,
               email_received_at, filename, str(file_path), file_hash, now))
         self._conn.commit()
 

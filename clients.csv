@@ -1,5 +1,5 @@
-client_id,name,email,firm_id,business_type,notes
-UNKNOWN,Unknown Client,,FIRM001,UNSPECIFIED,Default for unmatched receipts
-Client_001,Paul Keating,pdk7@hotmail.co.uk,FIRM001,PHV_DRIVER,
-Client_002,Intellitax,paul.keating@intellitax.co.uk,FIRM001,ACCOUNTANCY,
-Client_002,Intellitax,keatinpaul@hotmail.co.uk,FIRM001,ACCOUNTANCY,
+client_id,name,email,firm_id,business_type,client_code,notes
+UNKNOWN,Unknown Client,,FIRM001,UNSPECIFIED,UNKNOWN,Default for unmatched receipts
+Client_001,Paul Keating,pdk7@hotmail.co.uk,FIRM001,PHV_DRIVER,PAUL, 
+Client_002,Intellitax,paul.keating@intellitax.co.uk,FIRM001,ACCOUNTANCY,INTELLITAX,
+Client_002,Intellitax,keatinpaul@hotmail.co.uk,FIRM001,ACCOUNTANCY,INTELLITAX,

@@ -11,7 +11,15 @@ from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
 from worker.email.reader import fetch_attachments, fetch_new_messages
 from worker.extraction.openai_vision import OpenAIVisionExtractor
-from worker.storage.store import compute_hash, is_supported, save_file
+from worker.intake.folder_reader import scan_inbox
+from worker.filing import (
+    determine_tax_year,
+    file_receipt,
+    file_statement,
+    file_review,
+    make_enriched_sidecar,
+)
+from worker.storage.store import compute_hash, is_supported, save_file, save_inbox_file
 from worker.validation.rules import validate
 
 logging.basicConfig(
@@ -86,9 +94,235 @@ def process_once():
     }
 
     try:
+        intake_records = scan_inbox()
+        logger.info(f"capture inbox files found: {len(intake_records)}")
+
         messages = fetch_new_messages(repo)
         stats["messages_found"] = len(messages)
         logger.info(f"messages with attachments: {len(messages)}")
+
+        for intake in intake_records:
+            if intake.is_statement:
+                if repo.find_statement_by_hash(intake.file_hash):
+                    logger.info(f"capture duplicate statement by hash, skipping {intake.filename}")
+                    stats["duplicates_skipped"] += 1
+                    continue
+
+                if not intake.statement_metadata.get("platform") or not intake.statement_metadata.get("week_ending"):
+                    logger.warning(f"statement missing metadata, routing to review: {intake.filename}")
+                    client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
+                    file_review(intake.source_path, client_name, intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
+                    stats["review_flags_issued"] += 1
+                    continue
+
+                statement_id = str(uuid.uuid4())
+                client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
+                tax_year = determine_tax_year(intake.statement_metadata["week_ending"])
+                dest_path, sidecar_path = file_statement(
+                    intake.source_path,
+                    client_name,
+                    tax_year,
+                    intake.statement_metadata["platform"],
+                    intake.statement_metadata["week_ending"],
+                    intake.source_path.suffix,
+                    intake.sidecar or {
+                        "type": "statement",
+                        "platform": intake.statement_metadata["platform"],
+                        "week_ending": intake.statement_metadata["week_ending"],
+                        "source": intake.source,
+                    },
+                )
+                repo.save_statement(
+                    statement_id=statement_id,
+                    client_id=intake.client_id,
+                    client_code=intake.client_code,
+                    platform=intake.statement_metadata["platform"],
+                    week_ending=intake.statement_metadata["week_ending"],
+                    source=intake.source,
+                    file_hash=intake.file_hash,
+                    file_path=dest_path,
+                )
+                logger.info(f"statement filed: {statement_id} {dest_path}")
+                stats["receipts_created"] += 1
+                continue
+
+            existing = repo.find_by_hash(intake.file_hash)
+            if existing:
+                logger.info(f"capture duplicate by hash, skipping {intake.filename}")
+                stats["duplicates_skipped"] += 1
+                continue
+
+            receipt_id = str(uuid.uuid4())
+            file_path = save_inbox_file(receipt_id, intake.client_code, intake.source_path)
+            stats["receipts_created"] += 1
+
+            repo.save_receipt(
+                receipt_id=receipt_id,
+                message_id=f"capture:{intake.original_name}",
+                email_subject=None,
+                email_from=None,
+                email_received_at=int(intake.source_path.stat().st_mtime),
+                filename=intake.filename,
+                file_path=file_path,
+                file_hash=intake.file_hash,
+                firm_id=intake.firm_id,
+                client_id=intake.client_id,
+                client_code=intake.client_code,
+                source=intake.source,
+            )
+            _log_receipt(receipt_id, f"capture:{intake.original_name}", intake.filename, "created", firm_id=intake.firm_id, client_id=intake.client_id, run_id=run_id)
+
+            try:
+                extraction = extractor.extract(str(file_path), intake.filename)
+                validation = validate(extraction)
+
+                duplicate_of = None
+                duplicate_reason = None
+                if extraction.supplier_name and extraction.gross_amount is not None:
+                    if extraction.invoice_date:
+                        existing = repo.find_by_transaction(
+                            extraction.supplier_name,
+                            extraction.invoice_date,
+                            extraction.gross_amount
+                        )
+                    else:
+                        existing = repo.find_by_transaction_no_date(
+                            extraction.supplier_name,
+                            extraction.gross_amount
+                        )
+                    if existing:
+                        duplicate_of = existing
+                        duplicate_reason = "transaction_match"
+                        logger.info(f"transaction duplicate: {receipt_id[:8]}... matches {existing[:8]}...")
+
+                extraction_id = str(uuid.uuid4())
+                repo.save_extraction(
+                    extraction_id=extraction_id,
+                    receipt_id=receipt_id,
+                    engine=extraction.engine,
+                    supplier_name=extraction.supplier_name,
+                    invoice_date=extraction.invoice_date,
+                    net_amount=extraction.net_amount,
+                    vat_amount=extraction.vat_amount,
+                    gross_amount=extraction.gross_amount,
+                    currency=extraction.currency,
+                    raw_response=extraction.raw_response,
+                    validation_status=validation.status,
+                    validation_notes=validation.notes,
+                )
+
+                client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
+                asserted = {k: intake.sidecar.get(k) for k in ("supplier_name", "invoice_date", "net_amount", "vat_amount", "gross_amount", "client_code") if intake.sidecar and k in intake.sidecar}
+                if asserted:
+                    mismatches = []
+                    if extraction.supplier_name and asserted.get("supplier_name") and asserted["supplier_name"].strip().lower() != extraction.supplier_name.strip().lower():
+                        mismatches.append("supplier_name")
+                    if extraction.invoice_date and asserted.get("invoice_date") and asserted["invoice_date"] != extraction.invoice_date:
+                        mismatches.append("invoice_date")
+                    if extraction.gross_amount is not None and asserted.get("gross_amount") is not None and float(asserted["gross_amount"]) != extraction.gross_amount:
+                        mismatches.append("gross_amount")
+                    if mismatches:
+                        asserted["conflict_fields"] = mismatches
+
+                sidecar_payload = make_enriched_sidecar(
+                    receipt_id=receipt_id,
+                    source=intake.source,
+                    client_code=intake.client_code,
+                    client_name=client_name,
+                    capture_date=datetime.now(timezone.utc).isoformat(),
+                    invoice_date=extraction.invoice_date,
+                    supplier=extraction.supplier_name or intake.sidecar.get("supplier_name") if intake.sidecar else None,
+                    net=extraction.net_amount,
+                    vat=extraction.vat_amount,
+                    gross=extraction.gross_amount,
+                    currency=extraction.currency,
+                    category=None,
+                    confidence="high" if validation.status == "ok" else "low",
+                    validation_status=validation.status,
+                    asserted=asserted or None,
+                    original_filename=intake.filename,
+                    claimed_client_code=intake.sidecar.get("client_code") if intake.sidecar else None,
+                )
+
+                if validation.status == "ok":
+                    if extraction.invoice_date:
+                        tax_year = determine_tax_year(extraction.invoice_date)
+                    else:
+                        tax_year = determine_tax_year(datetime.now(timezone.utc).date().isoformat())
+
+                    file_receipt(
+                        intake.source_path,
+                        client_name,
+                        tax_year,
+                        extraction.supplier_name or "unknown",
+                        extraction.gross_amount or 0.0,
+                        intake.filename,
+                        sidecar_payload,
+                    )
+                    stats["extractions_succeeded"] += 1
+                else:
+                    file_review(
+                        intake.source_path,
+                        client_name,
+                        intake.filename,
+                        validation.status,
+                        validation.notes,
+                        sidecar_payload,
+                    )
+                    stats["review_flags_issued"] += 1
+
+                _log_receipt(
+                    receipt_id, f"capture:{intake.original_name}", intake.filename, "extracted",
+                    firm_id=intake.firm_id,
+                    extraction_status=validation.status,
+                    supplier_name=extraction.supplier_name,
+                    invoice_date=extraction.invoice_date,
+                    gross_amount=extraction.gross_amount,
+                    review_reason=validation.notes[0] if validation.notes else None,
+                    duplicate_of=duplicate_of,
+                    duplicate_reason=duplicate_reason,
+                    run_id=run_id
+                )
+
+            except Exception as exc:
+                logger.error(f"capture extraction failed {receipt_id[:8]}... [{intake.filename}]: {exc}", exc_info=True)
+                stats["extraction_failures"] += 1
+                repo.save_extraction(
+                    extraction_id=str(uuid.uuid4()),
+                    receipt_id=receipt_id,
+                    engine="openai_vision",
+                    supplier_name=None,
+                    invoice_date=None,
+                    net_amount=None,
+                    vat_amount=None,
+                    gross_amount=None,
+                    currency="GBP",
+                    raw_response=str(exc),
+                    validation_status="failed",
+                    validation_notes=[f"extraction error: {exc}"],
+                )
+                file_review(
+                    intake.source_path,
+                    client_name,
+                    intake.filename,
+                    "failed",
+                    [str(exc)],
+                    {
+                        "receipt_id": receipt_id,
+                        "source": intake.source,
+                        "client_code": intake.client_code,
+                        "client_name": client_name,
+                        "original_filename": intake.filename,
+                        "error": str(exc),
+                    },
+                )
+                _log_receipt(
+                    receipt_id, f"capture:{intake.original_name}", intake.filename, "extraction_failed",
+                    firm_id=intake.firm_id,
+                    extraction_status="failed",
+                    review_reason=str(exc),
+                    run_id=run_id
+                )
 
         for msg in messages:
             message_id = msg["id"]
@@ -136,10 +370,11 @@ def process_once():
                     continue
 
                 receipt_id = str(uuid.uuid4())
-                file_path = save_file(receipt_id, filename, file_data)
+                client_id, firm_id = repo.resolve_client_id(email_from)
+                _, _, client_code = repo.resolve_client_info(email_from)
+                file_path = save_file(receipt_id, client_code, filename, file_data)
                 stats["receipts_created"] += 1
 
-                client_id, firm_id = repo.resolve_client_id(email_from)
                 repo.save_receipt(
                     receipt_id=receipt_id,
                     message_id=message_id,
@@ -151,6 +386,7 @@ def process_once():
                     file_hash=file_hash,
                     firm_id=firm_id,
                     client_id=client_id,
+                    client_code=client_code,
                 )
                 _log_receipt(receipt_id, message_id, filename, "created", firm_id=firm_id, client_id=client_id, run_id=run_id)
 

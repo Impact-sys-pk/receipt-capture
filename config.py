@@ -15,6 +15,13 @@ RUNS_LOG = LOGS_DIR / "runs.ndjson"
 RECEIPTS_LOG = LOGS_DIR / "receipt_events.ndjson"
 CLIENTS_CSV = BASE_DIR / "clients.csv"
 
+ONEDRIVE_ROOT = Path(os.environ.get(
+    "ONEDRIVE_ROOT",
+    r"C:\Users\PDK7\OneDrive - Intellitax Accounting Limited"
+))
+RECEIPT_INBOX_ROOT = ONEDRIVE_ROOT / "Receipt Inbox"
+CLIENTS_ROOT = ONEDRIVE_ROOT / "Clients"
+
 IMAP_HOST = os.environ["IMAP_HOST"]
 IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
 IMAP_USERNAME = os.environ["IMAP_USERNAME"]
@@ -32,20 +39,27 @@ EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_clients():
-    """Load clients.csv into a dict: email -> (client_id, firm_id, business_type)"""
-    clients = {}
+    """Load clients.csv into dicts: email -> client data and code -> client data."""
+    clients_by_email = {}
+    clients_by_code = {}
     if CLIENTS_CSV.exists():
         with CLIENTS_CSV.open("r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 email = row.get("email", "").strip().lower()
+                client_code = row.get("client_code", "").strip()
+                client_data = {
+                    "client_id": row.get("client_id", "UNKNOWN"),
+                    "firm_id": row.get("firm_id", "FIRM001"),
+                    "business_type": row.get("business_type", "UNSPECIFIED"),
+                    "client_code": client_code or row.get("client_id", "UNKNOWN"),
+                    "client_name": row.get("name", "")
+                }
                 if email:
-                    clients[email] = {
-                        "client_id": row.get("client_id", "UNKNOWN"),
-                        "firm_id": row.get("firm_id", "FIRM001"),
-                        "business_type": row.get("business_type", "UNSPECIFIED")
-                    }
-    return clients
+                    clients_by_email[email] = client_data
+                if client_code:
+                    clients_by_code[client_code.upper()] = client_data
+    return clients_by_email, clients_by_code
 
 
-CLIENTS = load_clients()
+CLIENTS, CLIENTS_BY_CODE = load_clients()

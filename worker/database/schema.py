@@ -77,6 +77,8 @@ def init_db():
             receipt_id          TEXT PRIMARY KEY,
             firm_id             TEXT NOT NULL DEFAULT 'INTELLITAX',
             client_id           TEXT DEFAULT 'UNKNOWN',
+            client_code         TEXT DEFAULT 'UNKNOWN',
+            source              TEXT DEFAULT 'email',
             message_id          TEXT NOT NULL,
             email_subject       TEXT,
             email_from          TEXT,
@@ -87,6 +89,22 @@ def init_db():
             status              TEXT DEFAULT 'pending',
             created_at          TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS statements (
+            statement_id        TEXT PRIMARY KEY,
+            client_id           TEXT NOT NULL,
+            client_code         TEXT NOT NULL,
+            platform            TEXT NOT NULL,
+            week_ending         TEXT NOT NULL,
+            source              TEXT NOT NULL,
+            file_hash           TEXT NOT NULL,
+            file_path           TEXT NOT NULL,
+            status              TEXT NOT NULL,
+            created_at          TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_statements_file_hash
+            ON statements(file_hash);
 
         CREATE TABLE IF NOT EXISTS extractions (
             extraction_id       TEXT PRIMARY KEY,
@@ -120,5 +138,12 @@ def init_db():
             updated_at  TEXT NOT NULL
         );
     """)
+    conn.commit()
+
+    existing_receipt_columns = {row[1] for row in conn.execute("PRAGMA table_info(receipts)").fetchall()}
+    if "client_code" not in existing_receipt_columns:
+        conn.execute("ALTER TABLE receipts ADD COLUMN client_code TEXT DEFAULT 'UNKNOWN'")
+    if "source" not in existing_receipt_columns:
+        conn.execute("ALTER TABLE receipts ADD COLUMN source TEXT DEFAULT 'email'")
     conn.commit()
     conn.close()

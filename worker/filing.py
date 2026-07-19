@@ -78,7 +78,7 @@ def file_receipt(
 
     ext = source_file.suffix
     supplier_safe = normalise_supplier(supplier)
-    gross_text = f"{gross:.2f}".rstrip("0").rstrip(".")
+    gross_text = f"{gross:.2f}"
     base_name = f"{enriched_sidecar['invoice_date']}_{supplier_safe}_{gross_text}"
     dest_image = _unique_path(destination_dir, base_name, ext)
     dest_sidecar = dest_image.with_suffix(dest_image.suffix + ".json")
@@ -165,6 +165,7 @@ def make_enriched_sidecar(
     net: float | None,
     vat: float | None,
     gross: float | None,
+    details: str | None,
     currency: str,
     category: str | None,
     confidence: str,
@@ -185,6 +186,7 @@ def make_enriched_sidecar(
         "net": net,
         "vat": vat,
         "gross": gross,
+        "details": details,
         "currency": currency,
         "category": category,
         "confidence": confidence,

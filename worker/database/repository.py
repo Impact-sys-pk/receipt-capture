@@ -106,6 +106,13 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def is_recorded_and_filed(self, file_hash: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM receipts WHERE file_hash = ? AND filed_path IS NOT NULL LIMIT 1",
+            (file_hash,)
+        ).fetchone()
+        return row is not None
+
     def get_extraction_for_receipt(self, receipt_id: str) -> Optional[dict]:
         row = self._conn.execute(
             "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",
@@ -138,18 +145,18 @@ class Repository:
     def save_extraction(
         self, extraction_id, receipt_id, engine,
         supplier_name, invoice_date, net_amount, vat_amount, gross_amount,
-        currency, raw_response, validation_status, validation_notes
+        currency, raw_response, validation_status, validation_notes, details=None
     ):
         now = datetime.now(timezone.utc).isoformat()
         notes_str = ", ".join(validation_notes) if validation_notes else None
         self._conn.execute("""
             INSERT INTO extractions
                 (extraction_id, receipt_id, engine, extracted_at, supplier_name, invoice_date,
-                 net_amount, vat_amount, gross_amount, currency, raw_response,
+                 net_amount, vat_amount, gross_amount, details, currency, raw_response,
                  validation_status, validation_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (extraction_id, receipt_id, engine, now, supplier_name, invoice_date,
-              net_amount, vat_amount, gross_amount, currency, raw_response,
+              net_amount, vat_amount, gross_amount, details, currency, raw_response,
               validation_status, notes_str))
         self._conn.execute(
             "UPDATE receipts SET status = ? WHERE receipt_id = ?",
@@ -176,9 +183,12 @@ class Repository:
         return row[0] if row else 0
 
     def backup_db(self, destination_path):
-        with sqlite3.connect(str(destination_path)) as dest_conn:
+        dest_conn = sqlite3.connect(str(destination_path))
+        try:
             self._conn.backup(dest_conn)
             dest_conn.commit()
+        finally:
+            dest_conn.close()
 
     def get_delta_link(self) -> Optional[str]:
         row = self._conn.execute(

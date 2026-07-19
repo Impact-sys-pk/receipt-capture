@@ -36,6 +36,10 @@ IMAP_PASSWORD = os.environ["IMAP_PASSWORD"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 
+# Prefer day-first date interpretation (DD/MM/YY) when ambiguous (both day and month <= 12)
+# Can be overridden with environment variable PREFER_DAYFIRST=0
+PREFER_DAYFIRST = os.environ.get("PREFER_DAYFIRST", "1") in ("1", "true", "True")
+
 POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "300"))
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)

@@ -51,9 +51,25 @@ def validate(result: ExtractionResult) -> ValidationResult:
 
     if not notes:
         status = "ok"
-    elif result.gross_amount is None or not result.supplier_name:
-        status = "failed"
     else:
-        status = "needs_review"
+        # If gross is missing, this is unrecoverable
+        if result.gross_amount is None:
+            status = "failed"
+        # If supplier is missing but we have a valid gross and a valid invoice_date, route to review
+        elif not result.supplier_name:
+            date_valid = False
+            if result.invoice_date:
+                try:
+                    datetime.strptime(result.invoice_date, "%Y-%m-%d")
+                    date_valid = True
+                except Exception:
+                    date_valid = False
+
+            if date_valid and result.gross_amount is not None:
+                status = "needs_review"
+            else:
+                status = "failed"
+        else:
+            status = "needs_review"
 
     return ValidationResult(status=status, notes=notes)

@@ -117,6 +117,7 @@ def init_db():
             net_amount          REAL,
             vat_amount          REAL,
             gross_amount        REAL,
+            details             TEXT,
             currency            TEXT DEFAULT 'GBP',
             raw_response        TEXT,
             validation_status   TEXT,
@@ -148,5 +149,10 @@ def init_db():
         conn.execute("ALTER TABLE receipts ADD COLUMN source TEXT DEFAULT 'email'")
     if "filed_path" not in existing_receipt_columns:
         conn.execute("ALTER TABLE receipts ADD COLUMN filed_path TEXT")
+    conn.commit()
+    # Ensure extractions table has `details` column for older DBs
+    existing_extraction_columns = {row[1] for row in conn.execute("PRAGMA table_info(extractions)").fetchall()}
+    if "details" not in existing_extraction_columns:
+        conn.execute("ALTER TABLE extractions ADD COLUMN details TEXT")
     conn.commit()
     conn.close()

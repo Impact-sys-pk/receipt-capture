@@ -41,6 +41,40 @@ git commit -m "Your message"
 
 ---
 
+### Automatic Commit Suggestions
+
+- **Purpose:** When the agent makes self-contained workspace edits (file changes applied via workspace tools), the agent SHOULD suggest a git commit message summarising the change and whether a push/PR is recommended. The agent MUST NOT run `git commit`/`git push` or create branches without explicit user approval.
+- **When to suggest:** after completing a focused change (bugfix, new test, refactor, or configuration change), and especially when local tests passed or when the change touches multiple files.
+- **What to include in the suggestion:** a concise commit message (see template), a one-line rationale, list of modified files, and a recommended branch name and push/PR action.
+- **Safety:** Always warn before destructive operations (force-push, resetting history, deleting branches) and require explicit permission for them.
+
+**Commit message template (agent should fill placeholders):**
+
+- **Format:**
+   - `<type>(scope): short summary`
+   - (one blank line)
+   - Longer explanation (optional — 1–3 lines).
+   - `Files:` comma-separated list of modified files
+   - `Suggested branch:` feature/<short>-<ticket-or-topic>
+- **Types:** `fix`, `feat`, `chore`, `test`, `docs`, `refactor`
+
+**Example messages:**
+
+- `fix(extraction): prefer day-first parsing for ambiguous invoice dates`
+   - Adds `PREFER_DAYFIRST` flag and local parsing of `invoice_date_raw`.
+   - Files: `worker/extraction/openai_vision.py`, `config.py`, `tests/test_date_disambiguation.py`
+   - Suggested branch: `fix/date-disambiguation`
+- `test(extraction): add unit test for ambiguous date parsing`
+   - Files: `tests/test_date_disambiguation.py`
+   - Suggested branch: `test/date-disambiguation`
+
+**Push / PR recommendation:**
+- The agent may recommend pushing and/or opening a PR but must ask before performing any push. Suggested prompt: "Recommend push to branch `BRANCH` and open PR to `main` — proceed? (yes/no)".
+
+Add this policy so reviewers know the agent will propose commits and push/PR workflows, but will never perform commits/pushes without explicit approval.
+
+---
+
 ### Destructive Git Operations
 
 **CRITICAL: Always warn before destructive commands**

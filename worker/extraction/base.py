@@ -13,6 +13,7 @@ class ExtractionResult:
     currency: str
     raw_response: str
     engine: str
+    details: Optional[str] = None
 
 
 class BaseExtractor(ABC):

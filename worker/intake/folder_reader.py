@@ -87,13 +87,8 @@ def scan_inbox() -> list[IntakeRecord]:
             client_id = "UNKNOWN"
             firm_id = "INTELLITAX"
 
-        review_dir = client_dir / "Review"
-        review_dir.mkdir(exist_ok=True)
-
         for item in sorted(client_dir.iterdir()):
             if item.is_dir():
-                continue
-            if item.parent.name == "Review":
                 continue
             if item.suffix.lower() == SIDE_CAR_EXT:
                 continue

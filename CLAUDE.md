@@ -51,24 +51,25 @@ git commit -m "Your message"
 **Commit message template (agent should fill placeholders):**
 
 - **Format:**
-   - `<type>(scope): short summary`
-   - (one blank line)
-   - Longer explanation (optional — 1–3 lines).
-   - `Files:` comma-separated list of modified files
-   - `Suggested branch:` feature/<short>-<ticket-or-topic>
+  - `<type>(scope): short summary`
+  - (one blank line)
+  - Longer explanation (optional — 1–3 lines).
+  - `Files:` comma-separated list of modified files
+  - `Suggested branch:` feature/<short>-<ticket-or-topic>
 - **Types:** `fix`, `feat`, `chore`, `test`, `docs`, `refactor`
 
 **Example messages:**
 
 - `fix(extraction): prefer day-first parsing for ambiguous invoice dates`
-   - Adds `PREFER_DAYFIRST` flag and local parsing of `invoice_date_raw`.
-   - Files: `worker/extraction/openai_vision.py`, `config.py`, `tests/test_date_disambiguation.py`
-   - Suggested branch: `fix/date-disambiguation`
+  - Adds `PREFER_DAYFIRST` flag and local parsing of `invoice_date_raw`.
+  - Files: `worker/extraction/openai_vision.py`, `config.py`, `tests/test_date_disambiguation.py`
+  - Suggested branch: `fix/date-disambiguation`
 - `test(extraction): add unit test for ambiguous date parsing`
-   - Files: `tests/test_date_disambiguation.py`
-   - Suggested branch: `test/date-disambiguation`
+  - Files: `tests/test_date_disambiguation.py`
+  - Suggested branch: `test/date-disambiguation`
 
 **Push / PR recommendation:**
+
 - The agent may recommend pushing and/or opening a PR but must ask before performing any push. Suggested prompt: "Recommend push to branch `BRANCH` and open PR to `main` — proceed? (yes/no)".
 
 Add this policy so reviewers know the agent will propose commits and push/PR workflows, but will never perform commits/pushes without explicit approval.
@@ -292,7 +293,7 @@ This section is specific to the Uber Phase 1 Ingestion Worker project.
 
 This is a local receipt ingestion and extraction system.
 
-It reads receipt emails, extracts structured data via OpenAI Vision, validates, and stores in SQLite with full audit trail.
+It accepts receipts from either IMAP email attachments or files placed in the Receipt Inbox folder, extracts structured data via OpenAI Vision, validates, and stores results in SQLite with a full audit trail.
 
 **Local build is reference.** Cloud version will follow the same data model and processing logic.
 
@@ -300,9 +301,9 @@ It reads receipt emails, extracts structured data via OpenAI Vision, validates, 
 
 ## Architecture
 
-**Email → File → Extraction → Validation → Categorisation → Database**
+**Intake → File → Extraction → Validation → Categorisation → Database**
 
-1. **Email ingestion** — IMAP from `capture@lastingimpact.co.uk`
+1. **Intake** — Receipts may arrive via IMAP email attachments or files placed in the Receipt Inbox folder
 2. **File storage** — Original attachments saved locally, date-based folders, never overwritten
 3. **Extraction** — OpenAI Vision API (swappable interface)
 4. **Validation** — Gross ≈ net + VAT, required fields, valid dates
@@ -544,9 +545,9 @@ Status assignment:
 
 ## Workflow
 
-1. **Email arrives** at `capture@lastingimpact.co.uk`
-2. **App polls** every 5 minutes (or on demand)
-3. **Attachments extracted** and saved locally
+1. **Receipt arrives** via either IMAP email or the Receipt Inbox folder
+2. **App polls** every 5 minutes (or on demand) for email, and scans the Receipt Inbox for files
+3. **Attachments or inbox files** are saved locally
 4. **OpenAI Vision** extracts structured data
 5. **Validation** rules applied
 6. **Results stored** in SQLite (never modified after)

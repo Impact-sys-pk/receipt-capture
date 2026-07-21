@@ -145,18 +145,18 @@ class Repository:
     def save_extraction(
         self, extraction_id, receipt_id, engine,
         supplier_name, invoice_date, net_amount, vat_amount, gross_amount,
-        currency, raw_response, validation_status, validation_notes, details=None
+        currency, raw_response, validation_status, validation_notes
     ):
         now = datetime.now(timezone.utc).isoformat()
         notes_str = ", ".join(validation_notes) if validation_notes else None
         self._conn.execute("""
             INSERT INTO extractions
                 (extraction_id, receipt_id, engine, extracted_at, supplier_name, invoice_date,
-                 net_amount, vat_amount, gross_amount, details, currency, raw_response,
+                 net_amount, vat_amount, gross_amount, currency, raw_response,
                  validation_status, validation_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (extraction_id, receipt_id, engine, now, supplier_name, invoice_date,
-              net_amount, vat_amount, gross_amount, details, currency, raw_response,
+              net_amount, vat_amount, gross_amount, currency, raw_response,
               validation_status, notes_str))
         self._conn.execute(
             "UPDATE receipts SET status = ? WHERE receipt_id = ?",
@@ -183,12 +183,9 @@ class Repository:
         return row[0] if row else 0
 
     def backup_db(self, destination_path):
-        dest_conn = sqlite3.connect(str(destination_path))
-        try:
+        with sqlite3.connect(str(destination_path)) as dest_conn:
             self._conn.backup(dest_conn)
             dest_conn.commit()
-        finally:
-            dest_conn.close()
 
     def get_delta_link(self) -> Optional[str]:
         row = self._conn.execute(

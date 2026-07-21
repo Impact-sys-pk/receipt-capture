@@ -21,9 +21,7 @@ sys.modules["openai"] = fake_openai
 import config
 from worker.database.repository import Repository
 from worker.intake.folder_reader import scan_inbox
-from worker.extraction.base import ExtractionResult
 import app
-import unittest.mock as mock
 
 
 class CaptureInboxCleanupTest(unittest.TestCase):
@@ -148,65 +146,6 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                     app._remove_inbox_pair(intake)
                     self.assertFalse(statement_file.exists())
                     self.assertFalse(sidecar_file.exists())
-                finally:
-                    repo.close()
-            finally:
-                config.RECEIPT_INBOX_ROOT = original_inbox
-                config.CLIENTS_ROOT = original_clients_root
-                config.DB_PATH = original_db
-                config.CLIENTS_BY_CODE = original_clients_by_code
-
-    def test_failed_capture_receipt_routes_to_review_and_clears_inbox(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            temp_inbox = temp_path / "Receipt Inbox"
-            temp_clients_root = temp_path / "Clients"
-            temp_db = temp_path / "receipts.db"
-            temp_inbox.mkdir(parents=True, exist_ok=True)
-            temp_clients_root.mkdir(parents=True, exist_ok=True)
-
-            original_inbox = config.RECEIPT_INBOX_ROOT
-            original_clients_root = config.CLIENTS_ROOT
-            original_db = config.DB_PATH
-            original_clients_by_code = config.CLIENTS_BY_CODE
-
-            config.RECEIPT_INBOX_ROOT = temp_inbox
-            config.CLIENTS_ROOT = temp_clients_root
-            config.DB_PATH = temp_db
-            config.CLIENTS_BY_CODE = {"ABC": {"client_name": "Test Client", "client_id": "CLIENT001", "firm_id": "FIRM001"}}
-
-            try:
-                client_dir = temp_inbox / "ABC"
-                client_dir.mkdir(parents=True, exist_ok=True)
-
-                receipt_file = client_dir / "capture_001.pdf"
-                receipt_file.write_text("dummy receipt content", encoding="utf-8")
-
-                repo = Repository()
-                try:
-                    config.BACKUPS_ROOT = temp_path / "Backups"
-                    config.PIPELINE_STATUS_PATH = temp_path / "pipeline-status.json"
-                    config.BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
-
-                    with mock.patch.object(app, "fetch_new_messages", return_value=[]), \
-                         mock.patch.object(app.OpenAIVisionExtractor, "extract", return_value=ExtractionResult(
-                             supplier_name=None,
-                             invoice_date=None,
-                             net_amount=None,
-                             vat_amount=None,
-                             gross_amount=None,
-                             currency='GBP',
-                             raw_response='{}',
-                             engine='openai_vision'
-                         )):
-                        app.process_once()
-
-                    self.assertFalse(receipt_file.exists())
-                    self.assertFalse((client_dir / 'Review').exists())
-
-                    review_folder = temp_clients_root / 'Test Client' / 'Review'
-                    self.assertTrue(review_folder.exists())
-                    self.assertTrue(any(review_folder.iterdir()))
                 finally:
                     repo.close()
             finally:

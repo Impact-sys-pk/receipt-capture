@@ -684,12 +684,20 @@ def process_once():
             email_from = msg.get("from", {}).get("emailAddress", {}).get("address", "")
             received_at = msg.get("receivedDateTime", "")
 
-            # If email is from a billing address (bills@*), try to extract forwarded client email
-            if email_from and "bills@" in email_from.lower():
+            # If email is from a firm billing address, try to extract forwarded client email
+            email_from_lower = email_from.lower() if email_from else ""
+            is_firm_billing_address = any(
+                firm_data.get("email", "").lower() == email_from_lower
+                for firm_data in config.FIRMS.values()
+            )
+
+            if is_firm_billing_address:
                 forwarded_client_email = extract_forwarded_client_email(msg.get("msg"))
                 if forwarded_client_email:
-                    logger.info(f"Forwarded email: using client email {forwarded_client_email} instead of billing address {email_from}")
+                    logger.info(f"Forwarded email: using client email {forwarded_client_email} instead of firm billing address {email_from}")
                     email_from = forwarded_client_email
+                else:
+                    logger.warning(f"Email from firm billing address {email_from} but couldn't extract forwarded client email")
 
             for att in fetch_attachments(message_id, msg.get("msg")):
                 att_id = att["id"]

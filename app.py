@@ -12,7 +12,8 @@ from pathlib import Path
 import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
-from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder
+from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments
+from worker.email.alerts import send_no_attachment_alert
 from worker.extraction.openai_vision import OpenAIVisionExtractor
 from worker.intake.folder_reader import scan_inbox
 from worker.filing import (
@@ -276,6 +277,38 @@ def process_once():
 
         intake_records = scan_inbox()
         logger.info(f"capture inbox files found: {len(intake_records)}")
+
+        # Check for emails without attachments and send alerts
+        no_attachment_emails = fetch_emails_without_attachments()
+        logger.info(f"emails without attachments: {len(no_attachment_emails)}")
+        for email_msg in no_attachment_emails:
+            message_id = email_msg["id"]
+            email_from = email_msg["from"]
+
+            # Skip if we've already sent an alert for this email
+            if repo.has_alert_been_sent(message_id, "no_attachment"):
+                logger.info(f"alert already sent for {message_id}, skipping")
+                continue
+
+            # Resolve sender to firm
+            client_info = repo.resolve_client_info(email_from)
+            client_id, firm_id, client_code = client_info
+
+            # Get firm name
+            firm_name = config.FIRMS.get(firm_id, {}).get("name", firm_id)
+
+            # Extract email address (handle "Name <email>" format)
+            recipient_email = email_from
+            if "<" in email_from and ">" in email_from:
+                recipient_email = email_from.split("<")[1].split(">")[0].strip()
+
+            # Send alert
+            if send_no_attachment_alert(recipient_email, firm_name):
+                repo.record_alert_sent(message_id, "no_attachment", recipient_email, firm_name)
+                stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
+
+            # Move email to "No Attachments" folder
+            move_email_to_folder(message_id, "INBOX.No Attachments")
 
         messages = fetch_new_messages(repo)
         stats["messages_found"] = len(messages)
@@ -542,6 +575,7 @@ def process_once():
                         firm_id="INTELLITAX", duplicate_reason="message_id_match",
                         run_id=run_id
                     )
+                    move_email_to_folder(message_id, "INBOX.Duplicates")
                     continue
 
                 file_data = base64.b64decode(att.get("contentBytes", ""))
@@ -558,6 +592,7 @@ def process_once():
                         run_id=run_id
                     )
                     repo.mark_processed(message_id, att_id, file_hash, existing)
+                    move_email_to_folder(message_id, "INBOX.Duplicates")
                     continue
 
                 receipt_id = str(uuid.uuid4())

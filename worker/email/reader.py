@@ -87,6 +87,43 @@ def fetch_attachments(message_id: str, msg=None):
     return attachments
 
 
+def fetch_emails_without_attachments():
+    """Fetch emails from inbox that have NO attachments.
+
+    Used to detect emails where client forgot to attach a receipt.
+    Returns list of email objects for alerting.
+    """
+    imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
+    imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
+    imap.select("INBOX")
+
+    try:
+        _, message_uids = imap.search(None, "ALL")
+        uids = message_uids[0].split() if message_uids[0] else []
+
+        emails = []
+        for uid in uids:
+            _, msg_data = imap.fetch(uid, "(RFC822)")
+            msg_bytes = msg_data[0][1]
+            msg = email.message_from_bytes(msg_bytes)
+
+            # Only include emails WITHOUT attachments
+            if not _has_attachments(msg):
+                uid_str = uid.decode() if isinstance(uid, bytes) else uid
+                emails.append({
+                    "id": uid_str,
+                    "subject": msg.get("Subject", ""),
+                    "from": msg.get("From", ""),
+                    "receivedDateTime": msg.get("Date", ""),
+                    "msg": msg
+                })
+
+        return emails
+    finally:
+        imap.close()
+        imap.logout()
+
+
 def move_email_to_folder(message_id: str, target_folder: str) -> bool:
     """Move email from INBOX to target folder. Returns True if successful.
 

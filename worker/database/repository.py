@@ -404,3 +404,20 @@ class Repository:
             (rule_id,)
         )
         self._conn.commit()
+
+    def has_alert_been_sent(self, message_id: str, alert_type: str) -> bool:
+        """Check if an alert of this type has already been sent for this message."""
+        row = self._conn.execute(
+            "SELECT 1 FROM email_alerts WHERE message_id = ? AND alert_type = ?",
+            (message_id, alert_type)
+        ).fetchone()
+        return row is not None
+
+    def record_alert_sent(self, message_id: str, alert_type: str, recipient_email: str, firm_name: str):
+        """Record that an alert was sent."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute("""
+            INSERT INTO email_alerts (message_id, alert_type, recipient_email, firm_name, alert_sent_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (message_id, alert_type, recipient_email, firm_name, now))
+        self._conn.commit()

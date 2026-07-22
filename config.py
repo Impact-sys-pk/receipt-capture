@@ -42,6 +42,11 @@ PREFER_DAYFIRST = os.environ.get("PREFER_DAYFIRST", "1") in ("1", "true", "True"
 
 POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "300"))
 
+SMTP_HOST = os.environ.get("SMTP_HOST", "mail.lastingimpact.co.uk")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "alerts@lastingimpact.co.uk")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -74,4 +79,23 @@ def load_clients():
     return clients_by_email, clients_by_code
 
 
+def load_firms():
+    """Load firms.csv into dict: firm_id -> firm data."""
+    firms_by_id = {}
+    firms_csv = SYSTEM_ROOT / "firms.csv"
+    if firms_csv.exists():
+        with firms_csv.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                firm_id = row.get("firm_id", "").strip()
+                if firm_id:
+                    firms_by_id[firm_id] = {
+                        "firm_id": firm_id,
+                        "name": row.get("name", ""),
+                        "email": row.get("email", "")
+                    }
+    return firms_by_id
+
+
 CLIENTS, CLIENTS_BY_CODE = load_clients()
+FIRMS = load_firms()

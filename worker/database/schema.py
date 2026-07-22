@@ -139,6 +139,18 @@ def init_db():
             value       TEXT NOT NULL,
             updated_at  TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS email_alerts (
+            message_id          TEXT NOT NULL,
+            alert_type          TEXT NOT NULL,
+            recipient_email     TEXT NOT NULL,
+            firm_name           TEXT NOT NULL,
+            alert_sent_at       TEXT NOT NULL,
+            PRIMARY KEY (message_id, alert_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_email_alerts_message
+            ON email_alerts(message_id);
     """)
     conn.commit()
 

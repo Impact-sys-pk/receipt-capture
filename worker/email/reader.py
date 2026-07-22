@@ -2,10 +2,69 @@ import base64
 import email
 import imaplib
 import logging
+import re
 
 import config
 
 logger = logging.getLogger(__name__)
+
+
+def extract_forwarded_client_email(msg) -> str:
+    """Extract client email from forwarded message body.
+
+    Outlook forward format:
+    ---------- Forwarded message ---------
+    From: client@example.com
+    ...
+
+    Returns: email address if found, None if not
+    """
+    try:
+        # Get email body
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    break
+            else:
+                body = ""
+        else:
+            body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+
+        if not body:
+            return None
+
+        # Look for forwarded message marker (Outlook format)
+        if "---------- Forwarded message" not in body:
+            return None
+
+        # Extract From: line after forwarded marker
+        lines = body.split('\n')
+        forwarded_idx = None
+        for i, line in enumerate(lines):
+            if "---------- Forwarded message" in line:
+                forwarded_idx = i
+                break
+
+        if forwarded_idx is None:
+            return None
+
+        # Find From: line within next 10 lines
+        for i in range(forwarded_idx, min(forwarded_idx + 10, len(lines))):
+            line = lines[i]
+            if line.strip().startswith("From:"):
+                # Extract email from "From: email@domain.com" or "From: Name <email@domain.com>"
+                match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', line)
+                if match:
+                    email_addr = match.group(1).strip().lower()
+                    logger.info(f"Extracted forwarded client email: {email_addr}")
+                    return email_addr
+
+        return None
+
+    except Exception as exc:
+        logger.warning(f"Failed to extract forwarded client email: {exc}")
+        return None
 
 
 def _has_attachments(msg):

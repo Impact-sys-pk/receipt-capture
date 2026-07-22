@@ -12,7 +12,7 @@ from pathlib import Path
 import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
-from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images
+from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images, extract_forwarded_client_email
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.openai_vision import OpenAIVisionExtractor
 from worker.intake.folder_reader import scan_inbox
@@ -683,6 +683,13 @@ def process_once():
             subject = msg.get("subject", "")
             email_from = msg.get("from", {}).get("emailAddress", {}).get("address", "")
             received_at = msg.get("receivedDateTime", "")
+
+            # If email is from a billing address (bills@*), try to extract forwarded client email
+            if email_from and "bills@" in email_from.lower():
+                forwarded_client_email = extract_forwarded_client_email(msg.get("msg"))
+                if forwarded_client_email:
+                    logger.info(f"Forwarded email: using client email {forwarded_client_email} instead of billing address {email_from}")
+                    email_from = forwarded_client_email
 
             for att in fetch_attachments(message_id, msg.get("msg")):
                 att_id = att["id"]

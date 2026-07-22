@@ -531,7 +531,7 @@ def process_once():
                         str(uuid.uuid4()), message_id, filename, "unsupported_file_type",
                         firm_id="INTELLITAX", run_id=run_id
                     )
-                    move_email_to_folder(message_id, "Unsupported Files")
+                    move_email_to_folder(message_id, "INBOX.Unsupported Files")
                     continue
 
                 if repo.is_duplicate(message_id, att_id):
@@ -661,7 +661,7 @@ def process_once():
                         )
                         repo.mark_receipt_filed(receipt_id, dest_path)
                         stats["extractions_succeeded"] += 1
-                        move_email_to_folder(message_id, "Processed Receipts")
+                        move_email_to_folder(message_id, "INBOX.Processed Receipts")
                     elif validation.status == "needs_review":
                         file_review(
                             file_path,
@@ -672,7 +672,7 @@ def process_once():
                             sidecar_payload,
                         )
                         stats["review_flags_issued"] += 1
-                        move_email_to_folder(message_id, "Needs Review")
+                        move_email_to_folder(message_id, "INBOX.Needs Review")
                     elif validation.status == "failed":
                         file_review(
                             file_path,
@@ -683,7 +683,7 @@ def process_once():
                             sidecar_payload,
                         )
                         stats["review_flags_issued"] += 1
-                        move_email_to_folder(message_id, "Failed Processing")
+                        move_email_to_folder(message_id, "INBOX.Failed Processing")
 
                     # Categorise if validation passed
                     if validation.status == "ok" and extraction.supplier_name:
@@ -750,7 +750,7 @@ def process_once():
                         review_reason=str(exc),
                         run_id=run_id
                     )
-                    move_email_to_folder(message_id, "Failed Processing")
+                    move_email_to_folder(message_id, "INBOX.Failed Processing")
 
                 repo.mark_processed(message_id, att_id, file_hash, receipt_id)
 

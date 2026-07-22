@@ -26,8 +26,16 @@ Receipts can arrive in two ways:
 1. **Known client?** → Resolve client_id and firm_id from sender's email
 2. **Unknown sender?** → Send alert, move to "Unknown Sender", done
 3. **Has attachment?** → Continue processing
-4. **No attachment?** → Send alert with firm name, move to "No Attachments", done
+4. **No attachment?** → Check for embedded images
+   - Found embedded images (iOS share)? → Extract and process silently
+   - No embedded images? → Send alert with firm name, move to "No Attachments", done
 5. **Duplicate?** → Move to "Duplicates", done
+
+**Embedded images (e.g., iOS share button):**
+- Automatically detected and extracted from email body
+- Processed like normal file attachments (no alert sent)
+- Client's receipt gets processed without needing to resend
+- Improves user experience for mobile users
 
 **For valid receipts (known client, has attachment, not duplicate):**
 - Extract data with AI

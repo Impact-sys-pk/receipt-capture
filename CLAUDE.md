@@ -414,6 +414,13 @@ Status assignment:
 - **Unknown Sender** — Sender not in clients.csv; alert sent requesting registration
 - **Duplicates** — Duplicate detected (same message_id, file_hash, or transaction)
 
+**Embedded image handling:**
+- Emails with embedded images (iOS share button) are automatically extracted
+- Extracted images processed like normal file attachments
+- No alert sent (processed silently)
+- Client gets their receipt processed without needing to resend
+- Only alerts "no attachment" if email has neither file attachments NOR embedded images
+
 **Automated alerts (no manual action needed):**
 - **No-attachment emails:** Alert includes firm name (from client resolution). Client recognizes their firm name, not "Lasting Impact".
 - **Unknown senders:** Alert asks them to contact support@lastingimpact.co.uk to register.

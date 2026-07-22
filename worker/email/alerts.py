@@ -49,3 +49,47 @@ Receipt Capture System
     except Exception as exc:
         logger.warning(f"Failed to send no-attachment alert to {recipient_email}: {exc}")
         return False
+
+
+def send_unknown_sender_alert(recipient_email: str) -> bool:
+    """Send alert to unknown sender that we don't recognize them.
+
+    Args:
+        recipient_email: Sender's email address to reply to
+
+    Returns:
+        True if sent successfully, False if failed (logs warning, does not raise)
+    """
+    try:
+        subject = "Receipt Submission - Unrecognized Sender"
+        body = """Hello,
+
+We received your email but we don't recognize your email address in our system.
+
+If you are a client, please contact support@lastingimpact.co.uk to register your email address.
+
+If you believe this is an error, please reply to this email.
+
+Thank you,
+Receipt Capture System
+Lasting Impact
+"""
+
+        # Create email
+        msg = MIMEMultipart()
+        msg["From"] = f"Lasting Impact <{config.SMTP_USERNAME}>"
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        # Send via SMTP
+        with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT) as smtp:
+            smtp.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
+            smtp.send_message(msg)
+
+        logger.info(f"Sent unknown sender alert to {recipient_email}")
+        return True
+
+    except Exception as exc:
+        logger.warning(f"Failed to send unknown sender alert to {recipient_email}: {exc}")
+        return False

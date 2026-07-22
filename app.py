@@ -13,7 +13,7 @@ import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
 from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments
-from worker.email.alerts import send_no_attachment_alert
+from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.openai_vision import OpenAIVisionExtractor
 from worker.intake.folder_reader import scan_inbox
 from worker.filing import (
@@ -598,6 +598,29 @@ def process_once():
                 receipt_id = str(uuid.uuid4())
                 client_id, firm_id = repo.resolve_client_id(email_from)
                 _, _, client_code = repo.resolve_client_info(email_from)
+
+                # Check for unknown sender
+                if client_id == "UNKNOWN":
+                    logger.info(f"unknown sender: {email_from}")
+                    stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
+
+                    # Skip if alert already sent
+                    if not repo.has_alert_been_sent(message_id, "unknown_sender"):
+                        # Extract email address (handle "Name <email>" format)
+                        recipient_email = email_from
+                        if "<" in email_from and ">" in email_from:
+                            recipient_email = email_from.split("<")[1].split(">")[0].strip()
+
+                        # Send alert
+                        if send_unknown_sender_alert(recipient_email):
+                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, "Unknown")
+
+                    # Move to Unknown Sender folder
+                    move_email_to_folder(message_id, "INBOX.Unknown Sender")
+                    _log_receipt(receipt_id, message_id, filename, "unknown_sender",
+                                firm_id="INTELLITAX", run_id=run_id)
+                    continue
+
                 file_path = save_file(receipt_id, client_code, filename, file_data)
                 stats["receipts_created"] += 1
 

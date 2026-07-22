@@ -87,6 +87,53 @@ def fetch_attachments(message_id: str, msg=None):
     return attachments
 
 
+def extract_embedded_images(msg) -> list:
+    """Extract embedded images from email message.
+
+    Looks for inline images (Content-Disposition: inline) in email MIME structure.
+    Returns list of image data dicts compatible with fetch_attachments() format.
+    """
+    images = []
+
+    if not isinstance(msg.get_payload(), list):
+        return images
+
+    for part in msg.walk():
+        # Skip if not image
+        if not part.get_content_type().startswith("image/"):
+            continue
+
+        # Check if it's inline (embedded in email body)
+        disposition = part.get("Content-Disposition", "")
+        is_inline = "inline" in disposition or part.get("Content-ID")
+
+        if not is_inline:
+            continue
+
+        # Extract image data
+        try:
+            filename = part.get_filename()
+            if not filename:
+                # Generate filename for inline image without name
+                content_type = part.get_content_type()
+                ext = content_type.split("/")[1]  # e.g., "jpeg" from "image/jpeg"
+                filename = f"embedded_image_{len(images)}.{ext}"
+
+            content_bytes = part.get_payload(decode=True)
+            if content_bytes:
+                images.append({
+                    "id": f"embedded_{filename}",
+                    "name": filename,
+                    "contentBytes": base64.b64encode(content_bytes).decode(),
+                    "is_embedded": True
+                })
+                logger.info(f"Extracted embedded image: {filename}")
+        except Exception as exc:
+            logger.warning(f"Failed to extract embedded image: {exc}")
+
+    return images
+
+
 def fetch_emails_without_attachments():
     """Fetch emails from inbox that have NO attachments.
 

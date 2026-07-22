@@ -12,7 +12,7 @@ from pathlib import Path
 import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
-from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments
+from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.openai_vision import OpenAIVisionExtractor
 from worker.intake.folder_reader import scan_inbox
@@ -278,13 +278,144 @@ def process_once():
         intake_records = scan_inbox()
         logger.info(f"capture inbox files found: {len(intake_records)}")
 
-        # Check for emails without attachments and send alerts
+        # Check for emails without attachments
         no_attachment_emails = fetch_emails_without_attachments()
         logger.info(f"emails without attachments: {len(no_attachment_emails)}")
         for email_msg in no_attachment_emails:
             message_id = email_msg["id"]
             email_from = email_msg["from"]
 
+            # Try to extract embedded images from the email
+            embedded_images = extract_embedded_images(email_msg["msg"])
+            logger.info(f"extracted {len(embedded_images)} embedded images from {message_id}")
+
+            # If embedded images found, treat them as attachments and process normally
+            if embedded_images:
+                # Resolve client
+                client_id, firm_id = repo.resolve_client_id(email_from)
+                _, _, client_code = repo.resolve_client_info(email_from)
+
+                # Check for unknown sender
+                if client_id == "UNKNOWN":
+                    logger.info(f"unknown sender: {email_from}")
+                    stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
+
+                    if not repo.has_alert_been_sent(message_id, "unknown_sender"):
+                        recipient_email = email_from
+                        if "<" in email_from and ">" in email_from:
+                            recipient_email = email_from.split("<")[1].split(">")[0].strip()
+
+                        if send_unknown_sender_alert(recipient_email):
+                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, "Unknown")
+
+                    move_email_to_folder(message_id, "INBOX.Unknown Sender")
+                    continue
+
+                # Process embedded images like normal attachments
+                for embedded_img in embedded_images:
+                    att_id = embedded_img["id"]
+                    filename = embedded_img["name"]
+                    stats["attachments_processed"] += 1
+
+                    file_data = base64.b64decode(embedded_img.get("contentBytes", ""))
+                    file_hash = compute_hash(file_data)
+
+                    # Check for duplicates
+                    existing = repo.find_by_hash(file_hash)
+                    if existing:
+                        logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
+                        stats["duplicates_skipped"] += 1
+                        repo.mark_processed(message_id, att_id, file_hash, existing)
+                        move_email_to_folder(message_id, "INBOX.Duplicates")
+                        continue
+
+                    receipt_id = str(uuid.uuid4())
+                    file_path = save_file(receipt_id, client_code, filename, file_data)
+                    stats["receipts_created"] += 1
+
+                    repo.save_receipt(
+                        receipt_id=receipt_id,
+                        message_id=message_id,
+                        email_subject=email_msg.get("subject", ""),
+                        email_from=email_from,
+                        email_received_at=email_msg.get("receivedDateTime", ""),
+                        filename=filename,
+                        file_path=file_path,
+                        file_hash=file_hash,
+                        firm_id=firm_id,
+                        client_id=client_id,
+                        client_code=client_code,
+                    )
+                    _log_receipt(receipt_id, message_id, filename, "created", firm_id=firm_id, client_id=client_id, run_id=run_id)
+
+                    # Extract and process
+                    try:
+                        extraction = extractor.extract(str(file_path), filename)
+                        validation = validate(extraction)
+
+                        extraction_id = str(uuid.uuid4())
+                        repo.save_extraction(
+                            extraction_id=extraction_id,
+                            receipt_id=receipt_id,
+                            engine=extraction.engine,
+                            supplier_name=extraction.supplier_name,
+                            invoice_date=extraction.invoice_date,
+                            net_amount=extraction.net_amount,
+                            vat_amount=extraction.vat_amount,
+                            gross_amount=extraction.gross_amount,
+                            currency=extraction.currency,
+                            raw_response=extraction.raw_response,
+                            validation_status=validation.status,
+                            validation_notes=validation.notes,
+                        )
+                        logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
+
+                        if validation.status == "ok":
+                            stats["extractions_succeeded"] += 1
+                        else:
+                            stats["review_flags_issued"] += 1
+
+                        _log_receipt(
+                            receipt_id, message_id, filename, "extracted",
+                            firm_id=firm_id,
+                            extraction_status=validation.status,
+                            supplier_name=extraction.supplier_name,
+                            invoice_date=extraction.invoice_date,
+                            gross_amount=extraction.gross_amount,
+                            run_id=run_id
+                        )
+                    except Exception as exc:
+                        logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
+                        stats["extraction_failures"] += 1
+                        repo.save_extraction(
+                            extraction_id=str(uuid.uuid4()),
+                            receipt_id=receipt_id,
+                            engine="openai_vision",
+                            supplier_name=None,
+                            invoice_date=None,
+                            net_amount=None,
+                            vat_amount=None,
+                            gross_amount=None,
+                            currency="GBP",
+                            raw_response=str(exc),
+                            validation_status="failed",
+                            validation_notes=[f"extraction error: {exc}"],
+                        )
+                        _log_receipt(
+                            receipt_id, message_id, filename, "extraction_failed",
+                            firm_id=firm_id,
+                            extraction_status="failed",
+                            review_reason=str(exc),
+                            run_id=run_id
+                        )
+
+                    repo.mark_processed(message_id, att_id, file_hash, receipt_id)
+
+                # After processing all embedded images, move to Processed Receipts if all ok
+                move_email_to_folder(message_id, "INBOX.Processed Receipts")
+                continue
+
+            # No attachments and no embedded images - send alert
             # Skip if we've already sent an alert for this email
             if repo.has_alert_been_sent(message_id, "no_attachment"):
                 logger.info(f"alert already sent for {message_id}, skipping")

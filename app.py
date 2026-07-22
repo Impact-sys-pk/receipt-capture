@@ -685,14 +685,9 @@ def process_once():
             received_at = msg.get("receivedDateTime", "")
 
             # If email is from a firm billing address, try to extract forwarded client email
-            # Extract just the email address (handle "Name <email@domain>" format)
-            email_from_addr = email_from
-            if email_from and "<" in email_from and ">" in email_from:
-                email_from_addr = email_from.split("<")[1].split(">")[0].strip()
-
-            email_from_addr_lower = email_from_addr.lower() if email_from_addr else ""
+            email_from_lower = email_from.lower() if email_from else ""
             is_firm_billing_address = any(
-                firm_data.get("email", "").lower() == email_from_addr_lower
+                firm_data.get("email", "").lower() == email_from_lower
                 for firm_data in config.FIRMS.values()
             )
 

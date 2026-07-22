@@ -357,12 +357,21 @@ Automatic GL code assignment via 6-layer lookup strategy:
 
 ### 3. Firm & Client Tracking
 
-All receipts include:
+All receipts are automatically matched to a client via `clients.csv`:
 
-- `firm_id` — defaults to `INTELLITAX` (multi-firm ready)
-- `client_id` — defaults to `UNKNOWN` (will be assigned manually or via rules)
+**For email receipts:**
+- Sender's email address is looked up in `clients.csv`
+- If found: `client_id`, `firm_id`, `business_type` assigned from CSV
+- If not found: defaults to `client_id=UNKNOWN`, `firm_id=INTELLITAX`, `business_type=UNSPECIFIED`
 
-**Do not assume a receipt belongs to a specific client.** Always store as `UNKNOWN` unless explicitly matched.
+**For folder intake:**
+- `client_code` from sidecar file is looked up in `clients.csv`
+- If found: `client_id`, `firm_id` assigned from CSV
+- If not found: defaults to `client_id=UNKNOWN`, `firm_id=INTELLITAX`
+
+**clients.csv format:** email, client_id, client_code, firm_id, business_type, name
+
+**After intake:** Client can be manually reassigned or updated via rules in categorisations_client_rules.
 
 ### 4. Extraction Results
 

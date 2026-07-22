@@ -404,12 +404,25 @@ Status assignment:
 - Polls every 5 minutes (configurable)
 - Fetches all emails from inbox (robust: no UID tracking dependencies)
 - Uses message_id from email headers for deduplication (not IMAP UIDs)
-- Automatically routes emails to folders based on processing outcome:
-  - **Processed Receipts** — Validation status "ok"
-  - **Needs Review** — Validation status "needs_review" (data present but inconsistent)
-  - **Failed Processing** — Extraction error (AI couldn't read document)
-  - **Unsupported Files** — File type not supported (not PDF/JPG/PNG/etc)
-  - **Inbox** — Emails with no attachments (requires user action)
+
+**Email routing by outcome:**
+- **Processed Receipts** — Validation status "ok" ✓ Filed
+- **Needs Review** — Validation status "needs_review" (data present but inconsistent)
+- **Failed Processing** — Extraction error (AI couldn't read document)
+- **Unsupported Files** — File type not supported (not PDF/JPG/PNG/etc)
+- **No Attachments** — Email without attachment; alert sent to client
+- **Unknown Sender** — Sender not in clients.csv; alert sent requesting registration
+- **Duplicates** — Duplicate detected (same message_id, file_hash, or transaction)
+
+**Automated alerts (no manual action needed):**
+- **No-attachment emails:** Alert includes firm name (from client resolution). Client recognizes their firm name, not "Lasting Impact".
+- **Unknown senders:** Alert asks them to contact support@lastingimpact.co.uk to register.
+- Alert tracking prevents duplicate alerts for same email.
+
+**Configuration:**
+- IMAP: mail.lastingimpact.co.uk, port 993 (configured in .env)
+- SMTP: mail.lastingimpact.co.uk, port 465 (for sending alerts from alerts@lastingimpact.co.uk)
+- Firms: Loaded from IntelliBooks/firms.csv for alert display
 - Supports any IMAP server (currently Krystal.io, cloud-ready)
 
 ---

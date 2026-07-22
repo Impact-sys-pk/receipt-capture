@@ -20,12 +20,33 @@ Receipts can arrive in two ways:
 - Automatically assigns the receipt to the correct client based on who sent it
 - Supported file types: PDF, JPG, PNG, GIF, WebP, TIFF, BMP
 
-**After processing, emails are routed to folders:**
-- **Processed Receipts** — Validation passed, receipt is filed ✓
-- **Needs Review** — Data incomplete or inconsistent (e.g., VAT mismatch)
+**Email Processing & Routing:**
+
+**Before extracting, system checks:**
+1. **Known client?** → Resolve client_id and firm_id from sender's email
+2. **Unknown sender?** → Send alert, move to "Unknown Sender", done
+3. **Has attachment?** → Continue processing
+4. **No attachment?** → Send alert with firm name, move to "No Attachments", done
+5. **Duplicate?** → Move to "Duplicates", done
+
+**For valid receipts (known client, has attachment, not duplicate):**
+- Extract data with AI
+- Validate (gross ≈ net + VAT, required fields, valid dates)
+- Categorise (assign GL code if validation passes)
+
+**Email routing by outcome:**
+- **Processed Receipts** — Validation passed ✓ Receipt filed successfully
+- **Needs Review** — Data incomplete or inconsistent (e.g., VAT mismatch, missing fields)
 - **Failed Processing** — Extraction error (image unreadable, corrupted, etc.)
 - **Unsupported Files** — Wrong file type (.docx, .xlsx, etc.)
-- **Inbox** — Emails without attachments (user action required)
+- **No Attachments** — Alert sent: "Please resend with receipt attached"
+- **Unknown Sender** — Alert sent: "Please register your email with support"
+- **Duplicates** — Same file/transaction already processed
+
+**Automated alerts (sent automatically):**
+- **No-attachment emails:** Client sees alert from their firm name (e.g., "Best Accounting")
+- **Unknown senders:** Alert requests email registration
+- Alerts are sent once per email (tracked to avoid spam)
 
 **B) Folder Upload**
 - Files can be placed in the Receipt Inbox folder (shared network drive)

@@ -97,3 +97,31 @@ def fetch_attachments(message_id: str, msg=None):
                 })
 
     return attachments
+
+
+def move_email_to_folder(message_id: str, target_folder: str = "Processed Receipts") -> bool:
+    """Move email to target folder after successful processing. Returns True if successful."""
+    try:
+        imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
+        imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
+        imap.select("INBOX")
+
+        try:
+            # Copy email to target folder
+            copy_resp = imap.copy(message_id, target_folder)
+            if copy_resp[0] != "OK":
+                logger.warning(f"Failed to copy email {message_id} to {target_folder}")
+                return False
+
+            # Mark original for deletion
+            imap.store(message_id, "+FLAGS", "\\Deleted")
+            imap.expunge()
+
+            logger.info(f"Moved email {message_id} to {target_folder}")
+            return True
+        finally:
+            imap.close()
+            imap.logout()
+    except Exception as exc:
+        logger.warning(f"Failed to move email {message_id}: {exc}")
+        return False

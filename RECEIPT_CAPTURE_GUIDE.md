@@ -19,6 +19,7 @@ Receipts can arrive in two ways:
 - The system checks the sender's email address against a client list
 - Automatically assigns the receipt to the correct client based on who sent it
 - Supported file types: PDF, JPG, PNG, GIF, WebP, TIFF, BMP
+- **After processing:** Successfully processed emails are moved to "Processed Receipts" folder; failed or needs_review emails stay in inbox
 
 **B) Folder Upload**
 - Files can be placed in the Receipt Inbox folder (shared network drive)

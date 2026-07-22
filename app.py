@@ -12,7 +12,7 @@ from pathlib import Path
 import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
-from worker.email.reader import fetch_attachments, fetch_new_messages
+from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder
 from worker.extraction.openai_vision import OpenAIVisionExtractor
 from worker.intake.folder_reader import scan_inbox
 from worker.filing import (
@@ -660,6 +660,7 @@ def process_once():
                         )
                         repo.mark_receipt_filed(receipt_id, dest_path)
                         stats["extractions_succeeded"] += 1
+                        move_email_to_folder(message_id)
                     elif validation.status == "needs_review":
                         file_review(
                             file_path,

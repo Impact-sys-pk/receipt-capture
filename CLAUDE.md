@@ -403,7 +403,8 @@ Status assignment:
 
 - Polls every 5 minutes (configurable)
 - Uses IMAP with UID tracking (remembers last processed UID per run)
-- Does not modify or delete emails (read-only)
+- Moves successfully processed emails to "Processed Receipts" folder
+- Leaves failed or needs_review emails in inbox for manual inspection
 - Supports any IMAP server (currently Krystal.io, cloud-ready)
 
 ---

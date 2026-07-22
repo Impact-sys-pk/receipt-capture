@@ -20,24 +20,18 @@ def _has_attachments(msg):
 
 
 def fetch_new_messages(repo):
-    """Fetch messages with attachments from IMAP since last UID."""
-    last_uid = repo.get_last_uid()
+    """Fetch all messages with attachments from IMAP inbox.
 
+    Uses message_id from email headers for deduplication instead of UID tracking,
+    which is more robust when inbox is modified (deleted/cleared).
+    """
     imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
     imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
     imap.select("INBOX")
 
     try:
-        if last_uid:
-            search_criterion = f"UID {last_uid}:*"
-        else:
-            search_criterion = "ALL"
-
-        _, message_uids = imap.search(None, search_criterion)
+        _, message_uids = imap.search(None, "ALL")
         uids = message_uids[0].split() if message_uids[0] else []
-
-        if last_uid:
-            uids = [u for u in uids if int(u) > int(last_uid)]
 
         messages = []
         for uid in uids:
@@ -55,12 +49,6 @@ def fetch_new_messages(repo):
                     "uid": uid_str,
                     "msg": msg
                 })
-
-        if uids:
-            last_uid = uids[-1]
-            if isinstance(last_uid, bytes):
-                last_uid = last_uid.decode()
-            repo.save_last_uid(last_uid)
 
         return messages
     finally:
@@ -99,8 +87,16 @@ def fetch_attachments(message_id: str, msg=None):
     return attachments
 
 
-def move_email_to_folder(message_id: str, target_folder: str = "Processed Receipts") -> bool:
-    """Move email to target folder after successful processing. Returns True if successful."""
+def move_email_to_folder(message_id: str, target_folder: str) -> bool:
+    """Move email from INBOX to target folder. Returns True if successful.
+
+    Args:
+        message_id: IMAP UID of the email
+        target_folder: Target folder name (e.g., "Processed Receipts", "Failed Processing")
+
+    Returns:
+        True if move succeeded, False if failed (logs warning, does not raise)
+    """
     try:
         imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
         imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
@@ -110,18 +106,21 @@ def move_email_to_folder(message_id: str, target_folder: str = "Processed Receip
             # Copy email to target folder
             copy_resp = imap.copy(message_id, target_folder)
             if copy_resp[0] != "OK":
-                logger.warning(f"Failed to copy email {message_id} to {target_folder}")
+                logger.warning(f"Failed to copy email {message_id} to {target_folder}: {copy_resp}")
                 return False
 
             # Mark original for deletion
-            imap.store(message_id, "+FLAGS", "\\Deleted")
-            imap.expunge()
+            store_resp = imap.store(message_id, "+FLAGS", "\\Deleted")
+            if store_resp[0] != "OK":
+                logger.warning(f"Failed to mark email {message_id} for deletion: {store_resp}")
+                return False
 
+            imap.expunge()
             logger.info(f"Moved email {message_id} to {target_folder}")
             return True
         finally:
             imap.close()
             imap.logout()
     except Exception as exc:
-        logger.warning(f"Failed to move email {message_id}: {exc}")
+        logger.warning(f"Failed to move email {message_id} to {target_folder}: {exc}")
         return False

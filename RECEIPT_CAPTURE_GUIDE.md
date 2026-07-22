@@ -19,7 +19,13 @@ Receipts can arrive in two ways:
 - The system checks the sender's email address against a client list
 - Automatically assigns the receipt to the correct client based on who sent it
 - Supported file types: PDF, JPG, PNG, GIF, WebP, TIFF, BMP
-- **After processing:** Successfully processed emails are moved to "Processed Receipts" folder; failed or needs_review emails stay in inbox
+
+**After processing, emails are routed to folders:**
+- **Processed Receipts** — Validation passed, receipt is filed ✓
+- **Needs Review** — Data incomplete or inconsistent (e.g., VAT mismatch)
+- **Failed Processing** — Extraction error (image unreadable, corrupted, etc.)
+- **Unsupported Files** — Wrong file type (.docx, .xlsx, etc.)
+- **Inbox** — Emails without attachments (user action required)
 
 **B) Folder Upload**
 - Files can be placed in the Receipt Inbox folder (shared network drive)

@@ -402,9 +402,14 @@ Status assignment:
 ### 6. Email Polling
 
 - Polls every 5 minutes (configurable)
-- Uses IMAP with UID tracking (remembers last processed UID per run)
-- Moves successfully processed emails to "Processed Receipts" folder
-- Leaves failed or needs_review emails in inbox for manual inspection
+- Fetches all emails from inbox (robust: no UID tracking dependencies)
+- Uses message_id from email headers for deduplication (not IMAP UIDs)
+- Automatically routes emails to folders based on processing outcome:
+  - **Processed Receipts** — Validation status "ok"
+  - **Needs Review** — Validation status "needs_review" (data present but inconsistent)
+  - **Failed Processing** — Extraction error (AI couldn't read document)
+  - **Unsupported Files** — File type not supported (not PDF/JPG/PNG/etc)
+  - **Inbox** — Emails with no attachments (requires user action)
 - Supports any IMAP server (currently Krystal.io, cloud-ready)
 
 ---

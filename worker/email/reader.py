@@ -92,7 +92,7 @@ def move_email_to_folder(message_id: str, target_folder: str) -> bool:
 
     Args:
         message_id: IMAP UID of the email
-        target_folder: Target folder name (e.g., "Processed Receipts", "Failed Processing")
+        target_folder: Target folder name (e.g., "INBOX.Processed Receipts", "INBOX.Failed Processing")
 
     Returns:
         True if move succeeded, False if failed (logs warning, does not raise)
@@ -103,8 +103,11 @@ def move_email_to_folder(message_id: str, target_folder: str) -> bool:
         imap.select("INBOX")
 
         try:
+            # Quote folder name if it contains spaces (IMAP requirement)
+            quoted_folder = f'"{target_folder}"' if " " in target_folder else target_folder
+
             # Copy email to target folder
-            copy_resp = imap.copy(message_id, target_folder)
+            copy_resp = imap.copy(message_id, quoted_folder)
             if copy_resp[0] != "OK":
                 logger.warning(f"Failed to copy email {message_id} to {target_folder}: {copy_resp}")
                 return False

@@ -61,6 +61,8 @@ Receipts can arrive in two ways:
 - The sender includes a sidecar file (metadata file) that specifies the client code
 - The system picks up these files every 5 minutes
 
+**Architecture Note:** The current single-firm implementation uses REDIRECT routing at the email service level (simple, reliable, 100% accurate). For future multi-firm or AWS deployments, see `MULTIFIRM_EMAIL_FORWARDING_ANALYSIS_AND_FINDINGS.md` for architectural analysis and why cloud APIs use webhook+metadata instead of email header parsing.
+
 ### Step 2: Duplicate Prevention
 
 Before processing, the system checks:

@@ -432,6 +432,14 @@ Status assignment:
 - Firms: Loaded from IntelliBooks/firms.csv for alert display
 - Supports any IMAP server (currently Krystal.io, cloud-ready)
 
+### Email Architecture Notes
+
+**REDIRECT vs FORWARD:** We investigated using FORWARD instead of REDIRECT to extract firm identity from email headers. Analysis shows this approach is unreliable (85% at best) due to email client format variations (Outlook, Gmail, Apple Mail, Thunderbird, Yahoo all use different forwarding formats) and creates technical debt that would be discarded on AWS migration.
+
+**Why this matters:** REDIRECT works perfectly for single-firm Intellitax. On AWS, webhook+metadata endpoints eliminate MIME parsing entirely, making any local FORWARD parsing obsolete.
+
+**See:** `MULTIFIRM_EMAIL_FORWARDING_ANALYSIS_AND_FINDINGS.md` for detailed architectural findings, email format differences, and recommendations for future multi-firm or cloud deployments.
+
 ---
 
 ## Database Schema

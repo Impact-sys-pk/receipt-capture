@@ -729,6 +729,7 @@ def process_once():
                 receipt_id = str(uuid.uuid4())
                 client_id, firm_id = repo.resolve_client_id(email_from)
                 _, _, client_code = repo.resolve_client_info(email_from)
+                client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)
 
                 # Check for unknown sender
                 if client_id == "UNKNOWN":

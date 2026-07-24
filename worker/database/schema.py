@@ -166,5 +166,25 @@ def init_db():
     existing_extraction_columns = {row[1] for row in conn.execute("PRAGMA table_info(extractions)").fetchall()}
     if "details" not in existing_extraction_columns:
         conn.execute("ALTER TABLE extractions ADD COLUMN details TEXT")
+
+    # Part 1: Auto-retry on version change
+    if "pipeline_version" not in existing_extraction_columns:
+        conn.execute("ALTER TABLE extractions ADD COLUMN pipeline_version TEXT")
+
+    # Part 2B: Semantic duplicate signals
+    if "receipt_ref_number" not in existing_extraction_columns:
+        conn.execute("ALTER TABLE extractions ADD COLUMN receipt_ref_number TEXT")
+    if "receipt_time" not in existing_extraction_columns:
+        conn.execute("ALTER TABLE extractions ADD COLUMN receipt_time TEXT")
+
+    conn.commit()
+
+    # Part 2B: Track duplicate relationships + Part 3 locking
+    existing_receipt_columns = {row[1] for row in conn.execute("PRAGMA table_info(receipts)").fetchall()}
+    if "duplicate_of" not in existing_receipt_columns:
+        conn.execute("ALTER TABLE receipts ADD COLUMN duplicate_of TEXT")
+    if "locked_at" not in existing_receipt_columns:
+        conn.execute("ALTER TABLE receipts ADD COLUMN locked_at TIMESTAMP")
+
     conn.commit()
     conn.close()

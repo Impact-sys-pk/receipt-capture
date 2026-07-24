@@ -145,7 +145,8 @@ class Repository:
     def save_extraction(
         self, extraction_id, receipt_id, engine,
         supplier_name, invoice_date, net_amount, vat_amount, gross_amount,
-        currency, raw_response, validation_status, validation_notes
+        currency, raw_response, validation_status, validation_notes,
+        pipeline_version=None, receipt_ref_number=None, receipt_time=None
     ):
         now = datetime.now(timezone.utc).isoformat()
         notes_str = ", ".join(validation_notes) if validation_notes else None
@@ -153,11 +154,11 @@ class Repository:
             INSERT INTO extractions
                 (extraction_id, receipt_id, engine, extracted_at, supplier_name, invoice_date,
                  net_amount, vat_amount, gross_amount, currency, raw_response,
-                 validation_status, validation_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 validation_status, validation_notes, pipeline_version, receipt_ref_number, receipt_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (extraction_id, receipt_id, engine, now, supplier_name, invoice_date,
               net_amount, vat_amount, gross_amount, currency, raw_response,
-              validation_status, notes_str))
+              validation_status, notes_str, pipeline_version, receipt_ref_number, receipt_time))
         self._conn.execute(
             "UPDATE receipts SET status = ? WHERE receipt_id = ?",
             (validation_status, receipt_id)
@@ -420,4 +421,141 @@ class Repository:
             INSERT INTO email_alerts (message_id, alert_type, recipient_email, firm_name, alert_sent_at)
             VALUES (?, ?, ?, ?, ?)
         """, (message_id, alert_type, recipient_email, firm_name, now))
+        self._conn.commit()
+
+    # Part 1: Auto-retry on version change
+
+    def find_failed_by_version(self, current_version: str) -> list:
+        """Find receipts with failed/needs_review status whose extractions are older than current_version.
+
+        Returns receipts that need retrying (older pipeline_version, not currently locked).
+        """
+        rows = self._conn.execute("""
+            SELECT r.receipt_id, r.client_code, r.firm_id, r.client_id, r.filename, r.file_path,
+                   r.message_id, r.status, r.locked_at
+            FROM receipts r
+            INNER JOIN extractions e ON r.receipt_id = e.receipt_id
+            WHERE r.status IN ('failed', 'needs_review')
+              AND r.locked_at IS NULL
+              AND (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) < ?
+            GROUP BY r.receipt_id
+            ORDER BY r.created_at ASC
+        """, (current_version,)).fetchall()
+
+        return [dict(row) for row in rows]
+
+    # Part 2B: Duplicate detection & Part 3: Locking
+
+    def find_by_transaction_loose(self, supplier_name: str, invoice_date: str, gross_amount: float,
+                                   case_insensitive: bool = True, amount_tolerance: float = 0.01) -> str:
+        """Find receipt matching supplier + date + amount (with tolerance).
+
+        Used for semantic duplicate detection. Loosened matching with case-insensitive supplier
+        and ±tolerance on amount to reduce false positives.
+
+        Returns receipt_id if found, None otherwise.
+        """
+        if not supplier_name:
+            return None
+
+        supplier_search = supplier_name.strip().lower() if case_insensitive else supplier_name.strip()
+        min_amount = gross_amount - amount_tolerance
+        max_amount = gross_amount + amount_tolerance
+
+        # Build query based on whether we have invoice_date
+        if invoice_date:
+            # Match on supplier + date + amount
+            query = """
+                SELECT r.receipt_id
+                FROM receipts r
+                INNER JOIN extractions e ON r.receipt_id = e.receipt_id
+                WHERE (LOWER(e.supplier_name) = ? OR e.supplier_name = ?)
+                  AND e.invoice_date = ?
+                  AND e.gross_amount BETWEEN ? AND ?
+                  AND r.filed_path IS NOT NULL
+                LIMIT 1
+            """
+            row = self._conn.execute(query, (supplier_search, supplier_name, invoice_date, min_amount, max_amount)).fetchone()
+        else:
+            # Match on supplier + amount only (no date)
+            query = """
+                SELECT r.receipt_id
+                FROM receipts r
+                INNER JOIN extractions e ON r.receipt_id = e.receipt_id
+                WHERE (LOWER(e.supplier_name) = ? OR e.supplier_name = ?)
+                  AND e.gross_amount BETWEEN ? AND ?
+                  AND r.filed_path IS NOT NULL
+                LIMIT 1
+            """
+            row = self._conn.execute(query, (supplier_search, supplier_name, min_amount, max_amount)).fetchone()
+
+        return row[0] if row else None
+
+    def set_duplicate_of(self, receipt_id: str, duplicate_of_receipt_id: str):
+        """Mark a receipt as a possible duplicate of another."""
+        self._conn.execute(
+            "UPDATE receipts SET duplicate_of = ? WHERE receipt_id = ?",
+            (duplicate_of_receipt_id, receipt_id)
+        )
+        self._conn.commit()
+
+    def is_recorded_and_filed(self, receipt_id: str) -> bool:
+        """Check if a receipt is genuinely filed (has filed_path set)."""
+        row = self._conn.execute(
+            "SELECT filed_path FROM receipts WHERE receipt_id = ?",
+            (receipt_id,)
+        ).fetchone()
+        return row and row[0] is not None
+
+    # Part 3: Locking for manual resolution
+
+    def acquire_receipt_lock(self, receipt_id: str, allow_stale_after_minutes: int = 60) -> bool:
+        """Acquire lock on receipt. Returns True if successful, False if held by another process.
+
+        Allows recovery of stale locks older than allow_stale_after_minutes (Part 1 can proceed).
+        """
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=allow_stale_after_minutes)
+
+        cursor = self._conn.cursor()
+        cursor.execute("""
+            UPDATE receipts
+            SET locked_at = ?
+            WHERE receipt_id = ?
+              AND (locked_at IS NULL OR locked_at < ?)
+        """, (datetime.now(timezone.utc), receipt_id, cutoff))
+        self._conn.commit()
+
+        return cursor.rowcount == 1
+
+    def release_receipt_lock(self, receipt_id: str):
+        """Release lock on receipt."""
+        self._conn.execute(
+            "UPDATE receipts SET locked_at = NULL WHERE receipt_id = ?",
+            (receipt_id,)
+        )
+        self._conn.commit()
+
+    def add_validation_note(self, receipt_id: str, note: str):
+        """Append a validation note to the most recent extraction."""
+        extraction = self.get_extraction_for_receipt(receipt_id)
+        if extraction:
+            current_notes = extraction.get('validation_notes', '')
+            if current_notes:
+                new_notes = f"{current_notes}, {note}"
+            else:
+                new_notes = note
+
+            self._conn.execute(
+                "UPDATE extractions SET validation_notes = ? WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",
+                (new_notes, receipt_id)
+            )
+            self._conn.commit()
+
+    def update_receipt_status(self, receipt_id: str, status: str):
+        """Update receipt status."""
+        self._conn.execute(
+            "UPDATE receipts SET status = ? WHERE receipt_id = ?",
+            (status, receipt_id)
+        )
         self._conn.commit()

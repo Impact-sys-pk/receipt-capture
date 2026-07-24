@@ -99,3 +99,36 @@ def load_firms():
 
 CLIENTS, CLIENTS_BY_CODE = load_clients()
 FIRMS = load_firms()
+
+
+def get_pipeline_version() -> str:
+    """Return git short-hash as pipeline version for retry tracking."""
+    import subprocess
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=BASE_DIR
+        ).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def check_git_status_on_startup() -> None:
+    """Warn if there are uncommitted changes when app starts."""
+    import subprocess
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=BASE_DIR
+        ).decode().strip()
+        if status:
+            hash_val = get_pipeline_version()
+            logger.warning(
+                f"uncommitted changes detected at startup; "
+                f"pipeline_version={hash_val} may not reflect working tree. "
+                f"Changed files: {len(status.splitlines())} file(s)"
+            )
+    except Exception:
+        pass  # git might not be available, continue anyway

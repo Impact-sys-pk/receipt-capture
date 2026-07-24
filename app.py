@@ -570,17 +570,18 @@ def process_once():
                 stats["receipts_created"] += 1
                 continue
 
+            # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
             existing = repo.find_by_hash(intake.file_hash)
             if existing:
-                if repo.is_recorded_and_filed(intake.file_hash):
+                if repo.is_recorded_and_filed(existing):
                     logger.info(f"capture duplicate by hash of filed receipt, removing inbox pair {intake.filename}")
                     _remove_inbox_pair(intake)
                     stats["duplicates_skipped"] += 1
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
                     continue
-                logger.info(f"capture duplicate by hash, skipping {intake.filename}")
-                stats["duplicates_skipped"] += 1
-                continue
+                # If hash matches a failed/needs_review receipt, allow reprocessing
+                logger.info(f"capture duplicate by hash of failed receipt, allowing reprocessing {intake.filename}")
+                # Continue processing (don't skip)
 
             receipt_id = str(uuid.uuid4())
             file_path = save_inbox_file(receipt_id, intake.client_code, intake.source_path)
@@ -603,118 +604,42 @@ def process_once():
             _log_receipt(receipt_id, f"capture:{intake.original_name}", intake.filename, "created", firm_id=intake.firm_id, client_id=intake.client_id, run_id=run_id)
 
             client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
-            try:
-                extraction = extractor.extract(str(file_path), intake.filename)
-                validation = validate(extraction)
 
-                duplicate_of = None
-                duplicate_reason = None
-                if extraction.supplier_name and extraction.gross_amount is not None:
-                    if extraction.invoice_date:
-                        existing = repo.find_by_transaction(
-                            extraction.supplier_name,
-                            extraction.invoice_date,
-                            extraction.gross_amount
-                        )
-                    else:
-                        existing = repo.find_by_transaction_no_date(
-                            extraction.supplier_name,
-                            extraction.gross_amount
-                        )
-                    if existing:
-                        duplicate_of = existing
-                        duplicate_reason = "transaction_match"
-                        logger.info(f"transaction duplicate: {receipt_id[:8]}... matches {existing[:8]}...")
-
-                extraction_id = str(uuid.uuid4())
-                repo.save_extraction(
-                    extraction_id=extraction_id,
-                    receipt_id=receipt_id,
-                    engine=extraction.engine,
-                    supplier_name=extraction.supplier_name,
-                    invoice_date=extraction.invoice_date,
-                    net_amount=extraction.net_amount,
-                    vat_amount=extraction.vat_amount,
-                    gross_amount=extraction.gross_amount,
-                    currency=extraction.currency,
-                    raw_response=extraction.raw_response,
-                    validation_status=validation.status,
-                    validation_notes=validation.notes,
-                )
-
-                client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
-                asserted = {k: intake.sidecar.get(k) for k in ("supplier_name", "invoice_date", "net_amount", "vat_amount", "gross_amount", "client_code") if intake.sidecar and k in intake.sidecar}
+            # Build sidecar assertion values (folder-specific)
+            asserted_values = None
+            if intake.sidecar:
+                asserted = {k: intake.sidecar.get(k) for k in ("supplier_name", "invoice_date", "net_amount", "vat_amount", "gross_amount", "client_code") if k in intake.sidecar}
                 if asserted:
-                    mismatches = []
-                    if extraction.supplier_name and asserted.get("supplier_name") and asserted["supplier_name"].strip().lower() != extraction.supplier_name.strip().lower():
-                        mismatches.append("supplier_name")
-                    if extraction.invoice_date and asserted.get("invoice_date") and asserted["invoice_date"] != extraction.invoice_date:
-                        mismatches.append("invoice_date")
-                    if extraction.gross_amount is not None and asserted.get("gross_amount") is not None and float(asserted["gross_amount"]) != extraction.gross_amount:
-                        mismatches.append("gross_amount")
-                    if mismatches:
-                        asserted["conflict_fields"] = mismatches
+                    # Will be used in shared function to detect mismatches
+                    asserted_values = asserted
 
-                sidecar_payload = make_enriched_sidecar(
+            try:
+                # Extract with transient-error retry
+                extraction = extract_with_transient_retry(extractor, file_path, intake.filename)
+
+                # Process through shared pipeline (validate → duplicate-check → categorise → file)
+                status, filed_path = process_extraction_result(
                     receipt_id=receipt_id,
-                    source=intake.source,
+                    extraction=extraction,
+                    file_path=file_path,
+                    filename=intake.filename,
                     client_code=intake.client_code,
-                    client_name=client_name,
-                    capture_date=datetime.now(timezone.utc).isoformat(),
-                    invoice_date=extraction.invoice_date,
-                    supplier=extraction.supplier_name or intake.sidecar.get("supplier_name") if intake.sidecar else None,
-                    net=extraction.net_amount,
-                    vat=extraction.vat_amount,
-                    gross=extraction.gross_amount,
-                    currency=extraction.currency,
-                    category=None,
-                    confidence="high" if validation.status == "ok" else "low",
-                    validation_status=validation.status,
-                    asserted=asserted or None,
-                    original_filename=intake.filename,
-                    claimed_client_code=intake.sidecar.get("client_code") if intake.sidecar else None,
-                )
-
-                if validation.status == "ok":
-                    if extraction.invoice_date:
-                        tax_year = determine_tax_year(extraction.invoice_date)
-                    else:
-                        tax_year = determine_tax_year(datetime.now(timezone.utc).date().isoformat())
-
-                    dest_path, sidecar_path = file_receipt(
-                        intake.source_path,
-                        client_name,
-                        tax_year,
-                        extraction.supplier_name or "unknown",
-                        extraction.gross_amount or 0.0,
-                        intake.filename,
-                        sidecar_payload,
-                    )
-                    repo.mark_receipt_filed(receipt_id, dest_path)
-                    stats["extractions_succeeded"] += 1
-                else:
-                    file_review(
-                        intake.source_path,
-                        client_name,
-                        intake.filename,
-                        validation.status,
-                        validation.notes,
-                        sidecar_payload,
-                    )
-                    stats["review_flags_issued"] += 1
-
-                _log_receipt(
-                    receipt_id, f"capture:{intake.original_name}", intake.filename, "extracted",
                     firm_id=intake.firm_id,
-                    extraction_status=validation.status,
-                    supplier_name=extraction.supplier_name,
-                    invoice_date=extraction.invoice_date,
-                    gross_amount=extraction.gross_amount,
-                    review_reason=validation.notes[0] if validation.notes else None,
-                    duplicate_of=duplicate_of,
-                    duplicate_reason=duplicate_reason,
-                    run_id=run_id
+                    client_id=intake.client_id,
+                    message_id=None,  # Folder intake, not email
+                    attachment_id=None,
+                    file_hash=None,
+                    asserted_values=asserted_values,
+                    repo=repo,
+                    categorisation_engine=engine,
+                    stats=stats,
+                    run_id=run_id,
+                    pipeline_version=pipeline_version
                 )
+
+                # Remove inbox pair if successfully processed
+                if status == "ok":
+                    _remove_inbox_pair(intake)
 
             except Exception as exc:
                 logger.error(f"capture extraction failed {receipt_id[:8]}... [{intake.filename}]: {exc}", exc_info=True)
@@ -732,6 +657,7 @@ def process_once():
                     raw_response=str(exc),
                     validation_status="failed",
                     validation_notes=[f"extraction error: {exc}"],
+                    pipeline_version=pipeline_version,
                 )
                 file_review(
                     intake.source_path,
@@ -790,8 +716,9 @@ def process_once():
                 file_data = base64.b64decode(att.get("contentBytes", ""))
                 file_hash = compute_hash(file_data)
 
+                # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
                 existing = repo.find_by_hash(file_hash)
-                if existing:
+                if existing and repo.is_recorded_and_filed(existing):
                     logger.warning(f"hash duplicate of {existing}, skipping {filename}")
                     stats["duplicates_skipped"] += 1
                     _log_receipt(
@@ -803,6 +730,7 @@ def process_once():
                     repo.mark_processed(message_id, att_id, file_hash, existing)
                     move_email_to_folder(message_id, "INBOX.Duplicates")
                     continue
+                # If file_hash matches a failed/needs_review receipt, allow reprocessing
 
                 receipt_id = str(uuid.uuid4())
                 client_id, firm_id = repo.resolve_client_id(email_from)
@@ -850,149 +778,38 @@ def process_once():
                 _log_receipt(receipt_id, message_id, filename, "created", firm_id=firm_id, client_id=client_id, run_id=run_id)
 
                 try:
-                    extraction = extractor.extract(str(file_path), filename)
-                    validation = validate(extraction)
+                    # Extract with transient-error retry
+                    extraction = extract_with_transient_retry(extractor, file_path, filename)
 
-                    duplicate_of = None
-                    duplicate_reason = None
-
-                    # Check for semantic duplicates: match on present fields
-                    if extraction.supplier_name and extraction.gross_amount is not None:
-                        if extraction.invoice_date:
-                            # If date is present, match on (supplier, date, amount)
-                            existing = repo.find_by_transaction(
-                                extraction.supplier_name,
-                                extraction.invoice_date,
-                                extraction.gross_amount
-                            )
-                        else:
-                            # If date is missing, match on (supplier, amount) only
-                            existing = repo.find_by_transaction_no_date(
-                                extraction.supplier_name,
-                                extraction.gross_amount
-                            )
-
-                        if existing:
-                            duplicate_of = existing
-                            duplicate_reason = "transaction_match"
-                            logger.info(f"transaction duplicate: {receipt_id[:8]}... matches {existing[:8]}...")
-
-                    extraction_id = str(uuid.uuid4())
-                    repo.save_extraction(
-                        extraction_id=extraction_id,
+                    # Process through shared pipeline (validate → duplicate-check → categorise → file)
+                    status, filed_path = process_extraction_result(
                         receipt_id=receipt_id,
-                        engine=extraction.engine,
-                        supplier_name=extraction.supplier_name,
-                        invoice_date=extraction.invoice_date,
-                        net_amount=extraction.net_amount,
-                        vat_amount=extraction.vat_amount,
-                        gross_amount=extraction.gross_amount,
-                        currency=extraction.currency,
-                        raw_response=extraction.raw_response,
-                        validation_status=validation.status,
-                        validation_notes=validation.notes,
-                    )
-                    logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
-
-                    invoice_date = extraction.invoice_date or datetime.now(timezone.utc).date().isoformat()
-                    gross = extraction.gross_amount if extraction.gross_amount is not None else 0.0
-                    sidecar_payload = make_enriched_sidecar(
-                        receipt_id=receipt_id,
-                        source="email",
+                        extraction=extraction,
+                        file_path=file_path,
+                        filename=filename,
                         client_code=client_code,
-                        client_name=client_name,
-                        capture_date=datetime.now(timezone.utc).isoformat(),
-                        invoice_date=invoice_date,
-                        supplier=extraction.supplier_name or "unknown",
-                        net=extraction.net_amount,
-                        vat=extraction.vat_amount,
-                        gross=gross,
-                        currency=extraction.currency,
-                        category=None,
-                        confidence="high" if validation.status == "ok" else "low",
-                        validation_status=validation.status,
-                        asserted=None,
-                        original_filename=filename,
-                        claimed_client_code=None,
-                    )
-
-                    if validation.status == "ok":
-                        tax_year = determine_tax_year(invoice_date)
-                        dest_path, sidecar_path = file_receipt(
-                            file_path,
-                            client_name,
-                            tax_year,
-                            extraction.supplier_name or "unknown",
-                            gross,
-                            filename,
-                            sidecar_payload,
-                        )
-                        repo.mark_receipt_filed(receipt_id, dest_path)
-                        stats["extractions_succeeded"] += 1
-                        move_email_to_folder(message_id, "INBOX.Processed Receipts")
-                    elif validation.status == "needs_review":
-                        file_review(
-                            file_path,
-                            client_name,
-                            filename,
-                            validation.status,
-                            validation.notes,
-                            sidecar_payload,
-                        )
-                        stats["review_flags_issued"] += 1
-                        move_email_to_folder(message_id, "INBOX.Needs Review")
-                    elif validation.status == "failed":
-                        file_review(
-                            file_path,
-                            client_name,
-                            filename,
-                            validation.status,
-                            validation.notes,
-                            sidecar_payload,
-                        )
-                        stats["review_flags_issued"] += 1
-                        move_email_to_folder(message_id, "INBOX.Failed Processing")
-
-                    # Categorise if validation passed
-                    if validation.status == "ok" and extraction.supplier_name:
-                        categorisation = engine.categorise(
-                            receipt_id=receipt_id,
-                            extraction_id=extraction_id,
-                            supplier_name=extraction.supplier_name,
-                            client_id=client_id,
-                            business_type=config.CLIENTS.get(email_from.lower(), {}).get("business_type", "UNSPECIFIED")
-                        )
-
-                        cat_id = str(uuid.uuid4())
-                        repo.save_categorisation(
-                            categorisation_id=cat_id,
-                            receipt_id=receipt_id,
-                            extraction_id=extraction_id,
-                            client_id=client_id,
-                            business_type=categorisation.business_type,
-                            vendor_code=categorisation.vendor_code,
-                            suggested_code=categorisation.suggested_code,
-                            suggested_name=categorisation.suggested_name,
-                            confidence=categorisation.confidence,
-                            match_source=categorisation.match_source,
-                            matched_vendor=categorisation.matched_vendor,
-                            needs_review=categorisation.needs_review,
-                            categorised_at=datetime.now(timezone.utc).isoformat()
-                        )
-                        logger.info(f"{receipt_id[:8]}... categorised: {categorisation.suggested_code} ({categorisation.confidence})")
-
-                    _log_receipt(
-                        receipt_id, message_id, filename, "extracted",
                         firm_id=firm_id,
-                        extraction_status=validation.status,
-                        supplier_name=extraction.supplier_name,
-                        invoice_date=extraction.invoice_date,
-                        gross_amount=extraction.gross_amount,
-                        review_reason=validation.notes[0] if validation.notes else None,
-                        duplicate_of=duplicate_of,
-                        duplicate_reason=duplicate_reason,
-                        run_id=run_id
+                        client_id=client_id,
+                        message_id=message_id,
+                        attachment_id=att_id,
+                        file_hash=file_hash,
+                        asserted_values=None,
+                        repo=repo,
+                        categorisation_engine=engine,
+                        stats=stats,
+                        run_id=run_id,
+                        pipeline_version=pipeline_version
                     )
+
+                    # Route email based on outcome
+                    if status == "ok":
+                        move_email_to_folder(message_id, "INBOX.Processed Receipts")
+                    elif status == "possible_duplicate":
+                        move_email_to_folder(message_id, "INBOX.Possible Duplicate")
+                    elif status == "needs_review":
+                        move_email_to_folder(message_id, "INBOX.Needs Review")
+                    elif status == "failed":
+                        move_email_to_folder(message_id, "INBOX.Failed Processing")
 
                 except Exception as exc:
                     logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
@@ -1010,6 +827,7 @@ def process_once():
                         raw_response=str(exc),
                         validation_status="failed",
                         validation_notes=[f"extraction error: {exc}"],
+                        pipeline_version=pipeline_version,
                     )
                     _log_receipt(
                         receipt_id, message_id, filename, "extraction_failed",
@@ -1019,8 +837,8 @@ def process_once():
                         run_id=run_id
                     )
                     move_email_to_folder(message_id, "INBOX.Failed Processing")
-
-                repo.mark_processed(message_id, att_id, file_hash, receipt_id)
+                    # Mark processed even on failure (extraction error)
+                    repo.mark_processed(message_id, att_id, file_hash, receipt_id)
 
     except Exception as exc:
         errors = exc

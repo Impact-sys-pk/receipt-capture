@@ -428,10 +428,16 @@ class Repository:
 
     # Part 1: Auto-retry on version change
 
-    def find_failed_by_version(self, current_version: str) -> list:
+    def find_failed_by_version(self, current_version: str, stale_lock_cutoff) -> list:
         """Find receipts with failed/needs_review status whose extractions are older than current_version.
 
-        Returns receipts that need retrying (older pipeline_version, not currently locked).
+        Returns receipts that need retrying, including those with stale locks (older than stale_lock_cutoff).
+        The caller should use acquire_receipt_lock() to atomically claim each receipt, which respects
+        the stale-lock recovery window. This query just avoids pre-filtering them out.
+
+        Args:
+            current_version: Current git short-hash (pipeline version)
+            stale_lock_cutoff: datetime cutoff; locks older than this are considered abandoned
         """
         rows = self._conn.execute("""
             SELECT r.receipt_id, r.client_code, r.firm_id, r.client_id, r.filename, r.file_path,
@@ -439,7 +445,7 @@ class Repository:
             FROM receipts r
             INNER JOIN extractions e ON r.receipt_id = e.receipt_id
             WHERE r.status IN ('failed', 'needs_review')
-              AND r.locked_at IS NULL
+              AND (r.locked_at IS NULL OR r.locked_at < ?)
               AND (
                 (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) IS NULL
                 OR
@@ -447,7 +453,7 @@ class Repository:
               )
             GROUP BY r.receipt_id
             ORDER BY r.created_at ASC
-        """, (current_version,)).fetchall()
+        """, (stale_lock_cutoff, current_version)).fetchall()
 
         return [dict(row) for row in rows]
 

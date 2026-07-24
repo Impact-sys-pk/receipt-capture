@@ -260,8 +260,12 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
 
     Finds receipts that might succeed with the current code, retries them exactly once per version change.
     Uses the same extraction → validation → filing pipeline as normal processing.
+    Includes receipts with stale locks (abandoned by crashed resolve_receipt.py), which acquire_receipt_lock()
+    will recover and claim atomically.
     """
-    failed = repo.find_failed_by_version(pipeline_version)
+    from datetime import timedelta
+    stale_lock_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
+    failed = repo.find_failed_by_version(pipeline_version, stale_lock_cutoff)
     if not failed:
         return
 
@@ -271,18 +275,19 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
         receipt_id = receipt['receipt_id']
         file_path = Path(receipt['file_path'])
 
-        # Check lock (Part 3 may be resolving this receipt)
-        if receipt.get('locked_at'):
-            logger.debug(f"skipping locked receipt {receipt_id}")
-            continue
-
-        # Defensive: check file exists
-        if not file_path.exists():
-            logger.warning(f"source file missing for {receipt_id}: {file_path}")
-            repo.add_validation_note(receipt_id, "original file missing, cannot retry")
+        # Try to acquire lock (handles stale-lock recovery automatically)
+        acquired = repo.acquire_receipt_lock(receipt_id, allow_stale_after_minutes=60)
+        if not acquired:
+            logger.debug(f"skipping locked receipt {receipt_id} (held by another process)")
             continue
 
         try:
+            # Defensive: check file exists
+            if not file_path.exists():
+                logger.warning(f"source file missing for {receipt_id}: {file_path}")
+                repo.add_validation_note(receipt_id, "original file missing, cannot retry")
+                continue
+
             # Re-extract with transient retry
             logger.info(f"auto-retrying {receipt_id}")
             extraction = extract_with_transient_retry(extractor, file_path, receipt['filename'])
@@ -320,6 +325,9 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
         except Exception as exc:
             logger.error(f"auto-retry error for {receipt_id}: {exc}", exc_info=True)
             stats['auto_retry_errors'] = stats.get('auto_retry_errors', 0) + 1
+        finally:
+            # Release lock (acquired at line 282)
+            repo.release_receipt_lock(receipt_id)
 
 
 def process_once():

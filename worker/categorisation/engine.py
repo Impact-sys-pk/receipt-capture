@@ -61,6 +61,7 @@ class CategorisationResult:
     client_id: str
     business_type: str
     vendor_code: Optional[str] = None
+    vendor_key: Optional[str] = None
     suggested_code: Optional[str] = None
     suggested_name: Optional[str] = None
     confidence: str = "none"
@@ -237,7 +238,8 @@ class CategorisationEngine:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
                     client_id=client_id, business_type=business_type,
-                    vendor_code=vendor_code, suggested_code=client_vendor["nominal_code"],
+                    vendor_code=vendor_code, vendor_key=client_vendor["vendor_key"],
+                    suggested_code=client_vendor["nominal_code"],
                     suggested_name=client_vendor["account_name"],
                     confidence="high", match_source="client",
                     matched_vendor=vendor_code, needs_review=False
@@ -249,7 +251,8 @@ class CategorisationEngine:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
                     client_id=client_id, business_type=business_type,
-                    vendor_code=vendor_code, suggested_code=firm_vendor["nominal_code"],
+                    vendor_code=vendor_code, vendor_key=firm_vendor["vendor_key"],
+                    suggested_code=firm_vendor["nominal_code"],
                     suggested_name=firm_vendor["account_name"],
                     confidence="high", match_source="firm",
                     matched_vendor=vendor_code, needs_review=False
@@ -267,7 +270,8 @@ class CategorisationEngine:
                         return CategorisationResult(
                             receipt_id=receipt_id, extraction_id=extraction_id,
                             client_id=client_id, business_type=business_type,
-                            vendor_code=vendor_code, suggested_code=matched_vendor["nominal_code"],
+                            vendor_code=vendor_code, vendor_key=matched_vendor["vendor_key"],
+                            suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
                             confidence=conf, match_source="fuzzy_client",
                             matched_vendor=best_match, needs_review=True
@@ -276,7 +280,7 @@ class CategorisationEngine:
             # Layer 3b: Fuzzy match in firm lookup
             firm_vendors = self.repo.list_firm_vendors(business_type)
             if firm_vendors:
-                fuzzy_results = fuzzy_match(vendor_key, firm_vendors, threshold=0.70)
+                fuzzy_results = fuzzy_match(vendor_code, firm_vendors, threshold=0.70)
                 if fuzzy_results:
                     best_match, score = fuzzy_results[0]
                     matched_vendor = self.repo.get_firm_vendor(business_type, best_match)
@@ -285,7 +289,8 @@ class CategorisationEngine:
                         return CategorisationResult(
                             receipt_id=receipt_id, extraction_id=extraction_id,
                             client_id=client_id, business_type=business_type,
-                            vendor_code=vendor_code, suggested_code=matched_vendor["nominal_code"],
+                            vendor_code=vendor_code, vendor_key=matched_vendor["vendor_key"],
+                            suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
                             confidence=conf, match_source="fuzzy_firm",
                             matched_vendor=best_match, needs_review=True

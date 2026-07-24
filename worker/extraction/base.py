@@ -14,6 +14,8 @@ class ExtractionResult:
     raw_response: str
     engine: str
     details: Optional[str] = None
+    receipt_ref_number: Optional[str] = None  # Transaction/ticket/reference number on receipt
+    receipt_time: Optional[str] = None  # Time of day (HH:MM format) shown on receipt
 
 
 class BaseExtractor(ABC):

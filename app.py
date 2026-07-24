@@ -122,7 +122,7 @@ def _remove_inbox_pair(intake) -> None:
             logger.warning(f"Failed to remove inbox sidecar: {intake.sidecar_path}")
 
 
-def _file_unfiled_ok_receipts(repo: Repository, stats: dict[str, int]) -> None:
+def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]) -> None:
     unfiled = repo.get_unfiled_ok_receipts()
     if not unfiled:
         return
@@ -147,6 +147,36 @@ def _file_unfiled_ok_receipts(repo: Repository, stats: dict[str, int]) -> None:
             supplier = extraction.get("supplier_name") or "unknown"
             gross = extraction.get("gross_amount") if extraction.get("gross_amount") is not None else 0.0
             currency = extraction.get("currency") or "GBP"
+
+            # Categorise the receipt (reuse the real extraction_id, don't generate a new one)
+            business_type = config.CLIENTS_BY_CODE.get(receipt["client_code"], {}).get("business_type", "UNSPECIFIED")
+            extraction_id = extraction["extraction_id"]
+            categorisation = categorisation_engine.categorise(
+                receipt_id=receipt_id,
+                extraction_id=extraction_id,
+                supplier_name=supplier,
+                client_id=receipt["client_id"],
+                business_type=business_type
+            )
+
+            # Save categorisation
+            cat_id = str(uuid.uuid4())
+            repo.save_categorisation(
+                categorisation_id=cat_id,
+                receipt_id=receipt_id,
+                extraction_id=extraction_id,
+                client_id=receipt["client_id"],
+                business_type=categorisation.business_type,
+                vendor_key=categorisation.vendor_key,
+                suggested_code=categorisation.suggested_code,
+                suggested_name=categorisation.suggested_name,
+                confidence=categorisation.confidence,
+                match_source=categorisation.match_source,
+                matched_vendor=categorisation.matched_vendor,
+                needs_review=categorisation.needs_review,
+                categorised_at=datetime.now(timezone.utc).isoformat()
+            )
+
             sidecar_payload = make_enriched_sidecar(
                 receipt_id=receipt_id,
                 source=receipt["source"],
@@ -159,8 +189,8 @@ def _file_unfiled_ok_receipts(repo: Repository, stats: dict[str, int]) -> None:
                 vat=extraction.get("vat_amount"),
                 gross=gross,
                 currency=currency,
-                category=None,
-                confidence="high",
+                category=categorisation.suggested_code,
+                confidence=categorisation.confidence,
                 validation_status="ok",
                 asserted=None,
                 original_filename=receipt["filename"],
@@ -177,7 +207,7 @@ def _file_unfiled_ok_receipts(repo: Repository, stats: dict[str, int]) -> None:
             )
             repo.mark_receipt_filed(receipt_id, dest_path)
             stats["recovery_filed"] = stats.get("recovery_filed", 0) + 1
-            logger.info(f"receipt {receipt_id} recovered and filed to {dest_path}")
+            logger.info(f"receipt {receipt_id} recovered, categorised as {categorisation.suggested_code}, and filed to {dest_path}")
         except Exception as exc:
             logger.error(f"failed to file recovered receipt {receipt_id}: {exc}", exc_info=True)
 
@@ -359,7 +389,7 @@ def process_once():
         # Part 1: Auto-retry failed receipts with older pipeline_version
         _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)
 
-        _file_unfiled_ok_receipts(repo, stats)
+        _file_unfiled_ok_receipts(repo, engine, stats)
 
         intake_records = scan_inbox()
         logger.info(f"capture inbox files found: {len(intake_records)}")

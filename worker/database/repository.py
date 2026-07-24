@@ -103,6 +103,14 @@ class Repository:
         ).fetchone()
         return row["statement_id"] if row else None
 
+    def get_receipt(self, receipt_id: str) -> Optional[dict]:
+        """Retrieve a receipt by ID."""
+        row = self._conn.execute(
+            "SELECT * FROM receipts WHERE receipt_id = ?",
+            (receipt_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
     def get_unfiled_ok_receipts(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT receipt_id, client_id, firm_id, client_code, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"
@@ -358,6 +366,14 @@ class Repository:
         row = self._conn.execute(
             "SELECT * FROM categorisations WHERE categorisation_id = ?",
             (categorisation_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_categorisation_for_receipt(self, receipt_id: str) -> Optional[dict]:
+        """Retrieve the most recent categorisation for a receipt."""
+        row = self._conn.execute(
+            "SELECT * FROM categorisations WHERE receipt_id = ? ORDER BY categorised_at DESC LIMIT 1",
+            (receipt_id,)
         ).fetchone()
         return dict(row) if row else None
 

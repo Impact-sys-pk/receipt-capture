@@ -271,7 +271,7 @@ def main():
             extraction_id=extraction_id,
             client_id=receipt['client_id'],
             business_type=categorisation.business_type,
-            vendor_code=categorisation.vendor_code,
+            vendor_key=categorisation.vendor_key,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
             confidence=categorisation.confidence,

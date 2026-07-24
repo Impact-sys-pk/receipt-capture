@@ -16,6 +16,54 @@ from worker.filing import file_receipt, file_review, make_enriched_sidecar, dete
 from worker.validation.rules import validate
 
 
+def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
+    """Check if extraction has distinguishing signals from a potential duplicate.
+
+    Compares receipt_ref_number and receipt_time. Returns True if they differ,
+    allowing the same-amount receipt to be filed separately (not flagged as duplicate).
+
+    Returns True if:
+    - Both have different ref_numbers (both non-empty and differ)
+    - Both have different receipt times (both non-empty and differ by >5 min)
+
+    Returns False if:
+    - Neither field differs, or fields are missing, or signals match
+    """
+    dup_extraction = repo.get_extraction_for_receipt(dup_receipt_id)
+    if not dup_extraction:
+        return False
+
+    # Check reference numbers
+    ref_new = getattr(extraction, 'receipt_ref_number', None)
+    ref_dup = dup_extraction.get('receipt_ref_number')
+
+    if ref_new and ref_dup and ref_new != ref_dup:
+        return True
+
+    # Check receipt times (HH:MM format)
+    time_new = getattr(extraction, 'receipt_time', None)
+    time_dup = dup_extraction.get('receipt_time')
+
+    if time_new and time_dup:
+        try:
+            # Parse HH:MM format
+            new_h, new_m = map(int, time_new.split(':'))
+            dup_h, dup_m = map(int, time_dup.split(':'))
+
+            # Calculate difference in minutes
+            new_mins = new_h * 60 + new_m
+            dup_mins = dup_h * 60 + dup_m
+            diff = abs(new_mins - dup_mins)
+
+            # If more than 5 minutes apart, treat as different transactions
+            if diff > 5:
+                return True
+        except (ValueError, AttributeError):
+            pass
+
+    return False
+
+
 def _log_receipt(receipt_id, message_id, filename, action, firm_id, client_id=None, extraction_status=None,
                 supplier_name=None, invoice_date=None, gross_amount=None, review_reason=None,
                 duplicate_of=None, duplicate_reason=None, run_id=None):
@@ -97,14 +145,15 @@ def process_extraction_result(
         )
         if dup and repo.is_recorded_and_filed(dup):
             # Check if distinguishing signals differ (ref_number, receipt_time)
-            # For now, if we found a filed duplicate and no signals to distinguish, mark as possible_duplicate
-            validation = validation._replace(
-                status="possible_duplicate"
-            ) if hasattr(validation, '_replace') else type(validation)(
-                status="possible_duplicate",
-                notes=[f"matches {dup[:8]}... (supplier, date, amount)"]
-            )
-            duplicate_of = dup
+            # Only flag as possible_duplicate if signals do NOT distinguish them
+            if not _signals_differ(extraction, dup, repo):
+                validation = validation._replace(
+                    status="possible_duplicate"
+                ) if hasattr(validation, '_replace') else type(validation)(
+                    status="possible_duplicate",
+                    notes=[f"matches {dup[:8]}... (supplier, date, amount)"]
+                )
+                duplicate_of = dup
 
     # Save extraction (append-only)
     extraction_id = str(uuid.uuid4())
@@ -170,7 +219,7 @@ def process_extraction_result(
             extraction_id=extraction_id,
             client_id=client_id,
             business_type=categorisation.business_type,
-            vendor_code=categorisation.vendor_code,
+            vendor_key=categorisation.vendor_key,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
             confidence=categorisation.confidence,

@@ -20,6 +20,8 @@ _SYSTEM_PROMPT = """You are a receipt data extractor. Extract the following fiel
     "net_amount": number or null,
     "vat_amount": number or null,
     "gross_amount": number or null,
+    "receipt_ref_number": "string or null (a visible transaction, ticket, or reference number on the receipt)",
+    "receipt_time": "string or null (HH:MM time of day shown on the receipt, if any, 24-hour format)",
     "details": "string or null",
     "currency": "GBP"
 }
@@ -221,4 +223,6 @@ class OpenAIVisionExtractor(BaseExtractor):
             currency=parsed.get("currency", "GBP"),
             raw_response=raw,
             engine="openai_vision",
+            receipt_ref_number=parsed.get("receipt_ref_number"),
+            receipt_time=parsed.get("receipt_time"),
         )

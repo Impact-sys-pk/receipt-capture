@@ -575,9 +575,11 @@ class Repository:
             else:
                 new_notes = note
 
+            # SQLite's default build doesn't support ORDER BY/LIMIT in UPDATE,
+            # so target the specific extraction_id already resolved above.
             self._conn.execute(
-                "UPDATE extractions SET validation_notes = ? WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",
-                (new_notes, receipt_id)
+                "UPDATE extractions SET validation_notes = ? WHERE extraction_id = ?",
+                (new_notes, extraction['extraction_id'])
             )
             self._conn.commit()
 

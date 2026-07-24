@@ -15,6 +15,8 @@ from worker.database.repository import Repository
 from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.openai_vision import OpenAIVisionExtractor
+from worker.extraction.retry_helper import extract_with_transient_retry
+from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import scan_inbox
 from worker.filing import (
     determine_tax_year,
@@ -253,10 +255,78 @@ def release_lock() -> None:
         pass
 
 
+def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, stats: dict, run_id: str, pipeline_version: str) -> None:
+    """Part 1: Auto-retry receipts with failed/needs_review status and older pipeline_version.
+
+    Finds receipts that might succeed with the current code, retries them exactly once per version change.
+    Uses the same extraction → validation → filing pipeline as normal processing.
+    """
+    failed = repo.find_failed_by_version(pipeline_version)
+    if not failed:
+        return
+
+    logger.info(f"retrying {len(failed)} receipt(s) with older pipeline_version")
+
+    for receipt in failed:
+        receipt_id = receipt['receipt_id']
+        file_path = Path(receipt['file_path'])
+
+        # Check lock (Part 3 may be resolving this receipt)
+        if receipt.get('locked_at'):
+            logger.debug(f"skipping locked receipt {receipt_id}")
+            continue
+
+        # Defensive: check file exists
+        if not file_path.exists():
+            logger.warning(f"source file missing for {receipt_id}: {file_path}")
+            repo.add_validation_note(receipt_id, "original file missing, cannot retry")
+            continue
+
+        try:
+            # Re-extract with transient retry
+            logger.info(f"auto-retrying {receipt_id}")
+            extraction = extract_with_transient_retry(extractor, file_path, receipt['filename'])
+
+            # Process through shared pipeline
+            status, filed_path = process_extraction_result(
+                receipt_id=receipt_id,
+                extraction=extraction,
+                file_path=file_path,
+                filename=receipt['filename'],
+                client_code=receipt['client_code'],
+                firm_id=receipt['firm_id'],
+                client_id=receipt['client_id'],
+                message_id=receipt.get('message_id'),
+                attachment_id=None,  # Email dedup already done
+                file_hash=None,
+                asserted_values=None,
+                repo=repo,
+                categorisation_engine=categorisation_engine,
+                stats=stats,
+                run_id=run_id,
+                pipeline_version=pipeline_version
+            )
+
+            if status == "ok":
+                logger.info(f"auto-retry succeeded: {receipt_id}")
+                stats['auto_retried_ok'] = stats.get('auto_retried_ok', 0) + 1
+            elif status == "possible_duplicate":
+                logger.info(f"auto-retry detected possible duplicate: {receipt_id}")
+                stats['possible_duplicates_found'] = stats.get('possible_duplicates_found', 0) + 1
+            else:
+                logger.info(f"auto-retry failed: {receipt_id} (status={status})")
+                stats['auto_retried_failed'] = stats.get('auto_retried_failed', 0) + 1
+
+        except Exception as exc:
+            logger.error(f"auto-retry error for {receipt_id}: {exc}", exc_info=True)
+            stats['auto_retry_errors'] = stats.get('auto_retry_errors', 0) + 1
+
+
 def process_once():
     run_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
-    logger.info(f"--- run {run_id[:8]}... start ---")
+    pipeline_version = config.get_pipeline_version()
+    logger.info(f"--- run {run_id[:8]}... start (pipeline_version={pipeline_version}) ---")
     repo = None
     errors = None
     stats = {
@@ -267,12 +337,20 @@ def process_once():
         "extraction_failures": 0,
         "extractions_succeeded": 0,
         "review_flags_issued": 0,
+        "auto_retried_ok": 0,
+        "auto_retried_failed": 0,
+        "auto_retry_errors": 0,
+        "possible_duplicates_found": 0,
     }
 
     try:
         repo = Repository()
         extractor = OpenAIVisionExtractor()
         engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
+
+        # Part 1: Auto-retry failed receipts with older pipeline_version
+        _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)
+
         _file_unfiled_ok_receipts(repo, stats)
 
         intake_records = scan_inbox()
@@ -968,6 +1046,8 @@ def process_once():
 
 def main():
     logger.info(f"receipt capture started — poll every {config.POLL_INTERVAL_SECONDS}s")
+    # Part 1: Check for uncommitted changes that might invalidate pipeline_version
+    config.check_git_status_on_startup()
     if not acquire_lock():
         logger.error("Exiting because another pipeline instance is active")
         return

@@ -8,9 +8,12 @@ from .schema import init_db
 
 
 class Repository:
-    def __init__(self):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = config.DB_PATH
         init_db()
-        self._conn = sqlite3.connect(config.DB_PATH)
+        # timeout=30.0: wait up to 30 seconds for SQLite lock (cross-process locking)
+        self._conn = sqlite3.connect(db_path, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys=ON")
 

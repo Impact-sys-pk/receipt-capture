@@ -440,7 +440,11 @@ class Repository:
             INNER JOIN extractions e ON r.receipt_id = e.receipt_id
             WHERE r.status IN ('failed', 'needs_review')
               AND r.locked_at IS NULL
-              AND (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) < ?
+              AND (
+                (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) IS NULL
+                OR
+                (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) < ?
+              )
             GROUP BY r.receipt_id
             ORDER BY r.created_at ASC
         """, (current_version,)).fetchall()

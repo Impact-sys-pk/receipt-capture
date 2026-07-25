@@ -399,6 +399,7 @@ def process_once():
         logger.info(f"emails without attachments: {len(no_attachment_emails)}")
         for email_msg in no_attachment_emails:
             message_id = email_msg["id"]
+            uid = email_msg["uid"]
             email_from = email_msg["from"]
 
             # Try to extract embedded images from the email
@@ -424,7 +425,7 @@ def process_once():
                         if send_unknown_sender_alert(recipient_email):
                             repo.record_alert_sent(message_id, "unknown_sender", recipient_email, "Unknown")
 
-                    move_email_to_folder(message_id, "INBOX.Unknown Sender")
+                    move_email_to_folder(uid, "INBOX.Unknown Sender")
                     continue
 
                 # Process embedded images like normal attachments
@@ -442,7 +443,7 @@ def process_once():
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
                         repo.mark_processed(message_id, att_id, file_hash, existing)
-                        move_email_to_folder(message_id, "INBOX.Duplicates")
+                        move_email_to_folder(uid, "INBOX.Duplicates")
                         continue
 
                     receipt_id = str(uuid.uuid4())
@@ -528,7 +529,7 @@ def process_once():
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id)
 
                 # After processing all embedded images, move to Processed Receipts if all ok
-                move_email_to_folder(message_id, "INBOX.Processed Receipts")
+                move_email_to_folder(uid, "INBOX.Processed Receipts")
                 continue
 
             # No attachments and no embedded images - send alert
@@ -555,7 +556,7 @@ def process_once():
                 stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
 
             # Move email to "No Attachments" folder
-            move_email_to_folder(message_id, "INBOX.No Attachments")
+            move_email_to_folder(uid, "INBOX.No Attachments")
 
         messages = fetch_new_messages(repo)
         stats["messages_found"] = len(messages)
@@ -722,6 +723,7 @@ def process_once():
 
         for msg in messages:
             message_id = msg["id"]
+            uid = msg["uid"]
             subject = msg.get("subject", "")
             email_from = msg.get("from", {}).get("emailAddress", {}).get("address", "")
             received_at = msg.get("receivedDateTime", "")
@@ -737,7 +739,7 @@ def process_once():
                         str(uuid.uuid4()), message_id, filename, "unsupported_file_type",
                         firm_id="INTELLITAX", run_id=run_id
                     )
-                    move_email_to_folder(message_id, "INBOX.Unsupported Files")
+                    move_email_to_folder(uid, "INBOX.Unsupported Files")
                     continue
 
                 if repo.is_duplicate(message_id, att_id):
@@ -748,7 +750,7 @@ def process_once():
                         firm_id="INTELLITAX", duplicate_reason="message_id_match",
                         run_id=run_id
                     )
-                    move_email_to_folder(message_id, "INBOX.Duplicates")
+                    move_email_to_folder(uid, "INBOX.Duplicates")
                     continue
 
                 file_data = base64.b64decode(att.get("contentBytes", ""))
@@ -766,7 +768,7 @@ def process_once():
                         run_id=run_id
                     )
                     repo.mark_processed(message_id, att_id, file_hash, existing)
-                    move_email_to_folder(message_id, "INBOX.Duplicates")
+                    move_email_to_folder(uid, "INBOX.Duplicates")
                     continue
                 # If file_hash matches a failed/needs_review receipt, allow reprocessing
 
@@ -792,7 +794,7 @@ def process_once():
                             repo.record_alert_sent(message_id, "unknown_sender", recipient_email, "Unknown")
 
                     # Move to Unknown Sender folder
-                    move_email_to_folder(message_id, "INBOX.Unknown Sender")
+                    move_email_to_folder(uid, "INBOX.Unknown Sender")
                     _log_receipt(receipt_id, message_id, filename, "unknown_sender",
                                 firm_id="INTELLITAX", run_id=run_id)
                     continue
@@ -841,13 +843,13 @@ def process_once():
 
                     # Route email based on outcome
                     if status == "ok":
-                        move_email_to_folder(message_id, "INBOX.Processed Receipts")
+                        move_email_to_folder(uid, "INBOX.Processed Receipts")
                     elif status == "possible_duplicate":
-                        move_email_to_folder(message_id, "INBOX.Possible Duplicate")
+                        move_email_to_folder(uid, "INBOX.Possible Duplicate")
                     elif status == "needs_review":
-                        move_email_to_folder(message_id, "INBOX.Needs Review")
+                        move_email_to_folder(uid, "INBOX.Needs Review")
                     elif status == "failed":
-                        move_email_to_folder(message_id, "INBOX.Failed Processing")
+                        move_email_to_folder(uid, "INBOX.Failed Processing")
 
                 except Exception as exc:
                     logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
@@ -874,7 +876,7 @@ def process_once():
                         review_reason=str(exc),
                         run_id=run_id
                     )
-                    move_email_to_folder(message_id, "INBOX.Failed Processing")
+                    move_email_to_folder(uid, "INBOX.Failed Processing")
                     # Mark processed even on failure (extraction error)
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id)
 

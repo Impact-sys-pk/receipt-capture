@@ -19,30 +19,47 @@ def _has_attachments(msg):
     return False
 
 
+def _resolve_message_id(msg, uid_str: str) -> str:
+    """Return the email's Message-ID header, or a fallback if it's missing.
+
+    The Message-ID header is the only identifier stable across polls: IMAP
+    sequence numbers renumber whenever the mailbox changes (e.g. after every
+    processed email is moved out of INBOX), and even UIDs are only meant for
+    addressing the mailbox within a session, not as a durable dedup key.
+    """
+    header = msg.get("Message-ID")
+    if header:
+        return header.strip()
+    logger.warning(f"email uid={uid_str} has no Message-ID header, falling back to uid+date")
+    return f"no-message-id:{uid_str}:{msg.get('Date', '')}"
+
+
 def fetch_new_messages(repo):
     """Fetch all messages with attachments from IMAP inbox.
 
-    Uses message_id from email headers for deduplication instead of UID tracking,
-    which is more robust when inbox is modified (deleted/cleared).
+    Uses each email's Message-ID header as the stable identity for
+    deduplication. IMAP UIDs are used only to address the mailbox for
+    fetch/copy/store within this poll — they must not be reused as a
+    cross-poll dedup key.
     """
     imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
     imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
     imap.select("INBOX")
 
     try:
-        _, message_uids = imap.search(None, "ALL")
+        _, message_uids = imap.uid("search", None, "ALL")
         uids = message_uids[0].split() if message_uids[0] else []
 
         messages = []
         for uid in uids:
-            _, msg_data = imap.fetch(uid, "(RFC822)")
+            _, msg_data = imap.uid("fetch", uid, "(RFC822)")
             msg_bytes = msg_data[0][1]
             msg = email.message_from_bytes(msg_bytes)
 
             if _has_attachments(msg):
                 uid_str = uid.decode() if isinstance(uid, bytes) else uid
                 messages.append({
-                    "id": uid_str,
+                    "id": _resolve_message_id(msg, uid_str),
                     "subject": msg.get("Subject", ""),
                     "from": {"emailAddress": {"address": msg.get("From", "")}},
                     "receivedDateTime": msg.get("Date", ""),
@@ -56,15 +73,21 @@ def fetch_new_messages(repo):
         imap.logout()
 
 
-def fetch_attachments(message_id: str, msg=None):
-    """Extract attachments from an email message."""
+def fetch_attachments(message_id: str, msg=None, uid: str = None):
+    """Extract attachments from an email message.
+
+    message_id is used only to build each attachment's "id" field. If msg is
+    not already available, uid (a real IMAP UID) is required to fetch it.
+    """
     if msg is None:
+        if uid is None:
+            raise ValueError("fetch_attachments requires uid when msg is not provided")
         imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
         imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
         imap.select("INBOX")
 
         try:
-            _, msg_data = imap.fetch(message_id, "(RFC822)")
+            _, msg_data = imap.uid("fetch", uid, "(RFC822)")
             msg_bytes = msg_data[0][1]
             msg = email.message_from_bytes(msg_bytes)
         finally:
@@ -145,12 +168,12 @@ def fetch_emails_without_attachments():
     imap.select("INBOX")
 
     try:
-        _, message_uids = imap.search(None, "ALL")
+        _, message_uids = imap.uid("search", None, "ALL")
         uids = message_uids[0].split() if message_uids[0] else []
 
         emails = []
         for uid in uids:
-            _, msg_data = imap.fetch(uid, "(RFC822)")
+            _, msg_data = imap.uid("fetch", uid, "(RFC822)")
             msg_bytes = msg_data[0][1]
             msg = email.message_from_bytes(msg_bytes)
 
@@ -158,10 +181,11 @@ def fetch_emails_without_attachments():
             if not _has_attachments(msg):
                 uid_str = uid.decode() if isinstance(uid, bytes) else uid
                 emails.append({
-                    "id": uid_str,
+                    "id": _resolve_message_id(msg, uid_str),
                     "subject": msg.get("Subject", ""),
                     "from": msg.get("From", ""),
                     "receivedDateTime": msg.get("Date", ""),
+                    "uid": uid_str,
                     "msg": msg
                 })
 
@@ -171,11 +195,12 @@ def fetch_emails_without_attachments():
         imap.logout()
 
 
-def move_email_to_folder(message_id: str, target_folder: str) -> bool:
+def move_email_to_folder(uid: str, target_folder: str) -> bool:
     """Move email from INBOX to target folder. Returns True if successful.
 
     Args:
-        message_id: IMAP UID of the email
+        uid: IMAP UID of the email (not the Message-ID header — UIDs are what
+            IMAP COPY/STORE operate on)
         target_folder: Target folder name (e.g., "INBOX.Processed Receipts", "INBOX.Failed Processing")
 
     Returns:
@@ -191,23 +216,23 @@ def move_email_to_folder(message_id: str, target_folder: str) -> bool:
             quoted_folder = f'"{target_folder}"' if " " in target_folder else target_folder
 
             # Copy email to target folder
-            copy_resp = imap.copy(message_id, quoted_folder)
+            copy_resp = imap.uid("copy", uid, quoted_folder)
             if copy_resp[0] != "OK":
-                logger.warning(f"Failed to copy email {message_id} to {target_folder}: {copy_resp}")
+                logger.warning(f"Failed to copy email uid={uid} to {target_folder}: {copy_resp}")
                 return False
 
             # Mark original for deletion
-            store_resp = imap.store(message_id, "+FLAGS", "\\Deleted")
+            store_resp = imap.uid("store", uid, "+FLAGS", "\\Deleted")
             if store_resp[0] != "OK":
-                logger.warning(f"Failed to mark email {message_id} for deletion: {store_resp}")
+                logger.warning(f"Failed to mark email uid={uid} for deletion: {store_resp}")
                 return False
 
             imap.expunge()
-            logger.info(f"Moved email {message_id} to {target_folder}")
+            logger.info(f"Moved email uid={uid} to {target_folder}")
             return True
         finally:
             imap.close()
             imap.logout()
     except Exception as exc:
-        logger.warning(f"Failed to move email {message_id} to {target_folder}: {exc}")
+        logger.warning(f"Failed to move email uid={uid} to {target_folder}: {exc}")
         return False

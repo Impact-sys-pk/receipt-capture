@@ -236,7 +236,7 @@ def main():
         validation = validate(extraction_obj)
 
         if validation.status != "ok":
-            repo.append_validation_notes(
+            repo.add_validation_note(
                 args.receipt_id,
                 f"Manual correction attempted: {', '.join(validation.notes)}"
             )

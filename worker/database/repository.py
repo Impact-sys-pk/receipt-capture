@@ -450,7 +450,7 @@ class Repository:
         """
         rows = self._conn.execute("""
             SELECT r.receipt_id, r.client_code, r.firm_id, r.client_id, r.filename, r.file_path,
-                   r.message_id, r.status, r.locked_at
+                   r.message_id, r.status, r.locked_at, r.created_at
             FROM receipts r
             INNER JOIN extractions e ON r.receipt_id = e.receipt_id
             WHERE r.status IN ('failed', 'needs_review')

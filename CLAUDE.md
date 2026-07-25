@@ -458,7 +458,7 @@ Status assignment:
 | filename          | TEXT        | Original attachment filename               |
 | file_path         | TEXT        | Local storage path                         |
 | file_hash         | TEXT        | SHA256 hash (dedup)                        |
-| status            | TEXT        | pending \| ok \| needs_review \| failed    |
+| status            | TEXT        | pending \| ok \| needs_review \| failed \| possible_duplicate \| retry_exhausted |
 | created_at        | TEXT        | ISO timestamp                              |
 
 ### extractions

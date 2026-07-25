@@ -35,6 +35,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Wall-clock cutoff for auto-retry, measured from receipts.created_at. A count-based
+# cap would be unfair to bursty commit sessions (several pipeline_version bumps in
+# an hour would exhaust it almost instantly); wall-clock time isn't affected by that.
+AUTO_RETRY_MAX_AGE_DAYS = 7
+
 
 def _log_run(run_id, started_at, finished_at, stats, errors=None):
     entry = {
@@ -292,9 +297,16 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
     Uses the same extraction → validation → filing pipeline as normal processing.
     Includes receipts with stale locks (abandoned by crashed resolve_receipt.py), which acquire_receipt_lock()
     will recover and claim atomically.
+
+    Receipts stuck in failed/needs_review for more than AUTO_RETRY_MAX_AGE_DAYS (measured from
+    created_at) are transitioned to retry_exhausted instead of being retried again. This is
+    evaluated lazily here, not by a separate background job. Manual resolve_receipt.py runs are
+    unaffected: they don't touch created_at, and resolve_receipt.py has no status guard, so it can
+    still resolve a retry_exhausted receipt directly.
     """
     from datetime import timedelta
     stale_lock_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
+    retry_age_cutoff = datetime.now(timezone.utc) - timedelta(days=AUTO_RETRY_MAX_AGE_DAYS)
     failed = repo.find_failed_by_version(pipeline_version, stale_lock_cutoff)
     if not failed:
         return
@@ -312,6 +324,13 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
             continue
 
         try:
+            created_at = datetime.fromisoformat(receipt['created_at'])
+            if created_at < retry_age_cutoff:
+                logger.info(f"retry window exceeded ({AUTO_RETRY_MAX_AGE_DAYS}d) for {receipt_id}, marking retry_exhausted")
+                repo.update_receipt_status(receipt_id, 'retry_exhausted')
+                stats['retry_exhausted_count'] = stats.get('retry_exhausted_count', 0) + 1
+                continue
+
             # Defensive: check file exists
             if not file_path.exists():
                 logger.warning(f"source file missing for {receipt_id}: {file_path}")
@@ -379,6 +398,7 @@ def process_once():
         "auto_retried_failed": 0,
         "auto_retry_errors": 0,
         "possible_duplicates_found": 0,
+        "retry_exhausted_count": 0,
     }
 
     try:

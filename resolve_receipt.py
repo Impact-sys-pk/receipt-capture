@@ -253,6 +253,29 @@ def main():
         # Generate extraction_id early (needed for categorisation)
         extraction_id = str(uuid4())
 
+        # Save the manual-correction extraction row (append-only) before
+        # categorisation: categorisations.extraction_id has a FK to extractions,
+        # so the row it points to must exist first. If this process dies before
+        # filing completes, app.py's _file_unfiled_ok_receipts() recovers the
+        # receipt on the next run by reusing this same extraction_id.
+        repo.save_extraction(
+            extraction_id=extraction_id,
+            receipt_id=args.receipt_id,
+            engine="manual_correction",
+            supplier_name=corrected_values['supplier_name'],
+            invoice_date=corrected_values['invoice_date'],
+            net_amount=corrected_values['net_amount'],
+            vat_amount=corrected_values['vat_amount'],
+            gross_amount=corrected_values['gross_amount'],
+            currency=corrected_values['currency'],
+            raw_response=json.dumps(corrected_values),
+            validation_status="ok",
+            validation_notes=["manually corrected and filed"],
+            receipt_ref_number=corrected_values['receipt_ref_number'],
+            receipt_time=corrected_values['receipt_time'],
+            pipeline_version=pipeline_version,
+        )
+
         # Categorise
         business_type = config.CLIENTS_BY_CODE.get(receipt['client_code'], {}).get('business_type', 'UNSPECIFIED')
         categorisation = engine.categorise(
@@ -318,25 +341,6 @@ def main():
         # Mark filed (CRITICAL: sets filed_path so Part 2A's duplicate protection works)
         repo.mark_receipt_filed(args.receipt_id, str(dest_path))
         repo.update_receipt_status(args.receipt_id, 'ok')
-
-        # Save the manual-correction extraction row (append-only)
-        repo.save_extraction(
-            extraction_id=extraction_id,
-            receipt_id=args.receipt_id,
-            engine="manual_correction",
-            supplier_name=corrected_values['supplier_name'],
-            invoice_date=corrected_values['invoice_date'],
-            net_amount=corrected_values['net_amount'],
-            vat_amount=corrected_values['vat_amount'],
-            gross_amount=corrected_values['gross_amount'],
-            currency=corrected_values['currency'],
-            raw_response=json.dumps(corrected_values),
-            validation_status="ok",
-            validation_notes=["manually corrected and filed"],
-            receipt_ref_number=corrected_values['receipt_ref_number'],
-            receipt_time=corrected_values['receipt_time'],
-            pipeline_version=pipeline_version,
-        )
 
         logger.info(f"Receipt {args.receipt_id} manually resolved and filed to {dest_path}")
         print(f"✓ Filed to {dest_path}")

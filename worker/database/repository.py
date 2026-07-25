@@ -117,13 +117,6 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def is_recorded_and_filed(self, file_hash: str) -> bool:
-        row = self._conn.execute(
-            "SELECT 1 FROM receipts WHERE file_hash = ? AND filed_path IS NOT NULL LIMIT 1",
-            (file_hash,)
-        ).fetchone()
-        return row is not None
-
     def get_extraction_for_receipt(self, receipt_id: str) -> Optional[dict]:
         row = self._conn.execute(
             "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",

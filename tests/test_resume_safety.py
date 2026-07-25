@@ -19,6 +19,7 @@ sys.modules["openai"] = fake_openai
 
 import config
 from worker.database.repository import Repository
+from worker.categorisation.engine import CategorisationEngine
 import app
 
 
@@ -77,7 +78,8 @@ class ResumeSafetyTest(unittest.TestCase):
                 receipts = repo.get_unfiled_ok_receipts()
                 self.assertEqual(len(receipts), 1)
                 stats = {}
-                app._file_unfiled_ok_receipts(repo, stats)
+                engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
+                app._file_unfiled_ok_receipts(repo, engine, stats)
 
                 self.assertEqual(stats.get("recovery_filed"), 1)
                 row = repo._conn.execute(

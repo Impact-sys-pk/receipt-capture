@@ -81,7 +81,9 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                     self.assertEqual(len(intake_records), 1)
                     intake = intake_records[0]
                     self.assertIsNotNone(intake.sidecar_path)
-                    self.assertTrue(repo.is_recorded_and_filed(intake.file_hash))
+                    existing_receipt_id = repo.find_by_hash(intake.file_hash)
+                    self.assertIsNotNone(existing_receipt_id)
+                    self.assertTrue(repo.is_recorded_and_filed(existing_receipt_id))
 
                     app._remove_inbox_pair(intake)
                     self.assertFalse(receipt_file.exists())

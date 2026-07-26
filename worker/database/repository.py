@@ -150,8 +150,17 @@ class Repository:
         self, extraction_id, receipt_id, engine,
         supplier_name, invoice_date, net_amount, vat_amount, gross_amount,
         currency, raw_response, validation_status, validation_notes,
-        pipeline_version=None, receipt_ref_number=None, receipt_time=None
+        pipeline_version=None, receipt_ref_number=None, receipt_time=None,
+        update_status=True
     ):
+        """Append an extraction row. Extractions are never modified in place.
+
+        update_status=False records the attempt without re-stamping
+        receipts.status. The auto-retry exception path needs this: a crashed
+        API call says something about the API, not about the document, so it
+        must not flip a needs_review receipt to failed. Defaults to True so
+        existing callers are unaffected.
+        """
         now = datetime.now(timezone.utc).isoformat()
         notes_str = ", ".join(validation_notes) if validation_notes else None
         self._conn.execute("""
@@ -163,10 +172,11 @@ class Repository:
         """, (extraction_id, receipt_id, engine, now, supplier_name, invoice_date,
               net_amount, vat_amount, gross_amount, currency, raw_response,
               validation_status, notes_str, pipeline_version, receipt_ref_number, receipt_time))
-        self._conn.execute(
-            "UPDATE receipts SET status = ? WHERE receipt_id = ?",
-            (validation_status, receipt_id)
-        )
+        if update_status:
+            self._conn.execute(
+                "UPDATE receipts SET status = ? WHERE receipt_id = ?",
+                (validation_status, receipt_id)
+            )
         self._conn.commit()
 
     def mark_processed(self, message_id: str, attachment_id: str, file_hash: str, receipt_id: str):

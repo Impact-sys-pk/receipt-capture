@@ -19,6 +19,17 @@ class ExtractionResult:
 
 
 class BaseExtractor(ABC):
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Engine identity, e.g. "openai_vision".
+
+        Needed on failure paths, which have no ExtractionResult to read
+        .engine from because the call raised before producing one. Reading it
+        from the extractor keeps the recorded engine correct after a provider
+        change, where a hardcoded string would silently misreport.
+        """
+
     @abstractmethod
     def extract(self, file_path: str, filename: str) -> ExtractionResult:
         pass

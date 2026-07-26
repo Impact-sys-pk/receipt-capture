@@ -54,6 +54,10 @@ class OpenAIVisionExtractor(BaseExtractor):
         self._client = OpenAI(api_key=config.OPENAI_API_KEY)
         self._model = config.OPENAI_MODEL
 
+    @property
+    def name(self) -> str:
+        return "openai_vision"
+
     def extract(self, file_path: str, filename: str) -> ExtractionResult:
         path = Path(file_path)
 

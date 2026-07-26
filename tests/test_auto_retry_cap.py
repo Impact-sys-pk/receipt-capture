@@ -90,9 +90,17 @@ class AutoRetryCapTest(unittest.TestCase):
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
             original_clients_by_code = config.CLIENTS_BY_CODE
+            original_logs_dir = config.LOGS_DIR
+            original_runs_log = config.RUNS_LOG
 
             config.DB_PATH = temp_db
             config.CLIENTS_ROOT = temp_client_root
+            # Event logs resolve config.LOGS_DIR at call time. Without this the
+            # suite appends synthetic rows to the live operational logs that
+            # the console's intake panel reads as real intake problems.
+            config.LOGS_DIR = temp_path / "logs"
+            config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+            config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
             config.CLIENTS_BY_CODE = {
                 "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
             }
@@ -142,6 +150,8 @@ class AutoRetryCapTest(unittest.TestCase):
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
                 config.CLIENTS_BY_CODE = original_clients_by_code
+                config.LOGS_DIR = original_logs_dir
+                config.RUNS_LOG = original_runs_log
 
     def test_exhausted_receipt_is_not_reconsidered_on_next_run(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
@@ -153,9 +163,17 @@ class AutoRetryCapTest(unittest.TestCase):
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
             original_clients_by_code = config.CLIENTS_BY_CODE
+            original_logs_dir = config.LOGS_DIR
+            original_runs_log = config.RUNS_LOG
 
             config.DB_PATH = temp_db
             config.CLIENTS_ROOT = temp_client_root
+            # Event logs resolve config.LOGS_DIR at call time. Without this the
+            # suite appends synthetic rows to the live operational logs that
+            # the console's intake panel reads as real intake problems.
+            config.LOGS_DIR = temp_path / "logs"
+            config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+            config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
             config.CLIENTS_BY_CODE = {
                 "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
             }
@@ -189,6 +207,8 @@ class AutoRetryCapTest(unittest.TestCase):
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
                 config.CLIENTS_BY_CODE = original_clients_by_code
+                config.LOGS_DIR = original_logs_dir
+                config.RUNS_LOG = original_runs_log
 
 
 if __name__ == "__main__":

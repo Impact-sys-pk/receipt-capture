@@ -334,7 +334,23 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
             # Defensive: check file exists
             if not file_path.exists():
                 logger.warning(f"source file missing for {receipt_id}: {file_path}")
-                repo.add_validation_note(receipt_id, "original file missing, cannot retry")
+                # Record the attempt against the current pipeline_version.
+                # Without a row carrying this version, find_failed_by_version()
+                # keeps selecting the receipt on every poll, warning and
+                # appending another note each time, forever.
+                repo.save_extraction(
+                    extraction_id=str(uuid.uuid4()),
+                    receipt_id=receipt_id,
+                    engine=extractor.name,
+                    supplier_name=None, invoice_date=None,
+                    net_amount=None, vat_amount=None, gross_amount=None,
+                    currency="GBP",
+                    raw_response=f"original file missing, cannot retry: {file_path}",
+                    validation_status="failed",
+                    validation_notes=[f"original file missing, cannot retry: {file_path}"],
+                    pipeline_version=pipeline_version,
+                    update_status=False,
+                )
                 continue
 
             # Re-extract with transient retry
@@ -374,6 +390,27 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
         except Exception as exc:
             logger.error(f"auto-retry error for {receipt_id}: {exc}", exc_info=True)
             stats['auto_retry_errors'] = stats.get('auto_retry_errors', 0) + 1
+            # Record the failed attempt against the current pipeline_version.
+            # process_extraction_result() never ran, so no extraction row was
+            # written, so the latest row still carries the OLD version and
+            # find_failed_by_version() would re-select this receipt on every
+            # poll. Via extract_with_transient_retry that is three real OpenAI
+            # calls every five minutes, indefinitely.
+            # update_status=False: the API crashed, the document did not, so
+            # a needs_review receipt must not be flipped to failed.
+            repo.save_extraction(
+                extraction_id=str(uuid.uuid4()),
+                receipt_id=receipt_id,
+                engine=extractor.name,
+                supplier_name=None, invoice_date=None,
+                net_amount=None, vat_amount=None, gross_amount=None,
+                currency="GBP",
+                raw_response=str(exc),
+                validation_status="failed",
+                validation_notes=[f"auto-retry extraction error: {exc}"],
+                pipeline_version=pipeline_version,
+                update_status=False,
+            )
         finally:
             # Release lock (acquired at line 282)
             repo.release_receipt_lock(receipt_id)

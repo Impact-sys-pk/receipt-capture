@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import logging.handlers
 import os
 import sqlite3
 import sys
@@ -28,12 +29,43 @@ from worker.filing import (
 from worker.storage.store import compute_hash, is_supported, save_file, save_inbox_file
 from worker.validation.rules import validate
 
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s — %(message)s"
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    format=_LOG_FORMAT,
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+
+def attach_run_log_handler():
+    """Send log output to data/run.log as well as stdout.
+
+    Until now nothing wrote that file: the stream handler sends everything to
+    a console window that vanishes when it is closed. CLAUDE.md requires
+    failures to be visible rather than silent, and the resolution service's
+    broad except relies on tracebacks reaching this file.
+
+    Called from main(), not at import, so importing app for a test does not
+    append synthetic lines to the operational log. Idempotent. data/ is
+    gitignored.
+    """
+    root = logging.getLogger()
+    log_path = config.DATA_DIR / "run.log"
+    for existing in root.handlers:
+        if isinstance(existing, logging.handlers.RotatingFileHandler):
+            if Path(getattr(existing, "baseFilename", "")) == log_path:
+                return
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        log_path,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    root.addHandler(handler)
 
 # Wall-clock cutoff for auto-retry, measured from receipts.created_at. A count-based
 # cap would be unfair to bursty commit sessions (several pipeline_version bumps in
@@ -960,6 +992,7 @@ def process_once():
 
 
 def main():
+    attach_run_log_handler()
     logger.info(f"receipt capture started — poll every {config.POLL_INTERVAL_SECONDS}s")
     # Part 1: Check for uncommitted changes that might invalidate pipeline_version
     config.check_git_status_on_startup()

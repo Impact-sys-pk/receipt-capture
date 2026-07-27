@@ -227,7 +227,8 @@ def _now() -> str:
 
 
 def _record_event(repo, receipt_id, actor, source, action, outcome,
-                  extraction_id=None, corrections=None, gl_override_code=None) -> None:
+                  extraction_id=None, corrections=None, gl_override_code=None,
+                  reason=None) -> None:
     """One audit row per resolution.
 
     Written for filed, discarded and still_invalid only. Not for not_found, stale
@@ -249,6 +250,7 @@ def _record_event(repo, receipt_id, actor, source, action, outcome,
         created_at=_now(),
         corrections_json=corrections_json,
         gl_override_code=gl_override_code,
+        reason=reason,
     )
 
 
@@ -592,7 +594,7 @@ def discard_receipt(repo, receipt_id, reason, actor, source) -> ResolutionOutcom
         if not removed:
             logger.info(f"no review pair removed for {receipt_id}, nothing on disk")
 
-        _record_event(repo, receipt_id, actor, source, "discard", "discarded")
+        _record_event(repo, receipt_id, actor, source, "discard", "discarded", reason=reason)
         logger.info(f"receipt {receipt_id} discarded by {actor} via {source}: {reason}")
 
         return ResolutionOutcome(

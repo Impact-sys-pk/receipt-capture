@@ -167,6 +167,7 @@ def init_db():
             corrections_json    TEXT,
             gl_override_code    TEXT,
             outcome             TEXT NOT NULL,
+            reason              TEXT,
             created_at          TEXT NOT NULL,
             FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
         );
@@ -207,6 +208,18 @@ def init_db():
         conn.execute("ALTER TABLE receipts ADD COLUMN duplicate_of TEXT")
     if "locked_at" not in existing_receipt_columns:
         conn.execute("ALTER TABLE receipts ADD COLUMN locked_at TIMESTAMP")
+
+    conn.commit()
+
+    # Design document 5.1 as amended. discard_receipt() takes a reason and the
+    # table had nowhere to put it, so it reached a log line and then vanished. For
+    # a discard the reason is the most useful thing to keep: the difference between
+    # "duplicate of r-x" and "the client sent a bank statement by mistake".
+    existing_event_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(resolution_events)").fetchall()
+    }
+    if existing_event_columns and "reason" not in existing_event_columns:
+        conn.execute("ALTER TABLE resolution_events ADD COLUMN reason TEXT")
 
     conn.commit()
     conn.close()

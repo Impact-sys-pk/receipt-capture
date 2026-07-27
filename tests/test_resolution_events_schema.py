@@ -30,7 +30,7 @@ from worker.database.schema import init_db
 
 EXPECTED_COLUMNS = [
     "event_id", "receipt_id", "extraction_id", "actor", "source",
-    "action", "corrections_json", "gl_override_code", "outcome", "created_at",
+    "action", "corrections_json", "gl_override_code", "outcome", "reason", "created_at",
 ]
 
 
@@ -57,7 +57,12 @@ class ResolutionEventsSchemaTest(unittest.TestCase):
                     row[1] for row in
                     repo._conn.execute("PRAGMA table_info(resolution_events)").fetchall()
                 ]
-                self.assertEqual(cols, EXPECTED_COLUMNS)
+                # Set, not sequence. A database created fresh has `reason` before
+                # created_at, from the CREATE TABLE; one migrated by the PRAGMA
+                # guard has it appended last, because that is what ALTER TABLE
+                # does. Harmless, because every read and write here is by name,
+                # and asserting order would fail on one of the two.
+                self.assertEqual(sorted(cols), sorted(EXPECTED_COLUMNS))
             finally:
                 repo.close()
 

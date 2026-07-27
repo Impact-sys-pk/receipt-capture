@@ -28,7 +28,7 @@ import config
 from worker.database.schema import init_db
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
-from worker.filing import file_receipt, make_enriched_sidecar, determine_tax_year
+from worker.filing import file_receipt, make_enriched_sidecar, determine_tax_year, remove_review_pair
 from worker.resolution.service import CORRECTABLE_FIELDS, parse_corrections
 from worker.validation.rules import validate, ExtractionResult
 
@@ -191,6 +191,11 @@ def main():
         if receipt['status'] == 'possible_duplicate' and args.duplicate_decision:
             if args.duplicate_decision == 'discard':
                 repo.update_receipt_status(args.receipt_id, 'discarded')
+                # The receipt's life in the Review folder is over. Leaving the
+                # pair behind is what made IntelliBooks file a duplicate.
+                remove_review_pair(
+                    args.receipt_id, receipt['client_code'], receipt['filename']
+                )
                 logger.info(f"Receipt {args.receipt_id} discarded as duplicate")
                 print("✓ Discarded as duplicate.")
                 return 0
@@ -353,6 +358,11 @@ def main():
         # Mark filed (CRITICAL: sets filed_path so Part 2A's duplicate protection works)
         repo.mark_receipt_filed(args.receipt_id, str(dest_path))
         repo.update_receipt_status(args.receipt_id, 'ok')
+
+        # The receipt is filed, so its Review pair is stale. Leaving it behind is
+        # what made IntelliBooks still show it as needing review, and completing
+        # it there filed a duplicate.
+        remove_review_pair(args.receipt_id, receipt['client_code'], receipt['filename'])
 
         logger.info(f"Receipt {args.receipt_id} manually resolved and filed to {dest_path}")
         print(f"✓ Filed to {dest_path}")

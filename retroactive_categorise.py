@@ -43,8 +43,24 @@ AFFECTED_RECEIPTS = [
 ]
 
 
-def update_sidecar_json(sidecar_path: Path, category: str, confidence: str):
-    """Update the sidecar JSON file with category info."""
+def update_sidecar_json(
+    sidecar_path: Path,
+    category_code: str | None,
+    category_name: str | None,
+    confidence: str | None,
+):
+    """Update the sidecar JSON file with category info.
+
+    Writes the same three keys as make_enriched_sidecar(), per design document
+    3.7: the nominal code, the Desktop-compatible name, and the legacy
+    `category` key holding the name. Null where the engine returned nothing.
+
+    This function is why 18 sidecars on disk hold the string "unmatched" in the
+    category field: it used to be handed `suggested_code or "unmatched"`, which
+    is a match_source, not a category. Desktop matches categories by name, so it
+    matched nothing, and "Post to cashbook" would have copied it into a real
+    transaction.
+    """
     if not sidecar_path.exists():
         logger.warning(f"Sidecar file not found: {sidecar_path}")
         return False
@@ -54,7 +70,9 @@ def update_sidecar_json(sidecar_path: Path, category: str, confidence: str):
             sidecar = json.load(f)
 
         # Update category fields
-        sidecar["category"] = category
+        sidecar["category_code"] = category_code
+        sidecar["category_name"] = category_name
+        sidecar["category"] = category_name
         sidecar["confidence"] = confidence
 
         with sidecar_path.open("w", encoding="utf-8") as f:
@@ -139,6 +157,7 @@ def main():
                 )
                 categorisation_data = {
                     'suggested_code': categorisation.suggested_code,
+                    'suggested_name': categorisation.suggested_name,
                     'confidence': categorisation.confidence
                 }
 
@@ -147,11 +166,14 @@ def main():
                 # Find sidecar next to filed receipt (e.g., file.pdf.json)
                 filed_path = Path(receipt["filed_path"])
                 sidecar_path = filed_path.parent / (filed_path.name + ".json")
-                code = categorisation_data.get('suggested_code') or "unmatched"
-                conf = categorisation_data.get('confidence') or "none"
-                if update_sidecar_json(sidecar_path, code, conf):
+                # No invented values. A receipt the engine could not match gets
+                # nulls, not a match_source and not the string "none".
+                code = categorisation_data.get('suggested_code')
+                name = categorisation_data.get('suggested_name')
+                conf = categorisation_data.get('confidence')
+                if update_sidecar_json(sidecar_path, code, name, conf):
                     categorised += 1
-                    logger.info(f"Receipt {receipt_id} updated with categorisation {code} ({conf})")
+                    logger.info(f"Receipt {receipt_id} updated with categorisation {code} / {name} ({conf})")
                 else:
                     skipped += 1
             else:

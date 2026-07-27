@@ -124,6 +124,36 @@ class Repository:
         ).fetchone()
         return dict(row) if row else None
 
+    def get_extractions_for_receipt(self, receipt_id: str) -> list[dict]:
+        """Every extraction attempt for a receipt, newest first.
+
+        The singular get_extraction_for_receipt() returns only the latest and is
+        what the pipeline uses. The resolution view needs the whole history, so an
+        operator can see what previous attempts read.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC",
+            (receipt_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_gl_code_options_from_vendors(self) -> list[dict]:
+        """Distinct (nominal_code, account_name) pairs from both vendor tables.
+
+        The fallback in design document 11.1, for use until the Default CoA is
+        loaded into coa_accounts at step 12. Not the real option list: it only
+        contains codes some vendor has already been mapped to.
+        """
+        rows = self._conn.execute("""
+            SELECT nominal_code, account_name FROM categorisations_client_vendors
+            WHERE nominal_code IS NOT NULL
+            UNION
+            SELECT nominal_code, account_name FROM categorisations_firm_vendors
+            WHERE nominal_code IS NOT NULL
+            ORDER BY nominal_code
+        """).fetchall()
+        return [{"nominal_code": r["nominal_code"], "account_name": r["account_name"]} for r in rows]
+
     def mark_receipt_filed(self, receipt_id: str, filed_path: str):
         self._conn.execute(
             "UPDATE receipts SET filed_path = ? WHERE receipt_id = ?",

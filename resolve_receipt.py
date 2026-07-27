@@ -29,6 +29,7 @@ from worker.database.schema import init_db
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
 from worker.filing import file_receipt, make_enriched_sidecar, determine_tax_year
+from worker.resolution.service import CORRECTABLE_FIELDS, parse_corrections
 from worker.validation.rules import validate, ExtractionResult
 
 logging.basicConfig(
@@ -79,7 +80,13 @@ def confirm_duplicated_action(receipt: dict) -> str:
 
 
 def get_corrections_interactive(extraction: dict) -> dict:
-    """Interactively ask staff for corrected values."""
+    """Interactively ask staff for corrected values.
+
+    Returns raw text, keyed by field name, with blank answers omitted so they
+    keep the existing value. Coercion is parse_corrections' job, not this
+    function's: returning strings straight into validate() is what crashed the
+    interactive path (design document 3.3).
+    """
     corrections = {}
 
     fields = [
@@ -120,19 +127,20 @@ def main():
         '--invoice-date',
         help='Corrected invoice date (YYYY-MM-DD)'
     )
+    # Amounts are taken as text and coerced by parse_corrections, so the flags
+    # path, the interactive prompts and the console form all apply the same
+    # rules and report the same errors. argparse's type=float here would be a
+    # second, more permissive implementation (it accepts 'nan' and 'inf').
     parser.add_argument(
         '--net',
-        type=float,
         help='Corrected net amount'
     )
     parser.add_argument(
         '--vat',
-        type=float,
         help='Corrected VAT amount'
     )
     parser.add_argument(
         '--gross',
-        type=float,
         help='Corrected gross amount'
     )
     parser.add_argument(
@@ -188,34 +196,38 @@ def main():
                 return 0
             # else: continue to file it
 
-        # Get corrections
-        if any([args.supplier, args.invoice_date, args.net, args.vat, args.gross, args.ref_number, args.time]):
-            # Command-line args provided
-            corrections = {
-                'supplier_name': args.supplier,
-                'invoice_date': args.invoice_date,
-                'net_amount': args.net,
-                'vat_amount': args.vat,
-                'gross_amount': args.gross,
-                'receipt_ref_number': args.ref_number,
-                'receipt_time': args.time,
-            }
-            corrections = {k: v for k, v in corrections.items() if v is not None}
-        else:
-            # Interactive mode
-            corrections = get_corrections_interactive(extraction)
-
-        # Apply corrections
-        corrected_values = {
-            'supplier_name': corrections.get('supplier_name') or extraction.get('supplier_name'),
-            'invoice_date': corrections.get('invoice_date') or extraction.get('invoice_date'),
-            'net_amount': corrections.get('net_amount') or extraction.get('net_amount'),
-            'vat_amount': corrections.get('vat_amount') or extraction.get('vat_amount'),
-            'gross_amount': corrections.get('gross_amount') or extraction.get('gross_amount'),
-            'receipt_ref_number': corrections.get('receipt_ref_number') or extraction.get('receipt_ref_number'),
-            'receipt_time': corrections.get('receipt_time') or extraction.get('receipt_time'),
-            'currency': extraction.get('currency', 'GBP'),
+        # Get corrections. Key presence, not truthiness: `--vat 0` is a real
+        # correction and must not drop into interactive mode (design document 3.2).
+        raw = {
+            'supplier_name': args.supplier,
+            'invoice_date': args.invoice_date,
+            'net_amount': args.net,
+            'vat_amount': args.vat,
+            'gross_amount': args.gross,
+            'receipt_ref_number': args.ref_number,
+            'receipt_time': args.time,
         }
+        raw = {k: v for k, v in raw.items() if v is not None}
+        if not raw:
+            # Interactive mode
+            raw = get_corrections_interactive(extraction)
+
+        corrections, field_errors = parse_corrections(raw)
+        if field_errors:
+            print("✗ Corrections rejected:")
+            for field_name, message in field_errors.items():
+                print(f"  {field_name}: {message}")
+            print("Nothing was written. Re-run with corrected values.")
+            return 1
+
+        # Apply corrections over the existing extraction by key presence. A
+        # supplied 0.0 is falsy, so `or` here kept the wrong extracted value and
+        # made correcting VAT to zero impossible.
+        corrected_values = {
+            field_name: extraction.get(field_name) for field_name in CORRECTABLE_FIELDS
+        }
+        corrected_values.update(corrections.values)
+        corrected_values['currency'] = extraction.get('currency', 'GBP')
 
         # Re-validate
         try:

@@ -151,6 +151,28 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_email_alerts_message
             ON email_alerts(message_id);
+
+        -- Design document 5.1. One row per resolution, whatever the entry
+        -- point, so a correction records who made it and through which tool.
+        -- extraction_id is nullable and deliberately carries NO foreign key: an
+        -- outcome with no extraction row would otherwise fail to write its own
+        -- audit row, which is the same class of bug as b480a7e.
+        CREATE TABLE IF NOT EXISTS resolution_events (
+            event_id            TEXT PRIMARY KEY,
+            receipt_id          TEXT NOT NULL,
+            extraction_id       TEXT,
+            actor               TEXT NOT NULL,
+            source              TEXT NOT NULL,
+            action              TEXT NOT NULL,
+            corrections_json    TEXT,
+            gl_override_code    TEXT,
+            outcome             TEXT NOT NULL,
+            created_at          TEXT NOT NULL,
+            FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_resolution_events_receipt
+            ON resolution_events(receipt_id, created_at);
     """)
     conn.commit()
 

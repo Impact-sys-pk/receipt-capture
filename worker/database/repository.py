@@ -385,6 +385,30 @@ class Repository:
               matched_vendor, needs_review, categorised_at))
         self._conn.commit()
 
+    def save_resolution_event(
+        self, event_id: str, receipt_id: str, actor: str, source: str,
+        action: str, outcome: str, created_at: str,
+        extraction_id: Optional[str] = None, corrections_json: Optional[str] = None,
+        gl_override_code: Optional[str] = None,
+    ):
+        """Append one audit row per resolution. Design document 5.1."""
+        self._conn.execute("""
+            INSERT INTO resolution_events
+                (event_id, receipt_id, extraction_id, actor, source, action,
+                 corrections_json, gl_override_code, outcome, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (event_id, receipt_id, extraction_id, actor, source, action,
+              corrections_json, gl_override_code, outcome, created_at))
+        self._conn.commit()
+
+    def list_resolution_events(self, receipt_id: str) -> list[dict]:
+        """Every resolution event for a receipt, newest first."""
+        rows = self._conn.execute(
+            "SELECT * FROM resolution_events WHERE receipt_id = ? ORDER BY created_at DESC",
+            (receipt_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def get_categorisation(self, categorisation_id: str) -> Optional[dict]:
         """Retrieve categorisation record by ID."""
         row = self._conn.execute(

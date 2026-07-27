@@ -164,9 +164,41 @@ class StaleTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_resolving_twice_with_the_same_expected_id_gives_filed_then_stale(self):
+    def test_a_second_save_against_a_superseded_extraction_is_stale(self):
         # The optimistic-concurrency property the console depends on: two
         # operators on the same page, second Save must not overwrite the first.
+        #
+        # The first attempt is deliberately one that does NOT file, because a
+        # filed receipt is caught by step 1a's already_filed guard first. Both
+        # guards protect the same thing from different directions.
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                extraction_id = env.seed(repo)
+                incomplete, _ = parse_corrections({"supplier_name": "Apcoa Parking"})
+
+                first = resolve_receipt(
+                    repo, env.engine(repo), "r-1", incomplete,
+                    actor="paul", source="console", expected_extraction_id=extraction_id,
+                )
+                second = resolve_receipt(
+                    repo, env.engine(repo), "r-1", _good_corrections(),
+                    actor="someone-else", source="console", expected_extraction_id=extraction_id,
+                )
+
+                self.assertEqual(first.outcome, "still_invalid")
+                self.assertEqual(
+                    second.outcome, "stale",
+                    "the second operator's expected extraction is no longer the latest",
+                )
+                events = _rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual(len(events), 1, "the stale attempt must not write an event")
+            finally:
+                repo.close()
+
+    def test_already_filed_takes_precedence_over_stale(self):
+        # 4.3 puts step 1a before step 3, so a filed receipt reports what it is
+        # rather than what the caller's expectations were. The more useful answer.
         with TempEnvironment() as env:
             repo = Repository()
             try:
@@ -180,9 +212,8 @@ class StaleTest(unittest.TestCase):
                     actor="someone-else", source="console", expected_extraction_id=extraction_id,
                 )
                 self.assertEqual(first.outcome, "filed")
-                self.assertEqual(second.outcome, "stale")
-                events = _rows(repo, "SELECT * FROM resolution_events")
-                self.assertEqual(len(events), 1, "the stale attempt must not write an event")
+                self.assertEqual(second.outcome, "already_filed")
+                self.assertIsNotNone(second.filed_path)
             finally:
                 repo.close()
 

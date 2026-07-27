@@ -81,7 +81,7 @@ class Corrections:
 
 @dataclass
 class ResolutionOutcome:
-    outcome: str    # filed | discarded | still_invalid | stale | locked | not_found | error
+    outcome: str    # filed | discarded | still_invalid | stale | locked | not_found | already_filed | error
     receipt_id: str
     extraction_id: Optional[str] = None
     filed_path: Optional[str] = None
@@ -291,6 +291,28 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         return ResolutionOutcome(
             outcome="not_found", receipt_id=receipt_id,
             message=f"Receipt not found: {receipt_id}",
+        )
+
+    # 1a. Refuse a receipt that is already filed. Nothing below inspects
+    #     filed_path, so without this an ok receipt is re-filed, gets a second
+    #     manual_correction row and leaves a second copy on disk under a -2 name.
+    #     That is the double-filing this design exists to prevent, arriving
+    #     through the front door. An expected condition, not an error: the
+    #     console must be able to offer the existing file.
+    #
+    #     The back-feed's `filed` note is the one legitimate re-file and does not
+    #     come through here; 12.3 step 5 calls mark_receipt_filed() directly.
+    filed_path = receipt.get("filed_path")
+    if filed_path:
+        return ResolutionOutcome(
+            outcome="already_filed", receipt_id=receipt_id,
+            extraction_id=(repo.get_extraction_for_receipt(receipt_id) or {}).get("extraction_id"),
+            filed_path=filed_path,
+            message=(
+                f"This receipt has already been filed, as {filed_path}. "
+                "Nothing was changed. Open that file to check it, or discard the "
+                "receipt if it was filed in error."
+            ),
         )
 
     # 2. Load latest extraction.

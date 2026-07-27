@@ -40,12 +40,17 @@ class TempEnvironment:
         self.path = Path(self._temp.name)
         self._saved = {
             "DB_PATH": config.DB_PATH,
+            "DATA_DIR": config.DATA_DIR,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
         }
         config.DB_PATH = self.path / "receipts.db"
+        # attach_log_handler() resolves DATA_DIR at call time, so a test that
+        # runs a CLI entry point appends to the live data/*.log without this.
+        config.DATA_DIR = self.path / "data"
+        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
         config.LOGS_DIR = self.path / "logs"

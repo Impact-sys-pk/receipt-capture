@@ -8,6 +8,8 @@ One file per entry point, because two processes cannot share a RotatingFileHandl
 on Windows: at rollover the loser cannot rename a file the winner holds open.
 """
 
+import contextlib
+import io
 import logging
 import logging.handlers
 import sys
@@ -15,6 +17,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import config
 
@@ -25,11 +28,14 @@ class OpenAI:
 fake_openai.OpenAI = OpenAI
 sys.modules.setdefault("openai", fake_openai)
 
+from resolution_fixtures import TempEnvironment
+from worker.database.repository import Repository
 from worker.logging_setup import (
     ENTRY_POINT_LOGS,
     attach_log_handler,
     log_path_for,
 )
+import resolve_receipt
 
 
 class TempDataDir:
@@ -137,26 +143,54 @@ class ImportTimeTest(unittest.TestCase):
 
 
 class SuiteWritesNoLogsTest(unittest.TestCase):
-    """The property 2d19521 and 285ed63 established between them."""
+    """The property 2d19521 and 285ed63 established between them.
 
-    def test_no_entry_point_log_file_is_written_by_importing_the_entry_points(self):
-        before = {}
-        for name in ENTRY_POINT_LOGS.values():
-            path = config.DATA_DIR / name
-            before[name] = path.stat().st_size if path.exists() else None
+    Importing is the weak version of this check and it passed while the suite was
+    in fact appending 5 KB per run to the live data/resolve.log, because the CLI
+    tests call main(), which attaches a handler. So this also runs a CLI end to end
+    and asserts the write landed in the temp directory instead.
+    """
+
+    def _sizes(self):
+        return {
+            name: (config.DATA_DIR / name).stat().st_size
+            for name in ENTRY_POINT_LOGS.values()
+            if (config.DATA_DIR / name).exists()
+        }
+
+    def test_importing_the_entry_points_writes_nothing(self):
+        before = self._sizes()
 
         import app  # noqa: F401
         import discard_receipt  # noqa: F401
         import resolve_receipt  # noqa: F401
 
-        for name in ENTRY_POINT_LOGS.values():
-            path = config.DATA_DIR / name
-            now = path.stat().st_size if path.exists() else None
-            with self.subTest(log=name):
-                self.assertEqual(
-                    now, before[name],
-                    f"importing the entry points changed data/{name}",
-                )
+        self.assertEqual(self._sizes(), before)
+
+    def test_running_a_cli_writes_to_the_redirected_data_dir_not_the_real_one(self):
+        real_before = self._sizes()
+
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo)
+            finally:
+                repo.close()
+
+            out = io.StringIO()
+            argv = ["resolve_receipt.py", "r-1", "--supplier", "Apcoa", "--gross", "12.00"]
+            with patch.object(sys, "argv", argv), contextlib.redirect_stdout(out), \
+                 _HandlerGuard():
+                exit_code = resolve_receipt.main()
+
+            self.assertEqual(exit_code, 0, out.getvalue())
+            temp_log = config.DATA_DIR / "resolve.log"
+            self.assertTrue(temp_log.exists(), "the CLI must have logged somewhere")
+
+        self.assertEqual(
+            self._sizes(), real_before,
+            "a CLI run under test must not touch the live data/*.log files",
+        )
 
 
 if __name__ == "__main__":

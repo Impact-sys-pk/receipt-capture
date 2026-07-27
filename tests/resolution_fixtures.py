@@ -29,12 +29,19 @@ class TempEnvironment:
             "DB_PATH": config.DB_PATH,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "DATA_DIR": config.DATA_DIR,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
         }
         config.DB_PATH = self.path / "receipts.db"
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
+        # DATA_DIR as well as LOGS_DIR: attach_log_handler() resolves DATA_DIR at
+        # call time, so a test that runs a CLI entry point appends to the live
+        # data/resolve.log without this. Same class of leak as the ndjson one that
+        # 2d19521 fixed, found the same way: by checking rather than assuming.
+        config.DATA_DIR = self.path / "data"
+        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"

@@ -330,13 +330,30 @@ def make_enriched_sidecar(
     vat: float | None,
     gross: float | None,
     currency: str,
-    category: str | None,
+    category_code: str | None,
+    category_name: str | None,
     confidence: str,
     validation_status: str,
     asserted: dict[str, Any] | None,
     original_filename: str,
     claimed_client_code: str | None = None,
 ) -> dict[str, Any]:
+    """Build the sidecar that travels with a filed receipt.
+
+    The category is carried three ways, per design document 3.7:
+
+    - category_code is the nominal code, for the books.
+    - category_name is the account name. IntelliBooks' catOptions() matches
+      categories on name and has no codes, so a code here matches nothing and
+      the receipt arrives uncategorised. "Post to cashbook" then copies that
+      value into a real transaction.
+    - category keeps the legacy key, populated with the name, for readers of
+      sidecars already on disk.
+
+    A missing category is null in all three. Never a match_source: "unmatched"
+    looks like a category name that Desktop will fail to match, and then someone
+    posts it to the cashbook. null fails honestly.
+    """
     return {
         "receipt_id": receipt_id,
         "client_code": client_code,
@@ -350,7 +367,9 @@ def make_enriched_sidecar(
         "vat": vat,
         "gross": gross,
         "currency": currency,
-        "category": category,
+        "category_code": category_code,
+        "category_name": category_name,
+        "category": category_name,
         "confidence": confidence,
         "validation_status": validation_status,
         "asserted": asserted,

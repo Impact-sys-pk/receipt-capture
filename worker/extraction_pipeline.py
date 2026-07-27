@@ -180,28 +180,10 @@ def process_extraction_result(
 
     # File based on validation outcome
     if validation.status == "ok":
-        # Build sidecar with confidence="high"
-        sidecar_payload = make_enriched_sidecar(
-            receipt_id=receipt_id,
-            source="email" if message_id else "folder",
-            client_code=client_code,
-            client_name=config.CLIENTS_BY_CODE.get(client_code, {}).get('client_name', client_code),
-            capture_date=datetime.now(timezone.utc).isoformat(),
-            invoice_date=extraction.invoice_date,
-            supplier=extraction.supplier_name,
-            net=extraction.net_amount,
-            vat=extraction.vat_amount,
-            gross=extraction.gross_amount,
-            currency=extraction.currency,
-            category=None,  # Will be set by categorisation
-            confidence="high",
-            validation_status="ok",
-            asserted=asserted_values,
-            original_filename=filename,
-            claimed_client_code=None,
-        )
-
-        # Categorise
+        # Categorise first, then build the sidecar once with the result. This
+        # used to build the payload with category=None and confidence="high" and
+        # overwrite both keys afterwards, which made this a second writer of the
+        # same format in all but name.
         business_type = config.CLIENTS_BY_CODE.get(client_code, {}).get('business_type', 'UNSPECIFIED')
         categorisation = categorisation_engine.categorise(
             receipt_id=receipt_id,
@@ -229,12 +211,29 @@ def process_extraction_result(
             categorised_at=datetime.now(timezone.utc).isoformat()
         )
 
-        # Update sidecar with categorisation
-        sidecar_payload['category'] = categorisation.suggested_code
-        sidecar_payload['confidence'] = categorisation.confidence
+        client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get('client_name', client_code)
+        sidecar_payload = make_enriched_sidecar(
+            receipt_id=receipt_id,
+            source="email" if message_id else "folder",
+            client_code=client_code,
+            client_name=client_name,
+            capture_date=datetime.now(timezone.utc).isoformat(),
+            invoice_date=extraction.invoice_date,
+            supplier=extraction.supplier_name,
+            net=extraction.net_amount,
+            vat=extraction.vat_amount,
+            gross=extraction.gross_amount,
+            currency=extraction.currency,
+            category_code=categorisation.suggested_code,
+            category_name=categorisation.suggested_name,
+            confidence=categorisation.confidence,
+            validation_status="ok",
+            asserted=asserted_values,
+            original_filename=filename,
+            claimed_client_code=None,
+        )
 
         # File receipt
-        client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get('client_name', client_code)
         tax_year = determine_tax_year(extraction.invoice_date or datetime.now(timezone.utc).date().isoformat())
         filed_path, sidecar_path = file_receipt(
             file_path,
@@ -266,7 +265,9 @@ def process_extraction_result(
             vat=extraction.vat_amount,
             gross=extraction.gross_amount,
             currency=extraction.currency,
-            category=None,
+            # Nothing is categorised on this path: the receipt is not filed.
+            category_code=None,
+            category_name=None,
             confidence="low",
             validation_status=validation.status,
             asserted=asserted_values,

@@ -643,23 +643,13 @@ class Repository:
         )
         self._conn.commit()
 
-    def add_validation_note(self, receipt_id: str, note: str):
-        """Append a validation note to the most recent extraction."""
-        extraction = self.get_extraction_for_receipt(receipt_id)
-        if extraction:
-            current_notes = extraction.get('validation_notes', '')
-            if current_notes:
-                new_notes = f"{current_notes}, {note}"
-            else:
-                new_notes = note
-
-            # SQLite's default build doesn't support ORDER BY/LIMIT in UPDATE,
-            # so target the specific extraction_id already resolved above.
-            self._conn.execute(
-                "UPDATE extractions SET validation_notes = ? WHERE extraction_id = ?",
-                (new_notes, extraction['extraction_id'])
-            )
-            self._conn.commit()
+    # add_validation_note() was removed at step 9. It ran
+    # `UPDATE extractions SET validation_notes = ?` on an existing row, which
+    # CLAUDE.md forbids: extractions are append-only and never modified after
+    # creation. Its last caller was resolve_receipt.py, and the resolution service
+    # now appends a new extraction row instead, per design document 4.3 step 6.
+    # Deliberately not left in place as a convenience: a tempting mutation in the
+    # repository is how the rule gets broken again.
 
     def update_receipt_status(self, receipt_id: str, status: str):
         """Update receipt status."""

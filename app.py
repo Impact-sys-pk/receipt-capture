@@ -19,6 +19,7 @@ from worker.extraction.factory import get_extractor
 from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import scan_inbox
+from worker.logging_setup import LOG_FORMAT, attach_log_handler
 from worker.filing import (
     determine_tax_year,
     file_receipt,
@@ -29,7 +30,7 @@ from worker.filing import (
 from worker.storage.store import compute_hash, is_supported, save_file, save_inbox_file
 from worker.validation.rules import validate
 
-_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s — %(message)s"
+_LOG_FORMAT = LOG_FORMAT  # one definition, in worker/logging_setup.py
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,32 +41,15 @@ logger = logging.getLogger(__name__)
 
 
 def attach_run_log_handler():
-    """Send log output to data/run.log as well as stdout.
+    """Attach the pipeline's data/run.log handler.
 
-    Until now nothing wrote that file: the stream handler sends everything to
-    a console window that vanishes when it is closed. CLAUDE.md requires
-    failures to be visible rather than silent, and the resolution service's
-    broad except relies on tracebacks reaching this file.
-
-    Called from main(), not at import, so importing app for a test does not
-    append synthetic lines to the operational log. Idempotent. data/ is
-    gitignored.
+    Kept as a named wrapper because it is this entry point's own step, and because
+    the one-line body documents which log file the pipeline owns. The shared
+    implementation is in worker/logging_setup.py, per design document 6.5, so the
+    CLIs and later the console attach their own files the same way.
     """
-    root = logging.getLogger()
-    log_path = config.DATA_DIR / "run.log"
-    for existing in root.handlers:
-        if isinstance(existing, logging.handlers.RotatingFileHandler):
-            if Path(getattr(existing, "baseFilename", "")) == log_path:
-                return
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    handler = logging.handlers.RotatingFileHandler(
-        log_path,
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-    )
-    handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-    root.addHandler(handler)
+    return attach_log_handler("run")
+
 
 # Wall-clock cutoff for auto-retry, measured from receipts.created_at. A count-based
 # cap would be unfair to bursty commit sessions (several pipeline_version bumps in

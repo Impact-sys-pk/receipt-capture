@@ -2,13 +2,12 @@
 """
 Manually resolve a needs_review, failed, or possible_duplicate receipt.
 
-Part 3 of the receipt retry/resolution system:
-- Shows current extraction and validation errors
-- Lets staff correct extracted values
-- For possible_duplicate, lets staff confirm or reject
-- Re-validates and files if successful
-- Appends new extraction row (append-only, never overwrites)
-- Sets filed_path so duplicate protection works going forward
+A thin CLI over worker/resolution/service.py, per design document 4.1 and 4.4.
+Everything here is argparse, rendering and prompts. Validation, categorisation,
+filing, locking and the audit row all live in the service, which the console and
+the resolution back-feed call too. Four callers, one implementation: three
+independent implementations of resolution is what caused the divergence the design
+exists to fix.
 
 Usage:
     python resolve_receipt.py <receipt_id>
@@ -16,31 +15,66 @@ Usage:
     python resolve_receipt.py <receipt_id> --duplicate-decision file  # or "discard"
 """
 
-import sys
-import json
 import argparse
+import getpass
 import logging
-from pathlib import Path
-from datetime import datetime, timezone
-from uuid import uuid4
+import sys
 
 import config
-from worker.database.schema import init_db
-from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
-from worker.filing import file_receipt, make_enriched_sidecar, determine_tax_year, remove_review_pair
-from worker.resolution.service import CORRECTABLE_FIELDS, parse_corrections
-from worker.validation.rules import validate, ExtractionResult
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+from worker.database.repository import Repository
+from worker.database.schema import init_db
+from worker.logging_setup import attach_log_handler
+from worker.resolution.service import (
+    CORRECTABLE_FIELDS,
+    ResolutionView,
+    discard_receipt,
+    get_resolution_view,
+    parse_corrections,
+    resolve_receipt,
 )
+
 logger = logging.getLogger(__name__)
 
+# 4.4: filed and discarded are 0, everything else 1.
+_SUCCESS_OUTCOMES = ("filed", "discarded")
 
-def show_receipt_state(receipt: dict, extraction: dict):
+
+def exit_code_for(outcome: str) -> int:
+    """Map a ResolutionOutcome to a shell exit code. Anything unrecognised is 1."""
+    return 0 if outcome in _SUCCESS_OUTCOMES else 1
+
+
+def make_output_safe():
+    """Stop the tick and cross characters killing the process on a cp1252 console.
+
+    Pre-existing, not introduced by the move to the service: the previous CLI
+    printed the same characters, and a Windows console defaulting to cp1252 raises
+    UnicodeEncodeError on them. That crash lands *after* the receipt has been
+    filed, so the work succeeds and the operator sees a traceback. Degrade the
+    characters rather than change them, so nothing about the output changes where
+    the console can encode them.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # not a reconfigurable stream, e.g. a StringIO under test
+
+
+def default_actor() -> str:
+    """Who to record for a CLI resolution. The console supplies a logged-in user."""
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "cli-user"
+
+
+def show_receipt_state(view: ResolutionView):
     """Display current receipt state to staff."""
+    receipt = view.receipt
+    extraction = view.extraction or {}
+
     print(f"\n{'=' * 80}")
     print(f"Receipt ID: {receipt['receipt_id']}")
     print(f"Status: {receipt['status']}")
@@ -114,108 +148,101 @@ def get_corrections_interactive(extraction: dict) -> dict:
     return corrections
 
 
-def main():
+def _raw_from_flags(args) -> dict:
+    """Corrections supplied as flags, by key presence.
+
+    `--vat 0` is a real correction and must not be mistaken for "no flags given",
+    which is what design document 3.2 was about.
+    """
+    supplied = {
+        'supplier_name': args.supplier,
+        'invoice_date': args.invoice_date,
+        'net_amount': args.net,
+        'vat_amount': args.vat,
+        'gross_amount': args.gross,
+        'receipt_ref_number': args.ref_number,
+        'receipt_time': args.time,
+    }
+    return {k: v for k, v in supplied.items() if v is not None}
+
+
+def _report(outcome) -> int:
+    """Print the outcome for an operator and return its exit code."""
+    if outcome.outcome == "filed":
+        print(f"✓ {outcome.message}")
+        if outcome.category_code:
+            print(f"  Category: {outcome.category_code} ({outcome.category_confidence})")
+    elif outcome.outcome == "discarded":
+        print(f"✓ {outcome.message}")
+    elif outcome.outcome == "already_filed":
+        # Not a failure. The operator needs to know where the file is.
+        print(f"• {outcome.message}")
+    else:
+        print(f"✗ {outcome.message}")
+
+    return exit_code_for(outcome.outcome)
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Manually resolve a receipt that needs review or confirmation."
     )
     parser.add_argument('receipt_id', help='Receipt ID to resolve')
-    parser.add_argument(
-        '--supplier',
-        help='Corrected supplier name'
-    )
-    parser.add_argument(
-        '--invoice-date',
-        help='Corrected invoice date (YYYY-MM-DD)'
-    )
-    # Amounts are taken as text and coerced by parse_corrections, so the flags
-    # path, the interactive prompts and the console form all apply the same
-    # rules and report the same errors. argparse's type=float here would be a
-    # second, more permissive implementation (it accepts 'nan' and 'inf').
-    parser.add_argument(
-        '--net',
-        help='Corrected net amount'
-    )
-    parser.add_argument(
-        '--vat',
-        help='Corrected VAT amount'
-    )
-    parser.add_argument(
-        '--gross',
-        help='Corrected gross amount'
-    )
-    parser.add_argument(
-        '--ref-number',
-        help='Receipt reference/ticket number'
-    )
-    parser.add_argument(
-        '--time',
-        help='Receipt time (HH:MM)'
-    )
+    parser.add_argument('--supplier', help='Corrected supplier name')
+    parser.add_argument('--invoice-date', help='Corrected invoice date (YYYY-MM-DD)')
+    # Amounts are text and coerced by parse_corrections, so the flags path, the
+    # prompts and the console form all apply the same rules and report the same
+    # errors. argparse's type=float would be a second, more permissive
+    # implementation: it accepts 'nan' and 'inf'.
+    parser.add_argument('--net', help='Corrected net amount')
+    parser.add_argument('--vat', help='Corrected VAT amount')
+    parser.add_argument('--gross', help='Corrected gross amount')
+    parser.add_argument('--ref-number', help='Receipt reference/ticket number')
+    parser.add_argument('--time', help='Receipt time (HH:MM)')
     parser.add_argument(
         '--duplicate-decision',
         choices=['file', 'discard'],
-        help='For possible_duplicate: file it anyway or discard'
+        help='For possible_duplicate: file it anyway or discard',
     )
+    parser.add_argument(
+        '--actor',
+        default=None,
+        help='Who to record against this resolution (default: the OS user)',
+    )
+    return parser
 
-    args = parser.parse_args()
 
-    # Initialize database
+def main():
+    make_output_safe()
+    attach_log_handler("resolve")
+    args = build_parser().parse_args()
+    actor = args.actor or default_actor()
+
     init_db()
-
-    # Connect
     repo = Repository(config.DB_PATH)
     engine = CategorisationEngine(repo)
 
-    # Load receipt
-    receipt = repo.get_receipt(args.receipt_id)
-    if not receipt:
-        print(f"ERROR: Receipt not found: {args.receipt_id}")
-        sys.exit(1)
-
-    extraction = repo.get_extraction_for_receipt(args.receipt_id)
-    if not extraction:
-        print(f"ERROR: No extraction found for receipt: {args.receipt_id}")
-        sys.exit(1)
-
-    # Try to acquire lock
-    acquired = repo.acquire_receipt_lock(args.receipt_id)
-    if not acquired:
-        print("ERROR: Receipt is locked by another process. Try again in a moment.")
-        sys.exit(1)
-
     try:
-        # Show current state
-        show_receipt_state(receipt, extraction)
+        view = get_resolution_view(repo, args.receipt_id)
+        if view is None:
+            print(f"ERROR: Receipt not found: {args.receipt_id}")
+            return 1
 
-        # Handle possible_duplicate decision if provided
-        if receipt['status'] == 'possible_duplicate' and args.duplicate_decision:
-            if args.duplicate_decision == 'discard':
-                repo.update_receipt_status(args.receipt_id, 'discarded')
-                # The receipt's life in the Review folder is over. Leaving the
-                # pair behind is what made IntelliBooks file a duplicate.
-                remove_review_pair(
-                    args.receipt_id, receipt['client_code'], receipt['filename']
-                )
-                logger.info(f"Receipt {args.receipt_id} discarded as duplicate")
-                print("✓ Discarded as duplicate.")
-                return 0
-            # else: continue to file it
+        show_receipt_state(view)
 
-        # Get corrections. Key presence, not truthiness: `--vat 0` is a real
-        # correction and must not drop into interactive mode (design document 3.2).
-        raw = {
-            'supplier_name': args.supplier,
-            'invoice_date': args.invoice_date,
-            'net_amount': args.net,
-            'vat_amount': args.vat,
-            'gross_amount': args.gross,
-            'receipt_ref_number': args.ref_number,
-            'receipt_time': args.time,
-        }
-        raw = {k: v for k, v in raw.items() if v is not None}
+        if view.receipt['status'] == 'possible_duplicate' and args.duplicate_decision == 'discard':
+            return _report(discard_receipt(
+                repo, args.receipt_id,
+                reason="confirmed duplicate via CLI",
+                actor=actor, source="cli",
+            ))
+
+        raw = _raw_from_flags(args)
         if not raw:
-            # Interactive mode
-            raw = get_corrections_interactive(extraction)
+            if view.extraction is None:
+                print("ERROR: This receipt has no extraction to correct.")
+                return 1
+            raw = get_corrections_interactive(view.extraction)
 
         corrections, field_errors = parse_corrections(raw)
         if field_errors:
@@ -225,163 +252,16 @@ def main():
             print("Nothing was written. Re-run with corrected values.")
             return 1
 
-        # Apply corrections over the existing extraction by key presence. A
-        # supplied 0.0 is falsy, so `or` here kept the wrong extracted value and
-        # made correcting VAT to zero impossible.
-        corrected_values = {
-            field_name: extraction.get(field_name) for field_name in CORRECTABLE_FIELDS
-        }
-        corrected_values.update(corrections.values)
-        corrected_values['currency'] = extraction.get('currency', 'GBP')
-
-        # Re-validate
-        try:
-            extraction_obj = ExtractionResult(
-                engine='manual_correction',
-                supplier_name=corrected_values['supplier_name'],
-                invoice_date=corrected_values['invoice_date'],
-                net_amount=corrected_values['net_amount'],
-                vat_amount=corrected_values['vat_amount'],
-                gross_amount=corrected_values['gross_amount'],
-                currency=corrected_values['currency'],
-                raw_response=json.dumps(corrected_values)
-            )
-        except Exception as e:
-            print(f"ERROR: Invalid corrected values: {e}")
-            return 1
-
-        validation = validate(extraction_obj)
-
-        if validation.status != "ok":
-            repo.add_validation_note(
-                args.receipt_id,
-                f"Manual correction attempted: {', '.join(validation.notes)}"
-            )
-            logger.warning(f"Corrected receipt {args.receipt_id} still fails validation: {validation.notes}")
-            print(f"✗ Still invalid after correction: {validation.notes}")
-            return 1
-
-        # Validation passed - now file it
-        print("Validation passed. Filing receipt...")
-
-        # Get pipeline version
-        pipeline_version = config.get_pipeline_version()
-
-        # Generate extraction_id early (needed for categorisation)
-        extraction_id = str(uuid4())
-
-        # Save the manual-correction extraction row (append-only) before
-        # categorisation: categorisations.extraction_id has a FK to extractions,
-        # so the row it points to must exist first. If this process dies before
-        # filing completes, app.py's _file_unfiled_ok_receipts() recovers the
-        # receipt on the next run by reusing this same extraction_id.
-        repo.save_extraction(
-            extraction_id=extraction_id,
-            receipt_id=args.receipt_id,
-            engine="manual_correction",
-            supplier_name=corrected_values['supplier_name'],
-            invoice_date=corrected_values['invoice_date'],
-            net_amount=corrected_values['net_amount'],
-            vat_amount=corrected_values['vat_amount'],
-            gross_amount=corrected_values['gross_amount'],
-            currency=corrected_values['currency'],
-            raw_response=json.dumps(corrected_values),
-            validation_status="ok",
-            validation_notes=["manually corrected and filed"],
-            receipt_ref_number=corrected_values['receipt_ref_number'],
-            receipt_time=corrected_values['receipt_time'],
-            pipeline_version=pipeline_version,
-            # No automatic amendment was made here: an operator supplied these
-            # values. Explicit rather than defaulted, so the intent is readable.
-            details=None,
-        )
-
-        # Categorise
-        business_type = config.CLIENTS_BY_CODE.get(receipt['client_code'], {}).get('business_type', 'UNSPECIFIED')
-        categorisation = engine.categorise(
-            receipt_id=args.receipt_id,
-            extraction_id=extraction_id,
-            supplier_name=corrected_values['supplier_name'],
-            client_id=receipt['client_id'],
-            business_type=business_type
-        )
-
-        # Save categorisation
-        cat_id = str(uuid4())
-        repo.save_categorisation(
-            categorisation_id=cat_id,
-            receipt_id=args.receipt_id,
-            extraction_id=extraction_id,
-            client_id=receipt['client_id'],
-            business_type=categorisation.business_type,
-            vendor_key=categorisation.vendor_key,
-            suggested_code=categorisation.suggested_code,
-            suggested_name=categorisation.suggested_name,
-            confidence=categorisation.confidence,
-            match_source=categorisation.match_source,
-            matched_vendor=categorisation.matched_vendor,
-            needs_review=categorisation.needs_review,
-            categorised_at=datetime.now(timezone.utc).isoformat()
-        )
-
-        # File receipt
-        client_name = config.CLIENTS_BY_CODE.get(receipt['client_code'], {}).get('client_name', receipt['client_code'])
-        tax_year = determine_tax_year(corrected_values['invoice_date'] or datetime.now(timezone.utc).date().isoformat())
-
-        sidecar_payload = make_enriched_sidecar(
-            receipt_id=args.receipt_id,
-            source=receipt.get('source', 'email'),
-            client_code=receipt['client_code'],
-            client_name=client_name,
-            capture_date=datetime.now(timezone.utc).isoformat(),
-            invoice_date=corrected_values['invoice_date'],
-            supplier=corrected_values['supplier_name'],
-            net=corrected_values['net_amount'],
-            vat=corrected_values['vat_amount'],
-            gross=corrected_values['gross_amount'],
-            currency=corrected_values['currency'],
-            category_code=categorisation.suggested_code,
-            category_name=categorisation.suggested_name,
-            confidence=categorisation.confidence,
-            validation_status="ok",
-            asserted=None,
-            original_filename=receipt['filename'],
-            claimed_client_code=None,
-        )
-
-        dest_path, sidecar_path = file_receipt(
-            Path(receipt['file_path']),
-            client_name,
-            tax_year,
-            corrected_values['supplier_name'] or "unknown",
-            corrected_values['gross_amount'] or 0.0,
-            receipt['filename'],
-            sidecar_payload
-        )
-
-        # Mark filed (CRITICAL: sets filed_path so Part 2A's duplicate protection works)
-        repo.mark_receipt_filed(args.receipt_id, str(dest_path))
-        repo.update_receipt_status(args.receipt_id, 'ok')
-
-        # The receipt is filed, so its Review pair is stale. Leaving it behind is
-        # what made IntelliBooks still show it as needing review, and completing
-        # it there filed a duplicate.
-        remove_review_pair(args.receipt_id, receipt['client_code'], receipt['filename'])
-
-        logger.info(f"Receipt {args.receipt_id} manually resolved and filed to {dest_path}")
-        print(f"✓ Filed to {dest_path}")
-        print(f"  Category: {categorisation.suggested_code} ({categorisation.confidence})")
-        return 0
+        return _report(resolve_receipt(
+            repo, engine, args.receipt_id, corrections,
+            actor=actor, source="cli",
+        ))
 
     except KeyboardInterrupt:
         print("\nAborted.")
         return 1
-    except Exception as e:
-        logger.error(f"Error resolving receipt {args.receipt_id}: {e}", exc_info=True)
-        print(f"ERROR: {e}")
-        return 1
     finally:
-        repo.release_receipt_lock(args.receipt_id)
+        repo.close()
 
 
 if __name__ == '__main__':

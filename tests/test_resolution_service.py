@@ -324,25 +324,12 @@ class StillInvalidTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_does_not_call_add_validation_note(self):
-        # That method mutates an existing row in a table CLAUDE.md says is never
-        # modified after creation. Retired at step 9; the service must never use it.
-        with TempEnvironment() as env:
-            repo = Repository()
-            try:
-                env.seed(repo)
-                corrections, _ = parse_corrections({"supplier_name": "Apcoa Parking"})
-                with patch.object(
-                    Repository, "add_validation_note",
-                    side_effect=AssertionError("the service must not mutate an extraction row"),
-                ):
-                    outcome = resolve_receipt(
-                        repo, env.engine(repo), "r-1", corrections,
-                        actor="paul", source="cli",
-                    )
-                self.assertEqual(outcome.outcome, "still_invalid")
-            finally:
-                repo.close()
+    def test_no_row_mutating_method_survives_on_the_repository(self):
+        # This used to patch Repository.add_validation_note and fail the test if it
+        # was called. The method was removed at step 9, so there is nothing left to
+        # patch and the assertion becomes its absence. The "previous row must be
+        # byte-identical" assertion above is what actually guards the behaviour.
+        self.assertFalse(hasattr(Repository, "add_validation_note"))
 
 
 class SuccessfulResolveTest(unittest.TestCase):

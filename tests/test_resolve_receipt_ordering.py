@@ -189,8 +189,8 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                 repo.close()
 
                 # Correct supplier only; gross_amount is still missing, so
-                # validation still fails and resolve_receipt.py must hit its
-                # add_validation_note() call instead of crashing.
+                # validation still fails and the attempt must be recorded as a new
+                # extraction row rather than crashing.
                 test_argv = [
                     "resolve_receipt.py",
                     receipt_id,
@@ -202,11 +202,32 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                 self.assertEqual(exit_code, 1)
 
                 repo = Repository()
-                extraction_row = repo._conn.execute(
+                # Rewritten at step 9. This used to assert that
+                # add_validation_note() had mutated ext-original-3's
+                # validation_notes in place. Per design document 4.3 step 6 as
+                # amended, a still-invalid correction now appends a row instead:
+                # extractions are append-only and CLAUDE.md says they are never
+                # modified after creation.
+                original_row = repo._conn.execute(
                     "SELECT validation_notes FROM extractions WHERE extraction_id = ?",
                     ("ext-original-3",)
                 ).fetchone()
-                self.assertIn("Manual correction attempted", extraction_row["validation_notes"])
+                self.assertEqual(
+                    original_row["validation_notes"],
+                    "missing supplier_name, missing gross_amount",
+                    "the earlier row must be exactly as it was written",
+                )
+
+                appended = repo._conn.execute(
+                    """SELECT engine, supplier_name, validation_status, validation_notes
+                       FROM extractions
+                       WHERE receipt_id = ? AND extraction_id != ?""",
+                    (receipt_id, "ext-original-3"),
+                ).fetchall()
+                self.assertEqual(len(appended), 1, "exactly one row appended")
+                self.assertEqual(appended[0]["engine"], "manual_correction")
+                self.assertEqual(appended[0]["supplier_name"], "T3 Test Supplies Ltd")
+                self.assertIn("missing gross_amount", appended[0]["validation_notes"])
             finally:
                 if repo is not None:
                     repo.close()

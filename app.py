@@ -610,7 +610,10 @@ def process_once():
                         repo.save_extraction(
                             extraction_id=str(uuid.uuid4()),
                             receipt_id=receipt_id,
-                            engine="openai_vision",
+                            # extractor.name, not a hardcoded string: this row
+                            # would otherwise say OpenAI produced a failure that
+                            # a different provider produced. Design document 3.8.
+                            engine=extractor.name,
                             supplier_name=None,
                             invoice_date=None,
                             net_amount=None,
@@ -789,7 +792,7 @@ def process_once():
                 repo.save_extraction(
                     extraction_id=str(uuid.uuid4()),
                     receipt_id=receipt_id,
-                    engine="openai_vision",
+                    engine=extractor.name,  # design document 3.8
                     supplier_name=None,
                     invoice_date=None,
                     net_amount=None,
@@ -960,7 +963,7 @@ def process_once():
                     repo.save_extraction(
                         extraction_id=str(uuid.uuid4()),
                         receipt_id=receipt_id,
-                        engine="openai_vision",
+                        engine=extractor.name,  # design document 3.8
                         supplier_name=None,
                         invoice_date=None,
                         net_amount=None,

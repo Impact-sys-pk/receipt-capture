@@ -188,6 +188,18 @@ class Repository:
         """, (message_id, attachment_id, file_hash, now, receipt_id))
         self._conn.commit()
 
+    def count_receipts_by_status(self, statuses) -> int:
+        """Count receipts in any of the given statuses. Empty sequence counts nothing."""
+        statuses = tuple(statuses)
+        if not statuses:
+            return 0
+        placeholders = ",".join("?" for _ in statuses)
+        row = self._conn.execute(
+            f"SELECT COUNT(*) FROM receipts WHERE status IN ({placeholders})",
+            statuses,
+        ).fetchone()
+        return row[0] if row else 0
+
     def count_processed_today(self) -> int:
         row = self._conn.execute("""
             SELECT

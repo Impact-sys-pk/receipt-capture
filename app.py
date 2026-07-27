@@ -118,15 +118,27 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, extraction_s
         f.write(json.dumps(entry) + "\n")
 
 
-def _count_review_items() -> int:
-    review_root = config.CLIENTS_ROOT
-    if not review_root.exists():
+REVIEW_STATUSES = ("needs_review", "possible_duplicate")
+
+
+def _count_review_items(repo: Repository | None) -> int:
+    """Count receipts a human has to make a decision about.
+
+    This used to walk CLIENTS_ROOT.rglob("Review/*") and count every file, so it
+    counted each pair twice (image plus sidecar) and, because nothing removed the
+    pairs, only ever grew. The database is the stated source of truth.
+
+    needs_review and possible_duplicate only. failed and retry_exhausted are not
+    review items, they are receipts the system could not read, and counting them
+    here would send an operator to look at something there is nothing to look at
+    yet. The status page reports them as their own counts.
+
+    repo is None when Repository() itself failed. The only call site is inside
+    process_once()'s finally block, so raising here would mask the real error.
+    """
+    if repo is None:
         return 0
-    count = 0
-    for path in review_root.rglob("Review/*"):
-        if path.is_file():
-            count += 1
-    return count
+    return repo.count_receipts_by_status(REVIEW_STATUSES)
 
 
 def _write_pipeline_status(last_run: str, processed_today: int, review_count: int, last_error: str | None):
@@ -974,8 +986,11 @@ def process_once():
         logger.error(f"process_once failed: {exc}", exc_info=True)
         raise
     finally:
-        processed_today = stats.get("receipts_created", 0)
-        review_count = _count_review_items()
+        # processed_today means today, not this run. stats["receipts_created"]
+        # counts what this five-minute poll happened to create, which is not
+        # what the field is called or what IntelliBooks shows.
+        processed_today = repo.count_processed_today() if repo is not None else 0
+        review_count = _count_review_items(repo)
         last_error = None if errors is None else str(errors)
         _write_pipeline_status(datetime.now(timezone.utc).isoformat(), processed_today, review_count, last_error)
         if repo is not None:

@@ -191,6 +191,58 @@ class ResolveInvoiceDateTest(unittest.TestCase):
         self.assertEqual(resolve_invoice_date(None, "09/05/26", None, False)[0], "2026-09-05")
 
 
+class AmbiguityNoteTest(unittest.TestCase):
+    """Three cases, three honest notes, and the date unchanged in all of them.
+
+    The guard used to be `if not parsed_from_raw and invoice_date`, which is true
+    both when there was no raw string and when there was one that could not be
+    parsed, so the note claimed no_raw when a raw string existed. An operator
+    reads this field to decide whether to trust the date: "we had nothing to work
+    from" and "we had something and could not read it" call for different
+    judgements.
+    """
+
+    def test_no_raw_string_keeps_the_original_note_byte_for_byte(self):
+        # tests/test_date_disambiguation.py asserts this exact substring. A
+        # future tidy-up must not change it out from under that test.
+        invoice_date, details = resolve_invoice_date("2026-09-05", None, None, True)
+        self.assertEqual(invoice_date, "2026-09-05")
+        self.assertEqual(details, "ambiguous_invoice_date_no_raw(model_iso=2026-09-05)")
+
+    def test_unparseable_raw_string_names_both(self):
+        invoice_date, details = resolve_invoice_date("2026-09-05", "not a date", None, True)
+        self.assertEqual(invoice_date, "2026-09-05", "the date must not be touched")
+        self.assertIn("ambiguous_invoice_date_unparsed_raw", details)
+        self.assertIn("raw=not a date", details)
+        self.assertIn("model_iso=2026-09-05", details)
+        self.assertNotIn("no_raw", details, "there was a raw string, so do not say there was not")
+
+    def test_unparseable_raw_is_reported_even_when_the_iso_date_is_unambiguous(self):
+        # A raw string we could not read is worth knowing about regardless of
+        # whether the model's date happens to look ambiguous. This is the signal
+        # that would have exposed finding 2 in the field.
+        invoice_date, details = resolve_invoice_date("2026-09-25", "not a date", None, True)
+        self.assertEqual(invoice_date, "2026-09-25")
+        self.assertIn("ambiguous_invoice_date_unparsed_raw", details)
+
+    def test_unparseable_raw_with_no_model_date_still_reports(self):
+        invoice_date, details = resolve_invoice_date(None, "not a date", None, True)
+        self.assertIsNone(invoice_date)
+        self.assertIn("ambiguous_invoice_date_unparsed_raw", details)
+        self.assertIn("model_iso=None", details)
+
+    def test_parsed_raw_produces_neither_ambiguity_note(self):
+        _, details = resolve_invoice_date("2026-09-05", "09/05/26", None, True)
+        self.assertIsNotNone(details)
+        self.assertNotIn("ambiguous_invoice_date_no_raw", details)
+        self.assertNotIn("ambiguous_invoice_date_unparsed_raw", details)
+
+    def test_notes_append_to_existing_details(self):
+        _, details = resolve_invoice_date("2026-09-05", "not a date", "model prose", True)
+        self.assertTrue(details.startswith("model prose; "))
+        self.assertIn("ambiguous_invoice_date_unparsed_raw", details)
+
+
 class DependencyDirectionTest(unittest.TestCase):
     def test_postprocess_does_not_import_the_openai_extractor(self):
         """The dependency must not quietly reverse.

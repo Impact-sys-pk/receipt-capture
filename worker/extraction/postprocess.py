@@ -157,12 +157,26 @@ def resolve_invoice_date(invoice_date, invoice_date_raw, details, prefer_dayfirs
                         details = note
                 invoice_date = parsed_from_raw
 
+        # A raw string we could not read is worth reporting whatever the model's
+        # date looks like: it is the only signal that the deterministic path did
+        # not run, and saying "no raw" here would name the wrong cause. The date
+        # is left exactly as the model gave it, as in the branch below.
+        if invoice_date_raw and not parsed_from_raw:
+            note = (
+                f"ambiguous_invoice_date_unparsed_raw(raw={invoice_date_raw}, "
+                f"model_iso={invoice_date})"
+            )
+            if details:
+                details = f"{details}; {note}"
+            else:
+                details = note
+
         # If we do not have a raw string, do NOT guess by swapping ISO month/day because
         # that is effectively a coin flip and can corrupt correct model outputs. Instead,
         # if the model returned an ambiguous ISO date (both day and month <= 12), annotate
         # the extraction `details` to flag ambiguity so reviewers or downstream logic can
         # decide (or we can apply client-specific rules later).
-        if not parsed_from_raw and invoice_date:
+        elif not parsed_from_raw and invoice_date:
             try:
                 d = date.fromisoformat(invoice_date)
                 if d.day <= 12 and d.month <= 12:

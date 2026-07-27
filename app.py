@@ -587,6 +587,11 @@ def process_once():
                             validation_status=validation.status,
                             validation_notes=validation.notes,
                             details=getattr(extraction, 'details', None),
+                            # Without this the column is NULL and
+                            # find_failed_by_version() re-selects the receipt on
+                            # the next poll whatever the version. Design
+                            # document 3.12.
+                            pipeline_version=pipeline_version,
                         )
                         logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
 
@@ -623,6 +628,7 @@ def process_once():
                             raw_response=str(exc),
                             validation_status="failed",
                             validation_notes=[f"extraction error: {exc}"],
+                            pipeline_version=pipeline_version,  # design document 3.12
                         )
                         _log_receipt(
                             receipt_id, message_id, filename, "extraction_failed",

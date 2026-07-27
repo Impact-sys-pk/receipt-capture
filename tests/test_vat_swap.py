@@ -19,6 +19,7 @@ import config
 
 class VatSwapTest(unittest.TestCase):
     def setUp(self):
+        self._original_prefer_dayfirst = config.PREFER_DAYFIRST
         config.PREFER_DAYFIRST = True
         fd, path = tempfile.mkstemp(suffix='.jpg')
         os.close(fd)
@@ -27,6 +28,7 @@ class VatSwapTest(unittest.TestCase):
         self.path = path
 
     def tearDown(self):
+        config.PREFER_DAYFIRST = self._original_prefer_dayfirst
         try:
             os.remove(self.path)
         except Exception:

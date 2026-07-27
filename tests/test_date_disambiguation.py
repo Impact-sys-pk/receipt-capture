@@ -24,6 +24,7 @@ class FakeResponse:
 class DateDisambiguationTest(unittest.TestCase):
     def setUp(self):
         # Ensure we prefer day-first for this test
+        self._original_prefer_dayfirst = config.PREFER_DAYFIRST
         config.PREFER_DAYFIRST = True
         # Create a temporary dummy jpg file
         fd, path = tempfile.mkstemp(suffix='.jpg')
@@ -33,6 +34,7 @@ class DateDisambiguationTest(unittest.TestCase):
         self.path = path
 
     def tearDown(self):
+        config.PREFER_DAYFIRST = self._original_prefer_dayfirst
         try:
             os.remove(self.path)
         except Exception:

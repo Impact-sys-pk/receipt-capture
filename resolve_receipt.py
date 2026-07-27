@@ -291,6 +291,9 @@ def main():
             receipt_ref_number=corrected_values['receipt_ref_number'],
             receipt_time=corrected_values['receipt_time'],
             pipeline_version=pipeline_version,
+            # No automatic amendment was made here: an operator supplied these
+            # values. Explicit rather than defaulted, so the intent is readable.
+            details=None,
         )
 
         # Categorise

@@ -173,6 +173,9 @@ def process_extraction_result(
         receipt_ref_number=getattr(extraction, 'receipt_ref_number', None),
         receipt_time=getattr(extraction, 'receipt_time', None),
         pipeline_version=pipeline_version,
+        # What post-processing changed and why, e.g. an amount read as net that
+        # was really the gross. Unrecorded until now, see design document 3.11.
+        details=getattr(extraction, 'details', None),
     )
 
     filed_path = None

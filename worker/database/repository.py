@@ -151,9 +151,16 @@ class Repository:
         supplier_name, invoice_date, net_amount, vat_amount, gross_amount,
         currency, raw_response, validation_status, validation_notes,
         pipeline_version=None, receipt_ref_number=None, receipt_time=None,
-        update_status=True
+        update_status=True, details=None
     ):
         """Append an extraction row. Extractions are never modified in place.
+
+        details records the amendments post-processing made to this extraction,
+        for example auto_treated_amount_as_gross(...) where an amount read as net
+        was really the gross. The column existed but nothing wrote it, so those
+        amendments to two financial figures went unrecorded. Deliberately separate
+        from validation_notes: those are validation outcomes, these are changes the
+        system made. See design document 3.11.
 
         update_status=False records the attempt without re-stamping
         receipts.status. The auto-retry exception path needs this: a crashed
@@ -167,11 +174,13 @@ class Repository:
             INSERT INTO extractions
                 (extraction_id, receipt_id, engine, extracted_at, supplier_name, invoice_date,
                  net_amount, vat_amount, gross_amount, currency, raw_response,
-                 validation_status, validation_notes, pipeline_version, receipt_ref_number, receipt_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 validation_status, validation_notes, pipeline_version, receipt_ref_number, receipt_time,
+                 details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (extraction_id, receipt_id, engine, now, supplier_name, invoice_date,
               net_amount, vat_amount, gross_amount, currency, raw_response,
-              validation_status, notes_str, pipeline_version, receipt_ref_number, receipt_time))
+              validation_status, notes_str, pipeline_version, receipt_ref_number, receipt_time,
+              details))
         if update_status:
             self._conn.execute(
                 "UPDATE receipts SET status = ? WHERE receipt_id = ?",

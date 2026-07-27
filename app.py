@@ -586,6 +586,7 @@ def process_once():
                             raw_response=extraction.raw_response,
                             validation_status=validation.status,
                             validation_notes=validation.notes,
+                            details=getattr(extraction, 'details', None),
                         )
                         logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
 

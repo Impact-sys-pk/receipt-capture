@@ -15,7 +15,7 @@ from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
 from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
-from worker.extraction.openai_vision import OpenAIVisionExtractor
+from worker.extraction.factory import get_extractor
 from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import scan_inbox
@@ -485,7 +485,7 @@ def process_once():
 
     try:
         repo = Repository()
-        extractor = OpenAIVisionExtractor()
+        extractor = get_extractor()
         engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
 
         # Part 1: Auto-retry failed receipts with older pipeline_version

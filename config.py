@@ -36,6 +36,12 @@ IMAP_PASSWORD = os.environ["IMAP_PASSWORD"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 
+# Which extraction provider the factory builds. Must be a key in
+# worker/extraction/factory.py's registry; an unrecognised name fails loudly
+# rather than falling back to OpenAI. Switching from the UI is phase 2, see
+# design document 10.3.
+EXTRACTION_ENGINE = os.environ.get("EXTRACTION_ENGINE", "openai_vision")
+
 # Prefer day-first date interpretation (DD/MM/YY) when ambiguous (both day and month <= 12)
 # Can be overridden with environment variable PREFER_DAYFIRST=0
 PREFER_DAYFIRST = os.environ.get("PREFER_DAYFIRST", "1") in ("1", "true", "True")

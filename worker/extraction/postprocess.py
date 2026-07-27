@@ -18,8 +18,11 @@ are load-bearing: a numeric coercion failure must leave the values untouched
 rather than fail the extraction.
 """
 
+import logging
 import re
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 
 def parse_ambiguous_date(raw: str, prefer_dayfirst: bool) -> str | None:
@@ -124,8 +127,11 @@ def apply_vat_inclusive_swap(net, vat, gross, details):
                 else:
                     details = note
     except Exception:
-        # If any numeric coercion fails, leave values unchanged
-        pass
+        # If any numeric coercion fails, leave values unchanged. Logged rather
+        # than swallowed: a genuine error here otherwise looks exactly like a
+        # receipt that needed no correction. The values themselves are not
+        # logged; a receipt is client data.
+        logger.warning("vat-inclusive swap skipped, could not process the amounts", exc_info=True)
 
     return net, vat, gross, details
 
@@ -187,8 +193,13 @@ def resolve_invoice_date(invoice_date, invoice_date_raw, details, prefer_dayfirs
                         details = note
                     # leave invoice_date unchanged
             except Exception:
-                pass
+                # A model date that is not ISO at all reaches here. Left
+                # unchanged, and not treated as ambiguous, but no longer silent.
+                logger.warning(
+                    "invoice_date ambiguity check skipped, the model date is not an ISO date",
+                    exc_info=True,
+                )
     except Exception:
-        pass
+        logger.warning("invoice_date resolution skipped, could not process the date", exc_info=True)
 
     return invoice_date, details

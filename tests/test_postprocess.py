@@ -11,6 +11,7 @@ criterion (design test 12); these tests are the direct cover the functions never
 had.
 """
 
+import logging
 import subprocess
 import sys
 import unittest
@@ -241,6 +242,53 @@ class AmbiguityNoteTest(unittest.TestCase):
         _, details = resolve_invoice_date("2026-09-05", "not a date", "model prose", True)
         self.assertTrue(details.startswith("model prose; "))
         self.assertIn("ambiguous_invoice_date_unparsed_raw", details)
+
+
+class SilentHandlerTest(unittest.TestCase):
+    """The broad handlers stay, but they must not swallow in silence.
+
+    A genuine error from a shape the next provider returns used to produce no
+    line in data/run.log, no note in details, and an extraction that looked as
+    though it simply had nothing to correct.
+    """
+
+    def test_happy_path_logs_nothing(self):
+        logger = logging.getLogger("worker.extraction.postprocess")
+        with self.assertNoLogs(logger, level="DEBUG"):
+            apply_vat_inclusive_swap(8.0, 1.33, None, None)
+            apply_vat_inclusive_swap(100.0, 20.0, None, None)
+            resolve_invoice_date("2026-09-05", "09/05/26", None, True)
+            resolve_invoice_date("2026-09-05", None, None, True)
+            parse_ambiguous_date("09/05/26", True)
+
+    def test_vat_swap_warns_once_when_coercion_fails(self):
+        with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
+            net, vat, gross, details = apply_vat_inclusive_swap("eight", "one", None, None)
+        # Still leaves the values untouched rather than failing the extraction.
+        self.assertEqual((net, vat, gross, details), ("eight", "one", None, None))
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("vat", logs.output[0].lower())
+        self.assertIsNotNone(logs.records[0].exc_info, "the traceback must be attached")
+
+    def test_date_resolution_warns_when_something_raises(self):
+        class Hostile:
+            """Not a string, and raises on the truthiness test the code performs."""
+            def __bool__(self):
+                raise RuntimeError("hostile value")
+
+        with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
+            invoice_date, details = resolve_invoice_date("2026-09-05", Hostile(), None, True)
+        self.assertEqual(invoice_date, "2026-09-05")
+        self.assertIsNone(details)
+        self.assertEqual(len(logs.records), 1)
+        self.assertIsNotNone(logs.records[0].exc_info)
+
+    def test_no_log_line_carries_the_document(self):
+        # A receipt is client data. The exception and the field being processed
+        # belong in the log; the payload does not.
+        with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
+            apply_vat_inclusive_swap("eight", "one", None, "supplier prose from the receipt")
+        self.assertNotIn("supplier prose from the receipt", logs.output[0])
 
 
 class DependencyDirectionTest(unittest.TestCase):

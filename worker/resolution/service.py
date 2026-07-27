@@ -366,6 +366,12 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
 
         if validation.status != "ok":
             attempt_id = str(uuid.uuid4())
+            # possible_duplicate is a statement about the relationship between two
+            # receipts, not about the validity of one, so validation must not
+            # overwrite it. Overwriting would also hand a receipt a human has
+            # already examined back to the pipeline: possible_duplicate is not
+            # auto-retry eligible and needs_review is.
+            preserve_status = receipt.get("status") == "possible_duplicate"
             repo.save_extraction(
                 extraction_id=attempt_id,
                 receipt_id=receipt_id,
@@ -382,6 +388,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 receipt_ref_number=merged["receipt_ref_number"],
                 receipt_time=merged["receipt_time"],
                 pipeline_version=pipeline_version,
+                update_status=not preserve_status,
             )
             _record_event(
                 repo, receipt_id, actor, source, "resolve", "still_invalid",

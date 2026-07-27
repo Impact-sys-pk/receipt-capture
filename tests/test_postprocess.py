@@ -54,6 +54,56 @@ class ParseAmbiguousDateTest(unittest.TestCase):
         self.assertIsNone(parse_ambiguous_date("45/45/26", True))
 
 
+class IsoShapedRawTest(unittest.TestCase):
+    """An ISO-shaped raw string used to defeat the whole deterministic path.
+
+    parse_ambiguous_date("2026-05-09", ...) split to 2026, 5, 9, read the 9 as a
+    two-digit year, and returned None. So for a receipt that prints its date in
+    ISO form, and whose raw string the model therefore returns in ISO form, the
+    day-first fix did not apply and the receipt fell through to the ambiguity
+    annotation. It failed safe and it failed silently.
+    """
+
+    def test_iso_raw_parses_the_same_whatever_the_convention(self):
+        # Four digits first can only be a year, so there is nothing ambiguous
+        # and prefer_dayfirst does not apply.
+        for prefer_dayfirst in (True, False):
+            with self.subTest(prefer_dayfirst=prefer_dayfirst):
+                self.assertEqual(parse_ambiguous_date("2026-05-09", prefer_dayfirst), "2026-05-09")
+                self.assertEqual(parse_ambiguous_date("2026/05/09", prefer_dayfirst), "2026-05-09")
+                self.assertEqual(parse_ambiguous_date("2026-5-9", prefer_dayfirst), "2026-05-09")
+
+    def test_iso_raw_with_an_impossible_month_returns_none(self):
+        self.assertIsNone(parse_ambiguous_date("2026-13-01", True))
+        self.assertIsNone(parse_ambiguous_date("2026-02-30", True))
+
+    def test_day_first_cases_are_unaffected(self):
+        # Neither starts with four digits, so neither reaches the ISO branch.
+        self.assertEqual(parse_ambiguous_date("09/05/26", True), "2026-05-09")
+        self.assertEqual(parse_ambiguous_date("09/05/26", False), "2026-09-05")
+        self.assertEqual(parse_ambiguous_date("9-5-2026", True), "2026-05-09")
+        self.assertEqual(parse_ambiguous_date("9-5-2026", False), "2026-09-05")
+
+    def test_iso_raw_agreeing_with_the_model_appends_no_note(self):
+        # A note recording a change that did not happen is the same class of
+        # problem as a note that names the wrong cause.
+        invoice_date, details = resolve_invoice_date("2026-05-09", "2026-05-09", None, True)
+        self.assertEqual(invoice_date, "2026-05-09")
+        self.assertIsNone(details)
+
+    def test_iso_raw_disagreeing_with_the_model_wins_and_says_so(self):
+        invoice_date, details = resolve_invoice_date("2026-09-05", "2026-05-09", None, True)
+        self.assertEqual(invoice_date, "2026-05-09")
+        self.assertIn("auto_parsed_invoice_date_from_raw", details)
+        self.assertIn("raw=2026-05-09 -> 2026-05-09", details)
+
+    def test_agreeing_non_iso_raw_also_appends_no_note(self):
+        # Same rule, reached through the ambiguous branch.
+        invoice_date, details = resolve_invoice_date("2026-05-09", "09/05/26", None, True)
+        self.assertEqual(invoice_date, "2026-05-09")
+        self.assertIsNone(details)
+
+
 class VatInclusiveSwapTest(unittest.TestCase):
     def test_swap_fires_when_the_amount_reads_as_gross(self):
         # net=8.00 with vat=1.33 implies 16.6% on 8.00, but 20% on 6.67, so the

@@ -36,6 +36,19 @@ def parse_ambiguous_date(raw: str, prefer_dayfirst: bool) -> str | None:
     parts = [p for p in parts if p]
     if len(parts) != 3:
         return None
+
+    # An ISO-shaped raw string is not ambiguous: four digits first can only be a
+    # year, so prefer_dayfirst does not apply. Without this branch, 2026-05-09
+    # split to 2026, 5, 9, read the 9 as a two-digit year, failed both of the
+    # branches below and returned None, so the deterministic path did nothing at
+    # all for a receipt that prints its date in ISO form.
+    if len(parts[0]) == 4 and len(parts[1]) in (1, 2) and len(parts[2]) in (1, 2):
+        try:
+            return date(int(parts[0]), int(parts[1]), int(parts[2])).isoformat()
+        except Exception:
+            # 2026-13-01 and 2026-02-30 return None, as they did before.
+            return None
+
     try:
         a, b, c = [int(p) for p in parts]
     except Exception:
@@ -132,11 +145,16 @@ def resolve_invoice_date(invoice_date, invoice_date_raw, details, prefer_dayfirs
         if invoice_date_raw:
             parsed_from_raw = parse_ambiguous_date(invoice_date_raw, prefer_dayfirst)
             if parsed_from_raw:
-                note = f"auto_parsed_invoice_date_from_raw(raw={invoice_date_raw} -> {parsed_from_raw})"
-                if details:
-                    details = f"{details}; {note}"
-                else:
-                    details = note
+                # Only note it when it actually changes the date. An ISO raw
+                # string usually agrees with the model's own ISO reading, and a
+                # note recording a change that did not happen is the same class
+                # of problem as a note naming the wrong cause.
+                if parsed_from_raw != invoice_date:
+                    note = f"auto_parsed_invoice_date_from_raw(raw={invoice_date_raw} -> {parsed_from_raw})"
+                    if details:
+                        details = f"{details}; {note}"
+                    else:
+                        details = note
                 invoice_date = parsed_from_raw
 
         # If we do not have a raw string, do NOT guess by swapping ISO month/day because

@@ -28,6 +28,13 @@ BACKUPS_ROOT = SYSTEM_ROOT / "Backups"
 PIPELINE_STATUS_PATH = SYSTEM_ROOT / "pipeline-status.json"
 PIPELINE_LOCKFILE = SYSTEM_ROOT / "pipeline.lock"
 
+# Where IntelliBooks Desktop writes its resolution notes, per design document 12.2.
+# Deliberately not created at import, unlike the directories below: the pipeline
+# creates it on demand, and importing config should not make a folder in OneDrive
+# on a machine that has never run the back-feed. An empty RESOLUTIONS_DIR in .env
+# means "use the default", not "use the current directory".
+RESOLUTIONS_DIR = Path(os.environ.get("RESOLUTIONS_DIR") or (SYSTEM_ROOT / "Resolutions"))
+
 IMAP_HOST = os.environ["IMAP_HOST"]
 IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
 IMAP_USERNAME = os.environ["IMAP_USERNAME"]

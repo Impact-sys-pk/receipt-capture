@@ -57,6 +57,7 @@ class TempEnvironment:
             "RUNS_LOG": config.RUNS_LOG,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
             "BACKUPS_ROOT": config.BACKUPS_ROOT,
+            "RESOLUTIONS_DIR": config.RESOLUTIONS_DIR,
         }
         config.DB_PATH = self.path / "receipts.db"
         config.CLIENTS_ROOT = self.path / "Clients"
@@ -68,6 +69,9 @@ class TempEnvironment:
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
         config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
         config.BACKUPS_ROOT = self.path / "Backups"
+        # process_once() consumes back-feed notes and creates this folder on
+        # demand, so without the redirect the suite makes one in OneDrive.
+        config.RESOLUTIONS_DIR = self.path / "Resolutions"
         config.CLIENTS_BY_CODE = {
             "ABC": {
                 "client_name": "Test Client", "business_type": "UNSPECIFIED",

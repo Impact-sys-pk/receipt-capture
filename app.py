@@ -21,6 +21,7 @@ from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler
+from worker.resolution.service import apply_resolution_note
 from worker.filing import (
     determine_tax_year,
     file_receipt,
@@ -230,6 +231,117 @@ def _move_inbox_pair_to_processed(intake) -> None:
             # An orphaned sidecar is re-read by scan_inbox() on every poll, but it
             # produces no receipt and costs nothing, so this is a warning.
             logger.warning(f"could not move inbox sidecar {sidecar} to {destination}: {exc}")
+
+
+NOTE_PROCESSED_DIRNAME = "processed"
+NOTE_FAILED_DIRNAME = "failed"
+
+
+def _unique_note_destination(directory: Path, name: str) -> Path:
+    """Where to put a note in `directory` without overwriting one already there.
+
+    Nothing in Resolutions\\ is ever deleted, and that includes being deleted by
+    being written over. Two notes can share a name: the same note re-delivered, or
+    a note the operator copied back to be retried.
+    """
+    stem = Path(name).stem
+    suffix = Path(name).suffix
+    index = 1
+    while True:
+        candidate = directory / (name if index == 1 else f"{stem}-{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def _move_note(note_path: Path, directory_name: str, error_text: str | None = None) -> None:
+    """Move a note into processed\\ or failed\\, never delete it.
+
+    An error writes a `.error.txt` beside it, named after the note as it landed, so
+    a human reading failed\\ can see which note the reason belongs to.
+    """
+    target_dir = note_path.parent / directory_name
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        destination = _unique_note_destination(target_dir, note_path.name)
+        shutil.move(str(note_path), str(destination))
+    except OSError as exc:
+        # The note stays in the queue and is tried again next poll. Idempotency in
+        # 12.3 step 3 is what makes that safe.
+        logger.error(f"could not move resolution note {note_path} to {directory_name}\\: {exc}")
+        return
+
+    if error_text is not None:
+        try:
+            destination.with_name(destination.name + ".error.txt").write_text(
+                error_text, encoding="utf-8"
+            )
+        except OSError as exc:
+            logger.error(f"could not write the error file for {destination}: {exc}")
+
+
+def _consume_resolution_notes(
+    repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]
+) -> None:
+    """Apply the resolution notes IntelliBooks Desktop has written. Design document 12.3.
+
+    Runs at the start of process_once(), before _retry_failed_receipts(), so a
+    receipt resolved by note is never re-extracted in the cycle it was resolved.
+    That ordering is the whole reason this runs first and it is worth a comment at
+    the call site too.
+
+    Every failure moves the note to failed\\ with the reason beside it and logs at
+    ERROR: a note sitting in failed\\ means the database and the books disagree,
+    which is the one thing this contract exists to prevent. Nothing is ever deleted.
+    """
+    resolutions_dir = config.RESOLUTIONS_DIR
+    try:
+        resolutions_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.error(f"cannot reach the resolutions folder {resolutions_dir}: {exc}")
+        return
+
+    # Oldest first by filename. The name is {receipt_id}_{unix_ms}.json, so this is
+    # time order per receipt, which is the order that matters: two notes for one
+    # receipt must be applied in the order they were made.
+    notes = sorted(
+        (path for path in resolutions_dir.glob("*.json") if path.is_file()),
+        key=lambda path: path.name,
+    )
+    if not notes:
+        return
+
+    logger.info(f"resolution notes to apply: {len(notes)}")
+
+    for note_path in notes:
+        try:
+            payload = json.loads(note_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.error(f"unreadable resolution note {note_path.name}: {exc}")
+            stats["notes_failed"] = stats.get("notes_failed", 0) + 1
+            _move_note(note_path, NOTE_FAILED_DIRNAME, f"could not read this note: {exc}\n")
+            continue
+
+        outcome = apply_resolution_note(repo, categorisation_engine, payload)
+
+        if outcome.outcome in ("filed", "discarded"):
+            logger.info(
+                f"resolution note {note_path.name} applied: {outcome.outcome}, {outcome.message}"
+            )
+            stats["notes_applied"] = stats.get("notes_applied", 0) + 1
+            _move_note(note_path, NOTE_PROCESSED_DIRNAME)
+        else:
+            logger.error(
+                f"resolution note {note_path.name} not applied ({outcome.outcome}): "
+                f"{outcome.error_detail or outcome.message}"
+            )
+            stats["notes_failed"] = stats.get("notes_failed", 0) + 1
+            _move_note(
+                note_path, NOTE_FAILED_DIRNAME,
+                f"outcome: {outcome.outcome}\n"
+                f"receipt_id: {outcome.receipt_id}\n"
+                f"reason: {outcome.error_detail or outcome.message}\n",
+            )
 
 
 def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]) -> None:
@@ -542,12 +654,20 @@ def process_once():
         "auto_retry_errors": 0,
         "possible_duplicates_found": 0,
         "retry_exhausted_count": 0,
+        "notes_applied": 0,
+        "notes_failed": 0,
     }
 
     try:
         repo = Repository()
         extractor = get_extractor()
         engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
+
+        # Part 0: the resolution back-feed, design document 12.3. Before the retry
+        # pass, so a receipt a human resolved in IntelliBooks Desktop is never
+        # re-extracted in the same cycle it was resolved. Reordering these two lines
+        # costs an OpenAI call per resolved receipt and overwrites the decision.
+        _consume_resolution_notes(repo, engine, stats)
 
         # Part 1: Auto-retry failed receipts with older pipeline_version
         _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)

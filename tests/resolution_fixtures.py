@@ -33,6 +33,7 @@ class TempEnvironment:
         self.path = Path(self._temp.name)
         self._saved = {
             "DB_PATH": config.DB_PATH,
+            "ONEDRIVE_ROOT": config.ONEDRIVE_ROOT,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
             "DATA_DIR": config.DATA_DIR,
@@ -40,10 +41,13 @@ class TempEnvironment:
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "RECEIPT_INBOX_ROOT": config.RECEIPT_INBOX_ROOT,
+            "RESOLUTIONS_DIR": config.RESOLUTIONS_DIR,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
             "BACKUPS_ROOT": config.BACKUPS_ROOT,
         }
         config.DB_PATH = self.path / "receipts.db"
+        # The practice root. A note's filed_path is relative to it, per 12.2.
+        config.ONEDRIVE_ROOT = self.path
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
         # DATA_DIR as well as LOGS_DIR: attach_log_handler() resolves DATA_DIR at
@@ -57,9 +61,11 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        # Under OneDrive in real life. The inbox is deliberately not created
-        # here: the tests that use it create the client folders they need.
+        # Under OneDrive in real life. The inbox and the Resolutions folder are
+        # deliberately not created here: the code under test creates them on
+        # demand, and the tests that assert that must start without them.
         config.RECEIPT_INBOX_ROOT = self.path / "Receipt Inbox"
+        config.RESOLUTIONS_DIR = self.path / "Resolutions"
         config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
         config.BACKUPS_ROOT = self.path / "Backups"
         config.CLIENTS_BY_CODE = {

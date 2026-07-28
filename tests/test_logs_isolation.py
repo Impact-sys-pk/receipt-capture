@@ -78,5 +78,54 @@ class LogsIsolationTest(unittest.TestCase):
         self.assertEqual(config.RUNS_LOG, config.LOGS_DIR / "runs.ndjson")
 
 
+# Everything process_once() creates or writes outside the test's own temp tree.
+# Three of these live in OneDrive and two are read by IntelliBooks Desktop.
+PROCESS_ONCE_WRITES = (
+    "DB_PATH",
+    "LOGS_DIR",
+    "RUNS_LOG",
+    "PIPELINE_STATUS_PATH",
+    "BACKUPS_ROOT",
+    "RESOLUTIONS_DIR",
+)
+
+
+class ProcessOnceRedirectionTest(unittest.TestCase):
+    """Every test that drives process_once() must redirect what it writes.
+
+    This guard exists because the same leak has now happened three times: the
+    ndjson event logs fixed in 2d19521, data/*.log found at step 9, and the
+    Resolutions folder found at step 10, which appeared in OneDrive the moment
+    process_once() started consuming back-feed notes. Each time the redirect list
+    grew and three hand-rolled test environments did not grow with it.
+
+    Structural rather than behavioural on purpose: a before-and-after snapshot
+    passes once the stray folder exists, so it cannot catch the case that matters.
+    """
+
+    def test_every_test_that_drives_process_once_redirects_what_it_writes(self):
+        tests_dir = Path(__file__).parent
+        fixtures = (tests_dir / "resolution_fixtures.py").read_text(encoding="utf-8")
+
+        checked = 0
+        for module in sorted(tests_dir.glob("test_*.py")):
+            source = module.read_text(encoding="utf-8")
+            if "process_once" not in source:
+                continue
+            # Modules that use the shared fixture inherit its redirects.
+            if "resolution_fixtures" in source:
+                source += fixtures
+            checked += 1
+            for name in PROCESS_ONCE_WRITES:
+                with self.subTest(module=module.name, config_name=name):
+                    self.assertIn(
+                        f"config.{name} =", source,
+                        f"{module.name} drives process_once() without redirecting "
+                        f"config.{name}, so the suite writes to the live one",
+                    )
+
+        self.assertGreater(checked, 0, "the guard found nothing to check, so it guards nothing")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,71 @@
 # Intellitax Practice Console — Design
 
 **Date:** 2026-07-25
-**Status:** Design agreed with Paul. Ready for implementation.
-**Supersedes:** `2026-07-25_DASHBOARD_DESIGN.md` (earlier draft in this repo, delete it).
+**Version:** 1.3, amended 2026-07-27
+**Status:** Design agreed with Paul. Phase 0 in progress on `feat/console-phase0`.
+**Supersedes:** `2026-07-25_DASHBOARD_DESIGN.md` (earlier draft in this repo, deleted).
+
+## Amendment record
+
+Superseded wording is kept visible with its reason, so the decision trail survives. Same convention as `IntelliBooks-System-Specification.md`.
+
+### v1.1, 2026-07-26
+
+| # | Section | Change | Why |
+|---|---|---|---|
+| 1 | 16, step 0 | The merge into `main` is cancelled. Build continues on `feat/console-phase0`, cut from `fix/imap-message-id-dedup`. | `main` turned out to be 42 commits behind that branch and diverged by one, not six behind as believed. A branch cut from `main` had left the working tree missing 13 files of the built system. See the note in section 16. |
+| 2 | 16, steps 1, 2, 7 | Recorded as built, with commit hashes. | Phase 0 step 1 landed on 2026-07-26. Step 7's `BaseExtractor.name` came early because the step 1 fix needs it. |
+| 3 | 3.1 | Records the missing-file status decision and the branch B implementation deviation. | Both were live questions during implementation and the answers belong in the spec, not only in a chat. |
+| 4 | 4.3 | The claim that a swallowed traceback reaches `data/run.log` is corrected. | Nothing wrote that file at all. It now has a handler, but only on the pipeline entry point. |
+| 5 | 6.5, new | Records the logging requirement, the Windows rotation constraint, the dead `config.RECEIPTS_LOG` and the import-time `config.RUNS_LOG`. | Three of the four callers of the resolution service would not write the log the design relies on, and two processes cannot share a rotating handler on Windows. |
+| 6 | 15 | Test count 17 to 27. Adds the log-redirection rule for tests. | The suite grew with phase 0 step 1. Tests were writing synthetic rows into the live operational logs, which the console reads. |
+| 7 | 17.4 | Two new open questions: how the CLI expresses "clear this field", and whether `add_validation_note()` should stop mutating extraction rows in place. | Both surfaced during implementation. Neither blocks phase 0. |
+
+### v1.2, 2026-07-27
+
+| # | Section | Change | Why |
+|---|---|---|---|
+| 8 | 4.3 step 6, 15 test 16 | **Decided.** `add_validation_note()` is retired. A `still_invalid` outcome appends a new extraction row carrying the notes. | Paul's decision, 2026-07-27. The method runs `UPDATE extractions SET validation_notes` on an existing row, which `CLAUDE.md` forbids. A resolution attempt that failed validation is an event worth a row, not a footnote appended to the row it disagrees with. Phase 0 step 1 already took this route for the missing-file branch. |
+| 9 | 16, step 3 | Recorded as built, with commit hashes. | Landed 2026-07-27. |
+| 10 | 4.2 | Three unstated points settled: the GL fields on `Corrections` are not read from `raw`, `receipt_time` has no format rule, and an empty string on the CLI flags path now clears a field. | All three were undefined, and the console form at step 16 builds against this contract. |
+| 11 | 3.5, 3.6, 3.10 | Implementation detail for step 4: where the cleanup helper lives, how to locate the pair safely, which statuses `review_count` counts, and 3.10 folded into the same step. | Reconstructing the review filename is unsafe because `_unique_path()` may have appended a suffix. Worth stating before someone deletes the wrong file. |
+| 12 | 17.4 | The `export_bookkeeping.py` question is answered, and two defects in it recorded. | It reads no category at all, so 11.2 cannot reach it. The question changes shape rather than closing. |
+
+### v1.3, 2026-07-27
+
+| # | Section | Change | Why |
+|---|---|---|---|
+| 13 | 3.5 | The two matching rules in amendment 11 contradicted each other on the same input. Corrected, with the ordering that resolves them. | One rule said fall back to `original_filename` for sidecars with no `receipt_id`; the other said ignore sidecars with no `receipt_id`. A different implementer would reasonably have skipped them outright and silently lost the fallback. Flagged by the implementation session, and it was a drafting error here. |
+| 14 | 3.6 | Clarifies that `review_count` feeds `pipeline-status.json`, which IntelliBooks Desktop reads, and is not the console queue. | Amendment 11 left it open to read as though it defined what an operator sees. The queue is 8.2, which already includes `retry_exhausted`. |
+| 15 | 3.7 | Records what the `category` key actually holds across the 32 filed sidecars on disk, and the four call sites the fix has to cover. | The section describes one failure mode. There are four kinds of value in that field in live data, and a fix to the writer changes nothing already filed. |
+| 16 | 16, step 4 | Recorded as built, with commit hashes. | Landed 2026-07-27. |
+| 17 | 15 | Test count 27 to 64. | Steps 3 and 4 added 37 tests. |
+| 18 | 17.4, 3.7 | Asked and closed the same day: no backfill. Every filed receipt and sidecar on disk is test data. | Paul confirmed on 2026-07-27. Nothing to preserve, so 3.7's table is evidence of how the format drifted rather than a data problem. |
+| 19 | Dates | v1.2's stamps corrected from 26 to 27 July. | Steps 3 and 4 were committed on 27 July. v1.1's 26 July stamps are correct and unchanged. |
+| 20 | 12.4, 17.4 | Records that IntelliBooks Desktop writes its own sidecar when it files, in a different shape, deletes the Review pair itself, and that its reader already tolerates the new format. New question on which shape wins. | Read from `IntelliBooks-Desktop-v3.html` lines 1141 to 1158 and 1760 to 1803. Recorded nowhere, and 12.4 asserts the reverse direction needs nothing. |
+| 21 | 3.7 | Two gaps the implementation exposed: what the review path writes, and what happens when a code has no name. | Both are consequences of carrying two keys where there was one, and neither was described. |
+| 22 | 16, step 5 | Recorded as built, with commit hashes. | Landed 2026-07-27. |
+| 23 | 10.2, 16 step 6 | Line boundaries corrected from "98-214" to the three actual ranges. Step 6 recorded as built. Seven defects found during the move recorded, none fixed. | The stated range began eleven lines early, inside the JSON parse. The seven findings came from reading code that had not been read closely since it was written, and they would otherwise live only in a chat log. |
+| 24 | 17.4 | New decision: whether to fix the two date-handling defects, add logging to the moved handlers, and stop the two test files leaking `PREFER_DAYFIRST`. Decided the same day: yes, as step 6b. | Findings 1, 2, 6 and 7 in 10.2. All small, all in one area, and two of them mean an agreed fix silently does not apply. |
+| 25 | 3.11 new, 8.4, 16 step 6c | `extractions.details` is never written, so every automatic amendment the pipeline makes goes unrecorded. New phase 0 item. | Found while verifying step 6b. The column exists with a migration, and `save_extraction()` has no parameter for it. `apply_vat_inclusive_swap()` rewrites two financial figures with no record that it did. Two rows from 19 July prove the write once worked, so it is a regression. |
+| 26 | 16, step 6b | Recorded as built, with commit hashes. | Landed 2026-07-27. |
+| 27 | 3.12 new, 16 step 7b | Two extraction writes on the embedded-image path omit `pipeline_version`, so their receipts are retried once for nothing. New phase 0 item. | Flagged by the implementation session for one call site; verification found two. Same family as 3.1, one wasted retry rather than an endless loop. |
+| 28 | 5, 16 | `resolution_events` moves from step 11 to step 8. | 4.3 step 14 has the resolution service write to a table the build order created three steps later. The service could not have been built as specified. |
+| 29 | 3.11, 10.3, 16 steps 6c and 7 | Recorded as built. `config.EXTRACTION_ENGINE` recorded as the engine's source of truth, and that the phase 2 `settings` table must replace that read rather than join it. The sidecar asymmetry `details` creates is stated deliberately. | Two sources of truth for the running engine is the bug 10.1 exists to prevent, and an undocumented asymmetry gets reported as a defect by whoever meets it first. |
+| 30 | 4.3 new step 1a, 4.2 outcomes | `resolve_receipt()` must refuse a receipt that is already filed, returning a new `already_filed` outcome. | Nothing in the fifteen steps inspected `filed_path`, so the service would re-file an `ok` receipt and leave a second copy on disk. That is the double-filing the whole design exists to prevent. Found by the implementation session. |
+| 31 | 4.3 step 6 | On `still_invalid`, preserve a `possible_duplicate` status and let the others follow `validate()`. 8.4's duplicate comparison keys on `duplicate_of`, not `status`. | Overwriting it would hide the duplicate comparison and make the receipt auto-retry eligible after a human had already looked at it. |
+| 32 | 4.3 steps 9 and 13 | The GL override trigger and the source of `vendor_code` specified. | Both were left to the implementer, and step 13 could not be built without choosing. |
+| 33 | 5.1 | `reason TEXT` added. | `discard_receipt()` takes a reason the table had nowhere to store. |
+| 34 | 4.2 | `ResolutionView.extraction` widened to `dict | None`. | A receipt can exist with no extraction, and the read side should not decide policy. |
+| 35 | 16, steps 7b and 8 | Recorded as built, with commit hashes. | Landed 2026-07-27. |
+| 36 | 4.3 step 1a, 5 | `receipts.filed_at` added. | 4.3's `already_filed` message promises a date the schema cannot supply, and 8.3 already lists a "filed" column. `mark_receipt_filed()` is the single writer, so it costs one line. |
+| 37 | 4.4 | `confirm_duplicated_action()` must actually be called. `actor` on a CLI resolution comes from `getpass.getuser()` with a `--actor` override. The "~100 lines" target is corrected to what 4.4's own requirements allow. | The function has never been called, by the old CLI or the new one, so a `possible_duplicate` receipt goes straight to the correction prompts and is filed without anyone being asked. That is the one place the CLI can still file a duplicate silently. |
+| 38 | 4.4, 6.5 | The CLI reconfigures stdout to UTF-8. | `✓` and `✗` raised `UnicodeEncodeError` on a cp1252 console **after** filing, so the work succeeded and the operator got a traceback. Pre-existing, present at `60df040`. |
+| 39 | 16, steps 8b and 9 | Recorded as built, with commit hashes. | Landed 2026-07-27. |
+| 40 | 3.13 new, 16 step 9c | A folder-intake receipt that is not `ok` leaves its original in the inbox and is re-extracted every poll. New phase 0 item, fix decided the same day. | Found live on 2026-07-28 while creating a Review item, caught before the second pass. The folder-intake twin of 3.1. |
+| 41 | 22 | The Claude Code permissions setup is recorded in `CLAUDE.md` rather than the operator guide. | Allow rules in `.claude/settings.json` are ignored unless the workspace is trusted; the local file's are not. Three attempts to find, worth writing down. |
+| 42 | 12.4, 17.4 | Change log item 19 confirmed working live, with five details from the real sidecar that reading the code did not show. The two-decimal-places rule. The blank-category question re-framed after Paul corrected the accounting. | First live test since 19 July. Receipts do not map to HMRC boxes or the P&L; transactions do. The risk of a blank category sits at `postReceiptToCashbook()`, not at filing. |
+| 43 | 13, 14, 17.5 new | Category identity: no rename feature exists and a category has no identifier, so codes are a prerequisite for renaming rather than an improvement to it. The delete guard misses receipts and rules. No migration of existing references is needed. New 17.5 records what the clean-slate reset must and must not touch. | Paul's three requirements, 2026-07-28. All books data is test data and will be cleared, which removes the migration but makes the reset itself worth planning: the vendor mappings are real practice knowledge, and clearing `processed_attachments` while anything sits in `INBOX` would re-extract it at one OpenAI call each. |
 
 Grounded in a direct read of `app.py`, `resolve_receipt.py`, `worker/database/repository.py`, `worker/database/schema.py`, `worker/extraction_pipeline.py`, `worker/validation/rules.py`, `worker/extraction/base.py`, `worker/extraction/openai_vision.py`, `config.py`, plus `IntelliBooks-Desktop-v3.html` and its `Docs\` folder, at commit on branch `fix/imap-message-id-dedup`.
 
@@ -92,6 +155,14 @@ repo.save_extraction(
 
 **Test.** Mock the extractor to raise. Run `_retry_failed_receipts()` twice under the same `pipeline_version`. Assert the extractor was called on the first pass and **not** on the second. Add a second test for the missing-file branch.
 
+**Built 2026-07-26 in `787493f`, with `tests/test_auto_retry_no_loop.py`.** Two points settled during implementation.
+
+*Branch B keeps its note in the new row, not on the old one.* The design above said "same fix" and left `add_validation_note()` in place. It should not have. That method at `repository.py:571` runs `UPDATE extractions SET validation_notes = ?` against an existing row, so the original behaviour mutated an append-only row on every poll, and keeping both calls would have mutated the old row **and** written a new one. The missing-file note now goes into the new `failed` extraction row and names the path. The earlier extraction is left untouched. See 17.4 for the wider question about `add_validation_note()`.
+
+*A receipt whose original file has gone keeps its existing status.* It was tempting to send it straight to `failed` or `retry_exhausted`. Both are wrong. `retry_exhausted` means "we stopped retrying because of age" and would misreport why. `failed` would erase a `needs_review` receipt's real finding about the document. Because the status is untouched, the receipt still appears in the queue at 8.2, where the validation note explains that the original is missing, which is where an operator should see it. The cost is one extraction row per `pipeline_version` change and no API calls. No further change.
+
+*Known gap, accepted.* If `save_extraction()` itself raises inside the exception handler, it propagates out and abandons the remaining receipts in that pass. The `finally` still releases the lock, and `process_once()` catches it, so the worst case is one logged error per run. Not worth a nested `try` until it happens.
+
 ### 3.2 A corrected value of zero is silently ignored
 
 `resolve_receipt.py` lines 209-216 use `corrections.get(k) or extraction.get(k)`. `0.0` is falsy, so `--vat 0` keeps the wrong extracted VAT. Line 192's `if any([...])` compounds it: `--vat 0` alone fails the truthiness test and drops into interactive mode.
@@ -124,11 +195,35 @@ A correction records `engine='manual_correction'` and nothing about who made it.
 
 **Fix.** The resolution service removes the pair on a successful resolve or discard. Local file I/O, no IMAP involved. Log and continue if the files are already gone.
 
+> **Amended 2026-07-27, implementation detail for step 4.** The service does not exist until step 8, so the helper goes in `worker/filing.py`, next to `file_review()` which writes the pair, and `resolve_receipt.py` calls it now. Step 8's service calls the same function. One implementation, four callers, per 4.1.
+>
+> **Do not locate the pair by reconstructing the filename.** `file_review()` at `worker/filing.py:114` names the image through `_unique_path()`, so a second review item for the same original filename becomes `{stem}-2{ext}`, and its sidecar `{stem}-2{ext}.review.json`. Rebuilding `{stem}{ext}` would miss that file, or worse, delete a different receipt's pair. Locate it by reading each `*.review.json` in that client's `Review` folder and matching the receipt: `extracted_values.receipt_id`, which `make_enriched_sidecar()` populates, falling back to `extracted_values.original_filename` for older sidecars. Delete the sidecar and the image it belongs to, together, and never delete an image whose sidecar you have not matched.
+>
+> `file_review()` should also start writing `receipt_id` at the top level of the payload, so a future reader does not have to reach into `extracted_values`. Forward-only: sidecars already on disk will not have it, hence the fallback.
+>
+> Note two things while in this area. `write_review_file()` at `worker/filing.py:142` is never called from anywhere in tracked source, so it is dead code that a reader could easily mistake for the live writer. And `app.py:666` files a **statement** to Review with `intake.sidecar or {}`, so that payload has no `receipt_id` and no receipt row exists. The cleanup must ignore it rather than fail on it.
+
+> **Corrected 2026-07-27, and built in `dce1fdc`.** The two rules above contradict each other on the same input: fall back to `original_filename` for sidecars with no `receipt_id`, and also ignore any sidecar with no `receipt_id`. A sidecar with no id is the same file in both sentences. Flagged by the implementation session; it was a drafting error here, not an implementation question.
+>
+> The ordering that makes both survive, and what is built. Match on `receipt_id` across the whole folder first. Only then consider id-less sidecars for a filename match, and only when there is **exactly one** candidate: two review items can share an original filename, which is precisely the `-2` case, and an ambiguous match is not a match, so it logs a warning and touches nothing. Match on `extracted_values.original_filename` only, never the top-level copy, because the top-level key is on every review sidecar ever written including the statement one, so using it would widen the blast radius for no gain.
+>
+> Two further implementation policies, both accepted. A failed image deletion leaves **both** files in place and returns 0, rather than removing the sidecar anyway: an image with no sidecar cannot be found by this code again, so a retryable state beats an orphan. And `file_review()` writes `receipt_id` only when there is one, pulled from `extracted_values`, rather than always writing the key with `null` for statements, which avoids adding a null key to a payload IntelliBooks reads.
+>
+> **Untested against a live pair.** There has been no receipt in a Review folder since 26 July, so all of the above is temp-directory evidence. The first live exercise is whenever a receipt next lands in review and is resolved, and it is worth watching rather than assuming. All 32 filed sidecars carry `receipt_id`, so the filename fallback is theoretical on current evidence and guards only against sidecars from a version nobody can now inspect.
+
 ### 3.6 `review_count` over-reports, permanently and cumulatively
 
 `_count_review_items()` (line 89) counts files under `Clients\*\Review\`. Because of 3.5, nothing is ever removed, so the count in `pipeline-status.json` only grows. It happens not to show in IntelliBooks today only because change log item 20 removed that clause from the banner.
 
 **Fix.** Count from `receipts.db` by status, which is the stated source of truth. Fixing 3.5 makes the folder count correct too, but the DB is the right source regardless.
+
+> **Amended 2026-07-27.** `review_count` means **`needs_review` plus `possible_duplicate`**: the receipts where a human has to decide something. `failed` and `retry_exhausted` are not review items, they are receipts the system could not read, and conflating them would tell an operator to go and look at something there is nothing to look at yet. Report them as their own counts on the status page at 8.1, which already lists all seven statuses separately.
+>
+> `_count_review_items()` at `app.py:121` walks `CLIENTS_ROOT.rglob("Review/*")` and counts every file, so it counts each pair twice and never decreases. Replace the body and keep the name; it gains a `repo` parameter, which is available at the only call site, `app.py:978` inside `process_once()`. Do it through a new `repo.count_receipts_by_status(statuses)`, which section 6.3 already lists as a required query method, rather than SQL in `app.py`. Leave `_write_pipeline_status()` and the shape of `pipeline-status.json` alone: IntelliBooks Desktop reads that file.
+
+> **Clarified 2026-07-27, and built in `25c6665`.** `review_count` exists to feed `pipeline-status.json`, which IntelliBooks Desktop reads. **It does not define what the console shows an operator.** That is the queue page at 8.2, whose default filter is `needs_review`, `possible_duplicate`, `failed` **and `retry_exhausted`**, so a receipt that automatic retry has given up on does have a home there. The two counts answer different questions and are allowed to differ.
+>
+> `_count_review_items()` keeps its name per the amendment above, but it no longer counts items and no longer touches the Review folder, so the name will read as a lie to the next person in that file. Deliberate for now: renaming it would touch the same lines that steps 9 and 15 revisit. Rename it at step 15, when the console's read queries land and `_write_pipeline_status()` is in scope anyway.
 
 ### 3.7 The sidecar writes a nominal code where the books expect a name
 
@@ -139,6 +234,29 @@ This reaches the books rather than staying cosmetic, because "Post to cashbook" 
 **Fix.** The sidecar carries **both**: `category_code` for the nominal and `category_name` for the desktop-compatible name. Keep the existing `category` key populated with the name for backward compatibility with sidecars already on disk. The IntelliBooks half, preferring `category_name` in `parseSidecar`, is covered by the separate brief in `PROMPT_intellibooks_resolution_backfeed.md`.
 
 Until the Default CoA CSV exists there is no code-to-name mapping, so `category_name` falls back to `account_name` from the vendor mapping, which is what the engine already returns.
+
+> **Amended 2026-07-27, before step 5 is built. What is actually in that field on disk is worse than this section says.**
+>
+> Across the 32 sidecars already filed under `Clients\*\Receipts\`, `category` holds four different kinds of value:
+>
+> | Value | Count | What it is |
+> |---|---|---|
+> | `"unmatched"` | 18 | The literal `match_source`, not a code and not a name. The `categorisations` table has `suggested_code = NULL` for all 22 unmatched rows, so the live writer at `worker/extraction_pipeline.py:232` cannot have produced this. Something else wrote it, most likely `retroactive_categorise.py`. |
+> | `null` | 10 | Six of these carry `"confidence": "high"`, which is a contradiction on its face: high confidence in nothing. |
+> | `"271"`, `"999"` | 2 | Nominal codes. The case this section describes. |
+> | `"Parking and tolls"` | 2 | A category **name**, with no `confidence` key at all. Not from the vendor tables: every `nominal_code` in both mapping tables is numeric, checked. These two are also the pair with the swapped dates, `2026-05-09` and `2026-09-05`, so they predate the day-first fix and probably predate this pipeline. |
+>
+> **All 32 are test data, confirmed by Paul on 2026-07-27: test clients and his own record, not a third party's books.** So the table above is forensic evidence of how one field drifted across five writers, not a data problem to repair. Nothing needs backfilling, see 17.4. Read it for what it says about the format, which is the part that matters, because the same writers will produce the same drift on real data if they are not fixed.
+>
+> Two consequences that do carry. First, whoever builds this must find out what wrote `"unmatched"` and whether it can still run, because a fix to `make_enriched_sidecar()` does not stop a script that writes the field directly. It was `retroactive_categorise.py:150`, `code = categorisation_data.get('suggested_code') or "unmatched"`, and it can still be run by hand. Second, the two sidecars carrying a category **name** with no `confidence` key were written by something other than any writer in this repository, and if that something is IntelliBooks Desktop's own filing flow then two sidecar shapes will coexist for the same receipt population once step 10 lands. That is a format question, not a data question, and it survives the data being disposable.
+>
+> **Two gaps this section left open, both settled 2026-07-27 after `9f5cdad`.**
+>
+> **The review path writes all three keys as `null`, and that is intended.** "The sidecar carries both" is not true on the review path, because nothing is categorised until a receipt is filed. A review sidecar therefore advertises three category keys it can never populate. That is deliberate: it is what makes all four call sites produce an identical key set, which is the property that stops the format diverging again. A reader comparing a review sidecar with a filed one should read three nulls as "categorisation has not run", not "categorisation failed".
+>
+> **A code with no name is now possible, and it is worse than either alone.** `category_name` comes from `categorisation.suggested_name`, which is only as populated as the engine layer that set it. Layers 0 to 4 take `account_name` from a rule or a vendor row, so they always have one. Layer 5, the AI suggestion at `engine.py:307`, sets `suggested_name=ai_result.get("name")`, which is `None` if the model's response omits the key. That would write `category_code` with a real nominal and `category`, `category_name` as `null`, so the books would carry a nominal while Desktop showed the receipt as uncategorised. **It cannot happen today**, because `enable_ai_fallback=False` at every call site, `app.py:489` and `retroactive_categorise.py:91`. Whoever enables the AI layer must require a name alongside a code, or refuse the suggestion. Do not treat `suggested_code` and `suggested_name` as independently optional.
+>
+> **Four call sites, not one.** `make_enriched_sidecar()` is called from `app.py:229`, `resolve_receipt.py:328`, `worker/extraction_pipeline.py:184` and `worker/extraction_pipeline.py:257`, and `extraction_pipeline.py:232` then overwrites `sidecar_payload['category']` and `['confidence']` after the fact. All of them have to carry `category_code` and `category_name`, or the format is inconsistent depending on which path filed the receipt, which is the same class of problem as the four value kinds above.
 
 ### 3.8 `engine="openai_vision"` hardcoded on failure paths
 
@@ -153,6 +271,83 @@ A quota, authentication or rate-limit failure surfaces as a generic extraction e
 ### 3.10 `processed_today` is mislabelled
 
 `app.py` line 908 writes "receipts created in this run" into a field called `processed_today`. `repo.count_processed_today()` does the real thing and is not wired to it. Fix the status file, and do not let the console inherit the confusion; the console reads the DB.
+
+> **Amended 2026-07-27.** Built with step 4 rather than as its own step. It is `processed_today = stats.get("receipts_created", 0)` at `app.py:977`, three lines above the `review_count` call this step is already replacing, in the same function. Splitting them would mean two commits touching the same three lines. The bundling is deliberate and the tests stay separate.
+
+---
+
+### 3.11 `extractions.details` is never written, so every automatic amendment goes unrecorded
+
+Added 2026-07-27, found while verifying step 6b.
+
+`ExtractionResult.details` is where the post-processing records what it changed and why: `auto_treated_amount_as_gross(...)` when it decides an extracted net was really a gross, `auto_parsed_invoice_date_from_raw(...)` when it overrides the model's date, and the two ambiguity notes. **None of it reaches the database.**
+
+`extractions` has a `details` column, `schema.py:120`, with a `PRAGMA table_info` migration for older databases at `schema.py:165-168`. So the column was added deliberately. But `save_extraction()` takes no `details` parameter and its `INSERT` lists sixteen columns, not including that one, so nothing has ever written it through that method. Nothing passes `details` to it anywhere. The sidecar has no `details` key either.
+
+**This is a regression, not an omission.** Two of the 49 rows in the live database do hold a value: both from 19 July, both with `pipeline_version` NULL, one reading `auto_parsed_invoice_date_from_raw(raw=09/05/26 -> 2026-05-09)`. So the write worked once and was lost. `git log -S` on `repository.py` points at `799cead` and `10d5742` as the commits that touched `details` handling there.
+
+**Why it matters more than a missing field.** `apply_vat_inclusive_swap()` rewrites `net` and `gross` on the strength of an implied VAT rate. That is a change to two financial figures, made automatically, and `CLAUDE.md` says this is a capture and audit system whose job is to read, extract, validate and store, not to clean or normalise, with a full audit trail. The swap is a transformation, it is the right one to make, and there is currently no record anywhere that it happened. A query for `auto_treated` or `auto_parsed` across `validation_notes` and `raw_response` in all 49 rows returns zero.
+
+It also means step 6b improved a string nobody can read. The functional half of that step landed properly, because an ISO raw date now produces the right `invoice_date` and that column is written. The notes half did not.
+
+**Fix.** Add `details=None` to `save_extraction()` and to the `INSERT`, pass it from every caller that has an `ExtractionResult`, and display it on the receipt detail page per 8.4. Do not fold it into `validation_notes`: those are validation outcomes and these are amendment records, and merging them would make both harder to read. `details` stays out of the sidecar for now, because that is a format change to a file IntelliBooks reads.
+
+**Built 2026-07-27 in `4aeadcd`**, and `799cead` on 21 July is where the write was dropped, confirmed from its diff. Two call sites hold an `ExtractionResult` and pass it, `worker/extraction_pipeline.py:160` and `app.py:576`; the five failure paths have none, because the call raised before producing one, and take the default; `resolve_receipt.py:278` passes `None` explicitly for a manual correction.
+
+> **One consequence of keeping it out of the sidecar, stated so nobody reports it as a bug.** From `4aeadcd` onwards the database records that an amount was amended and the sidecar does not, so the same receipt opened in the console and in IntelliBooks Desktop will disagree about whether anything was changed. That is deliberate and it is the right trade while the sidecar is a format another application reads, but it is a real asymmetry rather than an oversight. Revisit it alongside the two-sidecar-shapes question in 17.4, since both are really the same question about what that file is for.
+
+---
+
+### 3.12 Two extraction writes omit `pipeline_version`, so their receipts are retried once for nothing
+
+Added 2026-07-27, found while verifying step 7. Flagged by the implementation session for one call site; there are two.
+
+`find_failed_by_version()` at `repository.py:481` treats a NULL `pipeline_version` on the latest extraction as eligible for retry. Both writes on the embedded-image path omit the argument, so the column is NULL:
+
+| Call site | Path | Effect |
+|---|---|---|
+| `app.py:576` | embedded-image success | A receipt that lands `needs_review` is re-extracted on the next poll whatever the version. |
+| `app.py:610` | embedded-image failure | A `failed` receipt is re-extracted on the next poll whatever the version. |
+
+Every other write passes it: `app.py:386`, `446`, `792`, `963`, `resolve_receipt.py:278` and `worker/extraction_pipeline.py:160`.
+
+**This is the same class of defect as 3.1 but not the same severity.** It costs one unnecessary retry, three OpenAI calls, per affected receipt, and then self-corrects, because the retry itself writes a versioned row through a path that does pass the argument. It is not the endless loop 3.1 fixed. It is still a real cost on a live path and the fix is one keyword argument in each place.
+
+**Fix.** Pass `pipeline_version=pipeline_version` at both sites. Test that a receipt created through the embedded-image path is not selected by `find_failed_by_version()` on a second pass under the same version, which is the assertion that catches this whole family.
+
+Note for whoever writes it: 28 of the 49 rows in the live database have a NULL `pipeline_version`, almost all of them from before the column existed. So a query for NULLs is not a measure of this defect, and fixing it does not clean them up.
+
+---
+
+### 3.13 A folder-intake receipt that is not `ok` is re-extracted on every poll
+
+Added 2026-07-28, found live while creating a Review item for the change log item 19 test.
+
+`_remove_inbox_pair(intake)` at `app.py:777` runs only `if status == "ok"`. So a receipt that lands `needs_review`, `failed` or `possible_duplicate` leaves its original in `Receipt Inbox\{CODE}\`. On the next poll `find_by_hash()` finds the existing receipt, `is_recorded_and_filed()` returns false because `filed_path` is NULL, and `app.py:717` then deliberately continues: "If hash matches a failed/needs_review receipt, allow reprocessing".
+
+**So it is re-extracted every five minutes, indefinitely**, creating a new receipt row, a new extraction row and a new Review pair each time. This is the folder-intake twin of 3.1, which was fixed first because it was the only defect costing money continuously. It has been live throughout and went unnoticed because nobody had left a non-`ok` receipt in an inbox folder.
+
+Observed: `TEST_vat_mismatch.png` dropped into `Receipt Inbox\TEST\` at 12:09 on 2026-07-28, processed at 12:12 to `needs_review`, original still in the inbox, next poll due at 12:17. Caught before the second pass.
+
+**Fix, decided by Paul 2026-07-28.** Move the original out of the inbox on **every** outcome, not only `ok`. A `Processed\` subfolder under the client's inbox folder, so the file is retained rather than deleted, per the no-data-loss rule. The reprocessing rule at `app.py:717` then becomes unreachable for this case and should be left alone rather than removed, because it still guards the genuine resend of a file the operator puts back deliberately.
+
+The alternative considered and rejected was to keep the reprocessing rule and gate it on `pipeline_version`, mirroring `find_failed_by_version()`. Rejected because the auto-retry loop already re-extracts from the database properly, so the inbox does not need a second mechanism for the same thing. One implementation, not two.
+
+**Test.** A receipt that lands `needs_review` through folder intake has its original moved out of the inbox, and a second `process_once()` under the same version creates no second receipt row and makes no extraction call. Same for `failed`. And the `ok` path keeps working, since it currently deletes rather than moves and that changes.
+
+### 3.14 The statement path in folder intake never clears the inbox
+
+Added 2026-07-28, found by the implementation session while fixing 3.13. Not fixed.
+
+Two branches in the folder-intake loop, neither covered by 3.13's fix, because 3.13 named the receipt outcome paths.
+
+`app.py:756-783` files a statement and continues without clearing the inbox. The next poll's `find_statement_by_hash()` recognises it and cleans up, so it self-corrects one poll late. Untidy rather than harmful.
+
+The missing-metadata branch above it is worse: it writes a Review pair and continues, so it **writes another Review pair on every poll, indefinitely**. No OpenAI cost, because statements are never extracted, so this is not the money bug. It is the same family as 3.13 and it fills a client's Review folder.
+
+Fix when picked up: the same treatment as 3.13, move the original to `Processed\` on every outcome, including both statement branches. Left for now because it was outside the brief and statements are not in use.
+
+The two hash-duplicate paths at `app.py:665` and `app.py:713` still delete rather than move, and that is correct: in both cases the original is already filed elsewhere, so there is nothing to lose.
 
 ---
 
@@ -182,7 +377,7 @@ CORRECTABLE_FIELDS = (
 @dataclass
 class ResolutionView:
     receipt: dict
-    extraction: dict                    # latest, the one being corrected
+    extraction: dict | None             # latest, the one being corrected; None if there is none
     extraction_history: list[dict]      # all, newest first
     categorisation: dict | None         # may be None; the non-ok path saves none
     resolution_events: list[dict]
@@ -206,7 +401,7 @@ class Corrections:
 @dataclass
 class ResolutionOutcome:
     outcome: Literal["filed","discarded","still_invalid","stale",
-                     "locked","not_found","error"]
+                     "locked","not_found","already_filed","error"]
     receipt_id: str
     extraction_id: str | None
     filed_path: str | None
@@ -225,16 +420,20 @@ def parse_corrections(raw: dict) -> tuple[Corrections, dict[str, str]]:
     """Normalise operator input. Returns (corrections, field_errors). Never raises."""
 
 def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
-                    actor, expected_extraction_id=None) -> ResolutionOutcome:
+                    actor, source, expected_extraction_id=None) -> ResolutionOutcome:
     """Apply corrections, re-validate, categorise, file. Append-only throughout."""
 
-def discard_receipt(repo, receipt_id, reason, actor) -> ResolutionOutcome:
+def discard_receipt(repo, receipt_id, reason, actor, source, note_resolved_at=None) -> ResolutionOutcome:
     """Status to 'discarded'. Never deletes the original file or any extraction row."""
 
 def apply_resolution_note(repo, categorisation_engine, note: dict) -> ResolutionOutcome:
     """Back-feed entry point. Validates the note, then calls resolve_receipt or
     discard_receipt with actor='desktop'. Must not reimplement resolution."""
 ```
+
+> **Amended 2026-07-27, before step 8 is built.** `source` added as a required parameter to `resolve_receipt()` and `discard_receipt()`. `resolution_events` in 5.1 has both an `actor` and a `source` column, `'console' | 'cli' | 'desktop'`, and the signatures as first written supplied only `actor`, so the service could not have populated its own audit row. Required rather than defaulted: a default would be wrong for three of the four callers, and the point of the column is that nobody has to guess.
+>
+> **Which outcomes write a `resolution_events` row:** `filed`, `discarded` and `still_invalid`. Not `not_found`, `stale` or `locked`, because nothing happened and 4.3 steps 1 to 4 say write nothing. Not `error` either: the state is unknown at that point and a second write risks compounding it, so the traceback in the log is the record. Note that until step 9 builds `worker/logging_setup.py`, per 6.5, that traceback only reaches `data/run.log` when the service is called from inside `app.py`.
 
 `parse_corrections` rules:
 
@@ -243,6 +442,18 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
 - Amounts coerce to float. Reject thousands separators, currency symbols and more than two decimal places as field errors rather than guessing.
 - `invoice_date` must be `YYYY-MM-DD` and a real date. Do not reparse other formats; that is the extractor's job and guessing here would undo the day-first work in `openai_vision.py`.
 - Never raises. Bad input becomes a field error.
+
+> **Amended 2026-07-27.** Built in `c0ac145`. Three points this section left unstated, now settled.
+>
+> **The four GL fields on `Corrections` are not read from `raw`.** `parse_corrections` populates `values` only, and leaves `gl_nominal_code`, `gl_account_name`, `gl_correction_reason` and `remember_gl_for_supplier` at their defaults. GL semantics belong to section 11 and the console form at step 16, which sets them on the dataclass directly. When step 16 arrives, decide there whether `remember_gl_for_supplier` reads a checkbox key's presence or its value, because an unchecked HTML checkbox sends nothing at all.
+>
+> **`receipt_time` has no format rule and is stored as stripped text.** It is the one correctable field with no validation, so `25:99` is accepted. Defensible, because the extractor writes it and no validation rule reads it, but it was unstated rather than decided. If the console offers a time input, validate it there.
+>
+> **Implementation decisions worth knowing.** A whitespace-only string is treated as a clear, same as empty. `.50` is accepted as `0.50`, since it is unambiguous and not one of the three forms this section rejects. `nan` and `inf` are rejected, which a bare `float()` would have accepted. A leading minus is accepted, so a negative amount reaches `validate()` and becomes a validation note rather than a field error, which keeps the "is this a bad figure or a bad document" judgement in one place.
+>
+> **On the CLI, an empty-string flag now clears a field.** `--ref-number ""` reaches `parse_corrections` as present-and-empty. That is this section's own semantics arriving unaltered, not a sentinel, and it is the shape the console form will use. Interactive mode still treats a blank answer as "keep existing" and omits the key, which `RECEIPT_CAPTURE_GUIDE.md` documents. The asymmetry is accepted for now, see 17.4.
+>
+> One consequence to note: `type=float` was removed from `--net`, `--vat` and `--gross` in `0cae398`, because leaving it would keep a second and more permissive coercion in the CLI, which is the thing 3.3 exists to remove. `--gross 1,234.56` used to exit 2 from argparse and now exits 1 with a field error naming the field. Both non-zero. Step 21 should mention empty-string flags in the guide.
 
 ### 4.3 `resolve_receipt` control flow
 
@@ -253,7 +464,13 @@ Order matters. Commit `b480a7e` fixed a foreign key violation caused by categori
 3. If `expected_extraction_id` is supplied and does not match the latest, return `stale` and write nothing.
 4. Acquire the receipt lock. Failure, return `locked`. Everything below in `try/finally` releasing it.
 5. Merge corrections over the existing extraction by key presence, not truthiness.
-6. Build `ExtractionResult` with `engine="manual_correction"`, run `validate()`. Not ok: `add_validation_note()`, write a `resolution_events` row with outcome `still_invalid`, return. Do not file.
+6. Build `ExtractionResult` with `engine="manual_correction"`, run `validate()`. Not ok: **append a new extraction row** carrying the corrected values, `validation_status` from `validate()` and the validation notes, then write a `resolution_events` row with outcome `still_invalid`, and return. Do not file.
+
+> **Amended 2026-07-27, decided by Paul.** Superseded wording: "Not ok: `add_validation_note()`, write a `resolution_events` row with outcome `still_invalid`, return."
+>
+> `add_validation_note()` at `repository.py:571` reads the latest extraction, concatenates, and runs `UPDATE extractions SET validation_notes = ? WHERE extraction_id = ?`. That is an in-place edit of a table `CLAUDE.md` says is never modified after creation. A resolution attempt that failed validation is an event worth its own row, not a footnote appended to the row it disagrees with. Phase 0 step 1 already took this route for the missing-file branch, see 3.1, so the codebase would otherwise be doing it two ways.
+>
+> **Consequences to handle at step 8, not before.** `add_validation_note()` is retired: its callers are `resolve_receipt.py:239` and `app.py`'s missing-file branch, which no longer needs it. Remove the method once both are gone, rather than leaving a tempting mutation in the repository. `tests/test_resolve_receipt_ordering.py:209` asserts the mutation happens and must be rewritten to assert the new row instead. Test 16 in section 15 is reworded accordingly. Note that this row is written on a path that does **not** file, so `resolution_events.extraction_id` is now populated for a `still_invalid` outcome, which is why 5.1 makes that column nullable but puts no foreign key on it.
 7. Generate `extraction_id`, then `save_extraction()`. The FK from `categorisations` requires the row to exist first.
 8. `categorisation_engine.categorise()`, then `save_categorisation()` with the engine's suggestion. Never overwrite `suggested_code` with the operator's value; that is the audit trail.
 9. If a GL override was supplied, `update_categorisation()` now, before filing. Section 11.2 explains why.
@@ -264,11 +481,37 @@ Order matters. Commit `b480a7e` fixed a foreign key violation caused by categori
 14. Write a `resolution_events` row with outcome `filed`.
 15. Return `filed`.
 
-Keep a broad `except Exception` logging with `exc_info=True` and returning `error` with `error_detail`. Trade-off accepted: the caller cannot see the traceback, but the web layer never 500s on a Save and the traceback still reaches `data/run.log`.
+> **Amended 2026-07-27, after step 8 was built. Five points this control flow left to the implementer, four now decided here and one still Paul's.**
+>
+> **New step 1a, and it is the important one: refuse a receipt that is already filed.** Nothing in the fifteen steps inspects `filed_path` or `status`, so `resolve_receipt()` on an `ok` receipt will re-file it, write a second `manual_correction` row and leave a second copy on disk under a `-2` name. That is the double-filing this entire design exists to prevent, arriving through the front door. `expected_extraction_id` makes it unlikely from the console, because the caller must know the current extraction, but the CLI and the back-feed can both omit it. **So: if `filed_path` is not NULL, return the new `already_filed` outcome and write nothing.** It is a distinct expected condition, not an error, and the console must be able to say "this was already filed on <date>, here it is" rather than showing a failure. The back-feed's `filed` note is the one legitimate exception and it does not come through this path: 12.3 step 5 has `apply_resolution_note()` call `mark_receipt_filed()` directly.
+>
+> **Step 6, `update_status`.** `save_extraction()` stamps `receipts.status` with the new `validation_status` unless told not to. On the `still_invalid` branch that is right for a `needs_review` or `failed` receipt and wrong for a `possible_duplicate` one, which would silently become `needs_review`: the duplicate framing would vanish from `status`, 8.4's side-by-side comparison would stop rendering, and the receipt would become eligible for auto-retry, which `possible_duplicate` is not. A human has already looked at it. **So preserve `possible_duplicate` and let the other statuses follow `validate()`.** `possible_duplicate` is a statement about the relationship between two receipts, not about the validity of one, so validation must not overwrite it. Separately, 8.4's duplicate comparison should key on `duplicate_of` being non-NULL rather than on `status`, which makes it robust whatever the status says.
+>
+> **Step 9's trigger.** "If a GL override was supplied" is ambiguous, because `Corrections` carries the code and the name separately. An override is present when **either** is non-empty after stripping; fill the missing half from the engine's suggestion; default the reason to something naming the actor. Whitespace-only counts as absent, consistent with `parse_corrections`.
+>
+> **Step 13's `vendor_code`.** `upsert_client_vendor()` is keyed on `(client_id, vendor_code, vendor_name)` and this section never says where the code comes from. Use `CategorisationResult.vendor_code`. When it is `None`, which is what an unmatched supplier gives, log a warning and learn nothing. **Do not import the engine's `normalise_description()` into the service**: the service must not acquire a second implementation of vendor normalisation.
+>
+> **Resolving a `possible_duplicate` is the "file it anyway" path.** There is no separate action and none is needed. `discard_receipt()` is "this is a duplicate", and `resolve_receipt()` files it because nothing in the flow inspects `status`. That is now intended rather than incidental, and 8.4 should label the two buttons accordingly.
+
+Keep a broad `except Exception` logging with `exc_info=True` and returning `error` with `error_detail`. Trade-off accepted: the caller cannot see the traceback, but the web layer never 500s on a Save.
+
+> **One observation, no action.** `resolve_receipt()` calls `config.get_pipeline_version()`, which shells out to `git rev-parse`. `resolve_receipt.py` already did, so it is not new, and 4.1 does not forbid it. Note that it returns the string `"unknown"` on any failure, so on a machine where git is unavailable a still-invalid correction would stamp `"unknown"` and `find_failed_by_version()` would then treat that receipt as eligible on every poll. Harmless today because the console runs beside the repository. It becomes real the day this is deployed anywhere else, and the fix then is to resolve the version once per process rather than per call.
+
+> **Amended 2026-07-26.** Superseded wording: "and the traceback still reaches `data/run.log`". That was not true when it was written. `logging.basicConfig` in `app.py` set `handlers=[StreamHandler(sys.stdout)]` and nothing else, no `FileHandler` existed anywhere in the tracked source, and `data/run.log` had not been written since 5 May. Commit `285ed63` attached a `RotatingFileHandler`, but from `app.main()` only, so the claim now holds for the back-feed consumer and nothing else. `resolve_receipt.py:34` calls `basicConfig` with no handlers argument and logs to stderr. **This trade-off is only sound once every entry point attaches the handler.** See 6.5 and step 9 in section 16.
 
 ### 4.4 What the CLI keeps
 
 `argparse`, `show_receipt_state()` rewritten to render a `ResolutionView`, `confirm_duplicated_action()`, `get_corrections_interactive()`, every `print()`. Maps outcomes to exit codes: `filed` and `discarded` are 0, everything else 1.
+
+> **Amended 2026-07-27, after step 9 was built. Four things.**
+>
+> **`confirm_duplicated_action()` has never been called**, by the old CLI or the new one. Verified: it is defined at `resolve_receipt.py:105` and appears nowhere else in tracked source. So a `possible_duplicate` receipt with no `--duplicate-decision` flag goes straight to the correction prompts and is filed without anyone being asked whether it is a genuine second transaction. Given the amendment to 4.3 confirming that resolving a `possible_duplicate` **is** the "file it anyway" path, that is the one route left by which the CLI files a duplicate silently. **Wire it up.** Keeping a dead function because a document lists it is the worse of the two options.
+>
+> **`actor` on a CLI resolution** has no source, and `resolution_events.actor` is `NOT NULL`. It is `getpass.getuser()` by default, with an optional `--actor` flag to override. This section did not say, and the implementation had to choose.
+>
+> **The "about 100 lines" target in 4.1 is not achievable** while keeping what this section says to keep, and the target was wrong rather than the implementation. `resolve_receipt.py` is 268 lines: 76 are the three retained rendering and prompting functions, about 60 are the module docstring and `build_parser()`, and `main()` is 44. Nothing that belongs in the service is left in it. If the number matters later, `show_receipt_state()` is the candidate to move to a rendering module shared with the web layer.
+>
+> **The CLI reconfigures stdout to UTF-8 with `errors="replace"`.** The `✓` and `✗` characters raise `UnicodeEncodeError` on a cp1252 console, and they are printed **after** the receipt is filed, so the work succeeded and the operator got a traceback. Pre-existing, present at `60df040`, found during the manual test 40 run. Output is unchanged wherever the console can already encode it.
 
 Existing behaviour must not change. Every command in `RECEIPT_CAPTURE_GUIDE.md` keeps working verbatim, except that zero now works and string amounts no longer crash.
 
@@ -279,6 +522,8 @@ Add `discard_receipt.py` as a thin CLI over `discard_receipt()`. Discarding a `f
 ## 5. Schema additions
 
 Add to `worker/database/schema.py` inside the existing `executescript`, following the `CREATE TABLE IF NOT EXISTS` pattern, and the `PRAGMA table_info` guard pattern at lines 157-189 for new columns. Do not write a migration framework.
+
+> **Sequencing corrected 2026-07-27.** Section 16 puts all of these at step 11, but **`resolution_events` (5.1) must be created at step 8**, because 4.3 step 14 has the resolution service write a row to it and step 8 is where that service is built. Everything else here stays at step 11: `console_users`, `extraction_usage`, `openai_credit_topups`, `openai_cost_daily`, `coa_accounts` and the indexes in 5.6. Splitting the schema work across two steps is less bad than a service that cannot record who did what, and `CREATE TABLE IF NOT EXISTS` means step 11 re-running the whole script is harmless.
 
 ### 5.1 `resolution_events`
 
@@ -302,6 +547,24 @@ CREATE INDEX IF NOT EXISTS idx_resolution_events_receipt
 ```
 
 `extraction_id` is nullable, because a `still_invalid` outcome produces no extraction row. **Do not add a foreign key on it**; writing the event row for that outcome would then fail, which is the same class of bug as `b480a7e`.
+
+> **Amended 2026-07-27.** Two corrections, both from building it.
+>
+> **Add a `reason TEXT` column.** `discard_receipt(repo, receipt_id, reason, actor, source)` takes a reason, and the table has nowhere to put it, so it currently reaches a log line and the operator's return message and then vanishes. For a discard the reason is the single most useful thing to keep: it is the difference between "duplicate of r-x" and "the client sent a bank statement by mistake". Use the `PRAGMA table_info` guard pattern; the table has no rows yet, so this costs nothing. Do not overload `corrections_json` for it.
+>
+> **The nullability rationale above is now out of date, though the rule still holds.** Under the amended 4.3 step 6 a `still_invalid` outcome does write an extraction row, so `extraction_id` will usually be populated. Keep the column nullable and keep the foreign key off it anyway: `not_found`, `stale`, `locked` and `already_filed` write no event row today, but the next outcome added might, and a nullable column with no FK cannot be the thing that breaks it.
+
+### 5.1a `receipts.filed_at`
+
+Added 2026-07-27. One new column via the `PRAGMA table_info` guard pattern:
+
+```sql
+ALTER TABLE receipts ADD COLUMN filed_at TEXT
+```
+
+`mark_receipt_filed()` is the only writer of `filed_path`, so it is the only place this needs setting, and the two stay consistent by construction. Existing rows keep NULL and must not be back-filled from a file mtime, which records when a copy was written rather than when the practice filed it.
+
+Needed by 4.3 step 1a, whose `already_filed` message promises the operator a date, and by 8.3, which already lists a "filed" column that would otherwise only ever be a yes or no.
 
 ### 5.2 `console_users`
 
@@ -443,6 +706,16 @@ list_intake_issues() -> dict                              # section 8.6
 
 **6.4 The console must run on the same machine as `receipts.db`.** SQLite over a network share risks corruption. The DB is correctly on local disk, not in OneDrive. Do not move it.
 
+**6.5 Logging, added 2026-07-26.** Four things, all found during phase 0 step 1.
+
+**Every entry point must attach the file handler.** `app.py` has `attach_run_log_handler()`, idempotent, called from `main()`. The resolution service has four callers, per 4.1, and only the back-feed consumer runs inside `app.py`. So move that function into a shared `worker/logging_setup.py` and call it from `app.main()`, `resolve_receipt.py`, `discard_receipt.py` and `run_console.py`. Build it at step 9, before the console exists, because 4.3 depends on it.
+
+**Attach it at the entry point, never at import.** Attaching at import was tried and reverted the same day. It added 29 lines of synthetic test output to `data/run.log` on every suite run, some of it reading like real receipts being filed, which would mislead anyone running test 39.
+
+**Two processes cannot share one `RotatingFileHandler` on Windows.** The loser of a rollover cannot rename a file the winner holds open, and it raises. The pipeline and the console are designed to run at the same time, and the CLI can run alongside both. So it is one file per entry point, `run.log`, `resolve.log`, `console.log`, or a single writer behind a `QueueHandler`. Not the same rotating handler in three processes. Decide at step 9. Current settings: 5 MB, three backups, UTF-8, append.
+
+**Two config traps.** `config.RECEIPTS_LOG` at `config.py:15` points at `receipt_events.ndjson` and is referenced nowhere in tracked source; the real writers build `receipt_events_{firm_id}.ndjson` from `LOGS_DIR` directly, at `app.py:84` and `worker/extraction_pipeline.py:96`. Delete it or wire it up before the intake panel at 8.6 reads these files, because a dead constant with a plausible name is a trap. And `config.RUNS_LOG` is resolved from `LOGS_DIR` at import, so redirecting `LOGS_DIR` alone does not move it. Anything that redirects one must redirect both.
+
 ---
 
 ## 7. Auth
@@ -563,7 +836,9 @@ Rendered from one `ResolutionView`.
 2. **Header.** Client, status, filename, created, source. For `possible_duplicate`, a prominent link to the counterpart.
 3. **Side-by-side duplicate comparison** when applicable, highlighting supplier, invoice date, gross, `receipt_ref_number` and `receipt_time`. The last two are exactly what `_signals_differ()` uses, so it shows the operator why the system was unsure.
 4. **Correction form.** The seven `CORRECTABLE_FIELDS` prefilled, plus the GL control from section 11, plus a hidden `expected_extraction_id`. Field errors from `parse_corrections`.
-5. **Extraction history.** All rows, newest first: engine, extracted at, values, validation status, notes, `pipeline_version`. Read-only.
+5. **Extraction history.** All rows, newest first: engine, extracted at, values, validation status, notes, **`details`**, `pipeline_version`. Read-only.
+
+> **Amended 2026-07-27.** `details` added to that list, and it is not optional. It is the only place the pipeline records an automatic amendment it made to a receipt, per 3.11: which figures it rewrote, which date it overrode, and where it knew the date was ambiguous. Validation notes say what was wrong; `details` says what the system changed. An operator deciding whether to trust an extraction needs both. Display it verbatim rather than parsing it: it mixes the model's own prose with machine-readable notes joined by `; `, and if the console ever needs to act on those notes they should get their own field first.
 6. **Resolution events.** Who did what, including `desktop` resolutions arriving via the back-feed.
 7. **Actions.** Save and file. Discard, admin only, with a typed reason.
 
@@ -642,13 +917,33 @@ def available_engines() -> list[str]: ...
 
 Add a `name` property to `BaseExtractor`. Replace `extractor = OpenAIVisionExtractor()` in `app.py` line 406 with `get_extractor()`. Replace the hardcoded engine strings per 3.8.
 
+> **Amended 2026-07-26.** The `name` property is already built, in `117fb1b`. It landed with step 1 rather than here, because the auto-retry exception fix needs the engine identity and had no `ExtractionResult` to read `.engine` from. It is an **abstract** property on `BaseExtractor`, concrete on `OpenAIVisionExtractor`, so any future extractor must declare it. What remains for step 7 is the factory itself and the three hardcoded `engine="openai_vision"` strings at `app.py` lines 530, 709 and 880.
+
 **10.2 Move post-processing out of `openai_vision.py`**
 
 `_parse_ambiguous_date`, the `PREFER_DAYFIRST` logic and the VAT-inclusive-total swap live inside `openai_vision.py` lines 98-214. A second provider would silently not inherit any of it, so the day-first and VAT fixes would stop applying the moment the engine changed.
 
+> **Corrected 2026-07-27.** "Lines 98-214" was eleven lines too early: line 98 is the `except json.JSONDecodeError` of the JSON parse, which is not post-processing and stayed put. The actual boundaries at `96a5c5a` were **109-149** for `_parse_ambiguous_date`, **151-184** for the VAT swap and **186-218** for the date resolution. Recorded because the next person may use the range to check the move was complete and wrongly conclude something was left behind.
+>
+> **Built 2026-07-27 in `bf1976d`**, with `tests/test_postprocess.py`. Acceptance criterion met: `tests/test_date_disambiguation.py` and `tests/test_vat_swap.py` are untouched, confirmed by an empty `git status` on both and by the commit touching only three files, and they pass on their own. The move was verified mechanically rather than by reading: 82 code lines out, 87 in, 11 differing once whitespace and comments are ignored, and all 11 are structural. Three `def` lines, two `return` statements because the old blocks mutated `extract()`'s locals, `config.PREFER_DAYFIRST` becoming the `prefer_dayfirst` parameter and its internal call site, and a module-level `from datetime import date`.
+>
+> **Seven defects were found by reading the code closely during the move. None was fixed, because a move that fixes things is not a move.** Recorded here so they are not lost. Two are worth acting on and are the subject of the decision in 17.4.
+>
+> 1. **The `ambiguous_invoice_date_no_raw` note lies when a raw string was present but unparseable.** The guard is `if not parsed_from_raw and invoice_date`, which is true both when there was no raw string and when there was one that failed to parse. Confirmed by calling `resolve_invoice_date("2026-05-09", "2026-05-09", None, True)`, which returns the note `ambiguous_invoice_date_no_raw(model_iso=2026-05-09)` with a raw string plainly present. This is the field an operator reads to decide whether to trust the date, so a wrong label is worse than no label.
+> 2. **An ISO-shaped `invoice_date_raw` silently defeats the whole deterministic path.** `parse_ambiguous_date("2026-05-09", ...)` splits to `2026, 5, 9`, normalises the year to 2009 because the third part is under 100, then fails both branches and returns `None`. Confirmed empirically, both values of `prefer_dayfirst`. So for a receipt that prints its date in ISO form, and whose raw string the model therefore returns in ISO form, the day-first fix does not apply and the receipt falls through to the ambiguity annotation. It fails safe and it fails silently, which is the worst combination for a fix nobody will think to re-test.
+> 3. **Two-digit years always resolve to the 2000s.** `01/01/99` becomes 2099, not 1999. Fine for current receipts, wrong for a historical document, and there is no note.
+> 4. **The `elif c < 1000` branch is dead and its comment is false.** Identical body to the branch above it, and the comment says "treat as 2000s" where `2000 + 999` is 2999.
+> 5. **The 0.03 VAT tolerance is absolute, so it is proportionally far looser on the reduced rate.** It accepts 17 to 23 per cent for standard rate, sensible, and 2 to 8 per cent for reduced rate, which is 60 per cent wide either side. Not a bug today. It matters before anyone adds a third rate.
+> 6. **The broad handlers now swallow silently in a module a second provider inherits.** There are three `try/except Exception: pass` blocks, one nested, and `postprocess.py` has no logger at all, confirmed by grep. In `openai_vision.py` a failure there was at least adjacent to code that logs. Here, a genuine `TypeError` from a shape the next provider returns produces no line in `data/run.log`, no note in `details`, and an extraction that looks as though it simply had nothing to correct. A `logger.warning(..., exc_info=True)` in each changes nothing on the happy path.
+> 7. **Both existing test files set `config.PREFER_DAYFIRST = True` in `setUp` and never restore it**, leaking module state to every test that runs afterwards. Harmless today only because `True` is also the default at `config.py:41`. It is the same class of problem `tests/test_logs_isolation.py` exists to prevent, and it could not be fixed during this step because those two files had to stay unmodified.
+
 Move to `worker/extraction/postprocess.py`. **A pure move: behaviour must not change and the existing tests must pass unmodified.** If a test needs editing, something was changed that should not have been.
 
 **10.3** Status page displays the current engine and model. No switching control in phase 1.
+
+> **Amended 2026-07-27, built in `71fe757`.** This section never said where `get_extractor(None)` takes its default from. It is now `config.EXTRACTION_ENGINE`, an environment variable in the existing `config.py` style, defaulting to `openai_vision` and documented in `.env.example`. Not the phase 2 `settings` table. `get_extractor()` refuses an unregistered name and its message says whether the bad value came from the argument or from config, which matters when the answer is a typo in a `.env`.
+>
+> **So the status page reads `config.EXTRACTION_ENGINE`, and when the phase 2 `settings` table arrives the table wins.** Recording that now, because two sources of truth for "which engine is running" that can disagree is exactly the shape of bug this section exists to prevent. The switch-over must move the read, not add a second one.
 
 Phase 2, not now: the `settings` table, switching from the UI, and making `pipeline_version` a composite of git hash, engine and model. Without that composite key, switching provider will **not** cause `find_failed_by_version()` to re-attempt existing failures under the new engine, which is the main reason to switch. It needs its own regression test against the retry-cap boundary.
 
@@ -733,23 +1028,75 @@ The rule was coherent while the pipeline was fire-and-forget. It no longer is. T
 - `category_name` is a **name**, not a code. Desktop has no codes.
 - Amounts are numbers. Absent rather than null or empty string.
 
+> **Corrected 2026-07-28, and this is the most important line in this section for the IntelliBooks session.** "Absent rather than null" is not what Desktop does. `IntelliBooks-Desktop-v3.html:1787` writes `net: isNaN(net) ? null : Math.abs(net)`, so a receipt with no net emits `"net": null`. A consumer built to the letter of this section would reject real notes for real receipts. **An explicit `null` must be accepted and read as "no value", exactly as an absent key is.** The pipeline half already does. Either Desktop stops emitting null or this line stops forbidding it, and since Desktop's behaviour is the one already shipped, this line changes.
+
 ### 12.3 Pipeline consumer
 
 Runs at the start of `process_once()`, before `_retry_failed_receipts()`, so a resolved receipt is never retried in the same cycle it was resolved.
 
 For each `*.json` in `Resolutions\`, oldest first by filename:
 
+> **Clarified 2026-07-28.** The filename is `{receipt_id}_{unix_ms}.json`, so sorting by name sorts by receipt id first and by time second. That is **not** global time order across receipts, and it does not need to be: what sequencing requires is that two notes for the same receipt are applied in the order they were written, which this gives. Stated because "oldest first" reads as a global guarantee and is not one.
+
 1. Parse. On failure, move to `Resolutions\failed\` with a `.error.txt` alongside, log at ERROR, continue. **Never delete.**
 2. Resolve the receipt: by `receipt_id`, else by matching `original_review_files` against `receipts.filename`. Not found: move to `failed\`, log, continue.
 3. **Idempotency.** If a `resolution_events` row already exists for this receipt with the same `resolved_at`, treat as already applied, move to `processed\`, continue.
-4. Call `apply_resolution_note()`, which calls `resolve_receipt()` or `discard_receipt()` with `actor='desktop'`, `source='desktop'`.
+4. Call `apply_resolution_note()` with `actor='desktop'`, `source='desktop'`.
+
+> **Corrected 2026-07-28.** Superseded wording: "which calls `resolve_receipt()` or `discard_receipt()`". That contradicted step 5, which requires the filed path to set `filed_path` directly and explicitly not to route through `resolve_receipt()`. Both could not be true. **Step 5 wins**, and what is built is: a `discarded` note goes through `discard_receipt()`; a `filed` note does **not** go through `resolve_receipt()` and has its own path. The IntelliBooks session needs to know that, because it is the difference between one copy of a receipt and two.
 5. Special handling for a `filed` note: the file already exists at `filed_path`, so **do not re-file it**. `apply_resolution_note()` must set `filed_path` directly via `mark_receipt_filed()` rather than calling `file_receipt()`, write the `manual_correction` extraction row, categorise, and set status `ok`. This is the one place where the resolution flow diverges from the console path, and it must be explicit rather than a flag threaded through `resolve_receipt()`.
-6. `category_name` to code: look up the name in `coa_accounts`. Found, store the code and learn the vendor mapping. Not found, store the name only, skip learning, add a validation note. Until the Default CoA is loaded this is always the second case, which is expected and not an error.
+6. `category_name` to code: look up the name in `coa_accounts`. Found, store the code. Not found, store the name only, add a validation note. Until the Default CoA is loaded this is always the second case, which is expected and not an error.
+
+> **Corrected 2026-07-28.** Superseded wording: "Found, store the code **and learn the vendor mapping**", and "skip learning" on the not-found branch. That contradicted 11.3, which says never learn automatically, because one correction against a possibly misread supplier name poisons the client mapping table and the engine's exact-match layer then applies the wrong code confidently to every future receipt from that vendor.
+>
+> **11.3 wins: a back-feed note never learns a mapping.** 11.3 is a reasoned decision with a stated failure mode, and the learning clause here was an oversight. A note is also the least qualified source to learn from: it carries a category name chosen from a dropdown in another application, with no confidence attached and no record of how sure anyone was. Learning stays opt-in from an operator who ticked a box, per 11.3, and nothing else.
 7. On success, move the note to `Resolutions\processed\`. Never delete.
 
 ### 12.4 Reverse direction needs nothing
 
 When the console resolves, it files to `Clients\{Name}\Receipts\{tax year}\` and IntelliBooks' item 21 auto-scan imports it. The only requirement is that the console removes the Review pair, per 3.5, or the item lingers in Desktop's list.
+
+> **Amended 2026-07-27, read before building step 10. Desktop writes its own sidecar when it files, and it deletes the Review pair itself.** Read from `IntelliBooks-Desktop-v3.html` lines 1770 to 1797. This was not recorded anywhere.
+>
+> Its filing flow copies the image to `Clients\{name}\Receipts\{taxYear}\{date}_{supplier}_{gross}{ext}`, using the same `-2`, `-3` uniqueness convention as the pipeline's `_unique_path()`, writes a sidecar at `{filed}.json`, and only then removes the review image and the review json. On any error it toasts "Filing failed, nothing was deleted". That is careful code and nothing needs changing in it.
+>
+> **The sidecar it writes is a different shape from `make_enriched_sidecar()`:**
+>
+> ```
+> receipt_id, client:{code,name}, source, invoice_date, supplier,
+> net, vat, gross, currency, category, validation_status,
+> corrected_by:"desktop", corrected_at, original_filename, pipeline_receipt_id
+> ```
+>
+> Differences that matter. `client` is a **nested object** where the pipeline writes flat `client_code` and `client_name`. There is no `confidence`, no `capture_date`, no `asserted`, no `claimed_client_code`, and after step 5 no `category_code` or `category_name` either. `category` is a name, because Desktop has no codes. Amounts are passed through `Math.abs()`, and `net` and `vat` become `null` when not a number. It adds `corrected_by` and `corrected_at`, which the pipeline's shape has no equivalent of.
+>
+> This explains the two sidecars on disk carrying `"category": "Parking and tolls"` with no `confidence` key, see 3.7. They were filed through Desktop.
+>
+> **Two consequences for step 10.** First, `remove_review_pair()` will find nothing when a Desktop note is consumed, because Desktop already deleted the pair. That is handled: already-gone logs at INFO and returns 0, per 3.5. No action, but do not treat a zero return as a failure. Second, and this needs a decision: 12.3 step 5 forbids re-filing, so **Desktop's sidecar stays on disk as the sidecar of record for that receipt**, and two shapes will coexist across a client's Receipts folder. Desktop itself copes, because `parseSidecar()` at line 1141 reads both its own and the enriched pipeline shape. Anything on the pipeline or console side that reads a filed sidecar will not, unless it is written to tolerate both. The options are to leave both shapes and make every reader tolerant, or to have `apply_resolution_note()` rewrite the sidecar into the pipeline shape after recording the filing. Rewriting is a write into a folder Desktop has just written to, so it is not free. **Paul decides at step 10, and 17.4 carries the question.**
+>
+> Two facts that make that decision cheaper than it looks, both confirmed in the source. **Desktop's reader already copes with the new format.** `parseSidecar()` at line 1141 reads `category` and tolerates three forms: a plain string, an object with a `.name`, or `asserted.category`. Because step 5 keeps the legacy `category` key populated with the **name**, sidecars written by the pipeline from now on are read correctly by Desktop with no change to Desktop at all. The `parseSidecar` change in `PROMPT_intellibooks_resolution_backfeed.md`, preferring `category_name`, is therefore an improvement and not a prerequisite. Worth knowing before that session is scheduled.
+>
+> **And the two shapes are cleanly distinguishable without guessing.** `corrected_by` appears only in Desktop's sidecar; `capture_date` appears only in the pipeline's. Either key identifies the writer, so "make every reader tolerant" is a small, testable rule rather than an open-ended one.
+>
+> One more thing that follows from `catOptions()` at line 1429, and it is the direct evidence for 3.7 rather than an inference: the category select is built as `<option>` elements from `books.categories` **names only**, and the selected-match test at line 1431 is on `c.name`. A nominal code in that field cannot match anything, by construction.
+
+> **Confirmed live 2026-07-28.** Change log item 19 was tested end to end for the first time, on receipt `c5a3fccd`. It works: the four form validations behave, the image and sidecar are written to `Clients\Test\Receipts\2026-27\`, the books entry carries the corrected figures, and Desktop removed the Review pair itself. The sidecar Desktop wrote is exactly the shape predicted from the source, which means the discriminator holds: `corrected_by` present, `capture_date` absent.
+>
+> **Five details from the real file that step 10 must handle, none of which were visible from reading the code.**
+>
+> 1. **`"category": ""`, an empty string, not null.** Desktop does not require a category before filing, so the common case is an empty string. 12.3 step 6 looks `category_name` up in `coa_accounts`; an empty string must be treated as "no category" and skipped, not looked up and not stored as a name. A blank category in a books entry is also an accounting gap in its own right, see 17.4.
+> 2. **Amounts arrive as JSON integers where they are whole.** The real file has `"net": 80, "vat": 16, "gross": 96`, because JavaScript drops the trailing `.0`. 12.2's "amounts are numbers" is satisfied, but the consumer must coerce rather than assume a decimal point, and must not reject an int as malformed.
+>
+>    **Two decimal places, ruled by Paul 2026-07-28.** An amount is a money value and must read as one: 80.00, never 80 or 80.0. Three parts to that, and only the middle one is a real change.
+>
+>    *On the wire, amounts stay JSON numbers.* `JSON.stringify` cannot emit `80.00` for a number, so the only way to get two decimals into the file is a string, and 12.2 forbids strings for exactly the reason bug 3.3 exists: string amounts reached `validate()` and raised `TypeError` on `round()`. Do not change the note format.
+>
+>    *On ingest and on storage, round to two decimal places.* `round(value, 2)` as the note is parsed, before anything is written. This is the change: nothing currently guarantees it, and `parse_corrections` rejects more than two decimals from an operator while the pipeline accepts whatever the extractor returns.
+>
+>    *On every output, format to two decimal places.* `f"{value:.2f}"` for the console, the CLI and any export. Both filename builders already do this, `worker/filing.py:83` and `IntelliBooks-Desktop-v3.html:1769`, which is why this receipt filed as `_96.00`. The older files in that folder showing `_4.5` and `_8` predate it and are evidence of what happens without the rule.
+> 3. **`"client": {"code": "TEST", "name": "TEST"}`.** Desktop wrote the code into the name. `clients.csv` has the name as `Test` and the folder is `Clients\Test\`. Harmless here because the folder path came from Desktop's own client record, but the two tools do not agree on a client's name, so the consumer must never use the note's `client.name` to resolve a path. Match on `receipt_id`.
+> 4. **`"source": "folder"`**, carried through from the pipeline's own value, not overwritten with `"desktop"`. So `source` describes how the receipt arrived, and `corrected_by` describes who resolved it. Do not read `source` as the actor.
+> 5. **The filed filename is `2026-07-21_MARLOW-TRADE-SUPPLIES-LTD_96.00.png`.** Desktop does not lowercase the supplier; the pipeline does. So the two tools produce differently cased filenames for the same receipt. Cosmetic, no accounting consequence, and not worth changing either side, but anything that ever matches a filed receipt by filename must be case-insensitive.
 
 ---
 
@@ -779,6 +1126,20 @@ Reserved so module 1 does not need reworking. `coa_accounts` (5.5) is created in
 
 **Already built in IntelliBooks, do not duplicate:** SA103F cash-basis HMRC box mappings on every income and expense category, per-client year end, MTD flag, quarter basis, and the HMRC Summary Export (change log item 8). The five-type taxonomy and optional hierarchical names exist too (spec 5.4 item 4). What the category model lacks is only a **code**.
 
+> **Amended 2026-07-28, and this is now the strongest concrete argument for building this module.** Read from `IntelliBooks-Desktop-v3.html`, with three requirements from Paul.
+>
+> **A category has no identifier of any kind.** `addCategory()` at line 1990 pushes `{name, type, hmrc}`. The name is the primary key, and every reference to a category anywhere in the books is a copy of that string: `t.category` on a transaction, `r.category` on a receipt, and `category` on a statement rule.
+>
+> **Requirement 1: a rename must carry through to everything linked to it.** Today it cannot, because the link is the name itself. The saving grace is that **there is no rename feature**: no code anywhere writes `c.name`, so a category can only be added or deleted. So nothing is broken today, and the risk arrives the moment somebody adds a rename before codes exist. **Adding codes is therefore a prerequisite for renaming, not an improvement to it.**
+>
+> **No migration of existing references is needed**, per Paul 2026-07-28: every books entry on disk is test data and will be cleared before real use, so codes can be designed cleanly rather than retrofitted. See 17.5 for what the reset must and must not touch.
+>
+> **Requirement 2: a category must not be deletable while anything is linked to it.** Partly true today, and the gap matters. `delCategory()` at line 1997 checks `books.transactions.some(t => t.category === c.name)` and refuses if any transaction uses it. It does **not** check receipts, and it does **not** check statement rules. So a category can be deleted while a rule still assigns it, and `applyRules()` will then keep writing a category that no longer exists onto future transactions. The guard needs to cover all three reference types. Note also that `addCategory()` compares names case-insensitively while `delCategory()` compares them case-sensitively, so a reference differing only in case does not block deletion either.
+>
+> **Requirement 3: manual categories are never overwritten by the rules.** Already true, `applyRules()` at line 964 skips any transaction that already has a category. Confirmed as intended behaviour, so do not change it.
+>
+> Together these mean the CoA module is not only about a richer chart. It is what makes a category a thing with an identity rather than a string that happens to match, and until then rename is impossible and delete is only partly guarded.
+
 ---
 
 ## 14. Explicitly out of scope
@@ -790,6 +1151,32 @@ Each a deliberate deferral.
 - The CoA module, section 13.
 - CoA export adapters for QBO, Xero and FreeAgent.
 - Category conflict resolution when a receipt is matched to a bank transaction. Agreed shape: the receipt wins when its categorisation confidence is high, the statement rule wins when it is low, and the disagreement is flagged either way. It must not auto-update the rule (change log item 2). Needs the shared vocabulary first, and it lives in IntelliBooks.
+
+> **Read 2026-07-28, so this is now what the code does rather than what we assumed it does.**
+>
+> **The pipeline does not categorise transactions, only receipts.** `categorise()` is called from four places and all four are receipt paths: `app.py:187`, `worker/extraction_pipeline.py:191`, `worker/resolution/service.py:433` and `retroactive_categorise.py:133`. The one call against transactions is `docs/specs/categorisation_engine.py:423`, a prototype in `docs/` that is not live code. The engine was clearly designed to handle both, its own helper is documented as normalising a "bank/receipt description", but the shipped pipeline never sees a bank transaction. The `statements` table is platform statements, Uber-style weekly files, not bank lines.
+>
+> So there are two categorisation systems that never meet. **The pipeline categorises receipts** into `categorisations`, as a nominal code plus an account name, from the vendor mapping tables keyed on a normalised supplier name. **Desktop categorises transactions** into `t.category`, as a category name with no code, from statement rules matched on description and amount by `bestRuleFor()` at `IntelliBooks-Desktop-v3.html:965`.
+>
+> **What happens today when the two disagree: the transaction wins silently.** `attachReceipt()` at line 1073 does `if(!t.category && r.category) t.category = r.category;`. So the receipt's category is copied **only when the transaction has none**. If the transaction already has one, and it usually will because `applyRules()` fills it from statement rules, the receipt's category is discarded with no comparison, no flag and no record. VAT is handled the same way on the next line.
+>
+> **The intended precedence, confirmed with Paul 2026-07-28: manual, then rule, then receipt.** A category the operator typed wins over everything. A category a statement rule assigns wins over the receipt's. The receipt's category applies only where neither of those has filled the field. That is a sound order, and rules are not a lesser source: they are learned from the practice's own decisions at `IntelliBooks-Desktop-v3.html:938`, so a rule is a previous human judgement, not a guess.
+>
+> **But it is not implemented as a precedence. It is implemented as "first non-empty value wins", and the operator's button order decides which that is.** `applyRules()` at line 964 skips any transaction that already has a category, and `attachReceipt()` only writes when the field is empty. So run the analyser first and the rule wins, which is the intended order. Attach first and the receipt wins, which inverts it. Same two facts, two different answers, and nothing in the code expresses a preference. The intended precedence happens to hold only for one of the two sequences an operator might reasonably use.
+>
+> **Two further gaps, both of which the intended precedence assumes away.**
+>
+> *There is no confidence on the rule side.* `bestRuleFor()` at line 953 takes any rule whose pattern is a substring of the normalised description, prefers an amount-conditioned rule, then prefers the longest pattern. A two-character pattern match is treated as certain. So a weak rule beats a high-confidence receipt match, which is the opposite of the agreed shape, and the pipeline does carry a confidence on its side already.
+>
+> *The bank description is often the worse evidence.* A line reading of a marketplace, a payment processor, or a forecourt that sells both fuel and groceries tells you who took the money, not what was bought. The receipt tells you what was bought. That is the class of case where the receipt should win, and it is why the agreed shape in this section says the receipt wins on high confidence rather than never.
+>
+> **So the recommendation, which reconciles the two.** Keep manual, then rule, then receipt as the default. Make it deterministic rather than order-dependent, so the answer does not depend on which button was pressed first. Put a confidence on the rule side so a weak pattern match does not beat a strong receipt match. And record the disagreement whichever way it resolves, because today it is discarded with no trace, so a bad rule can be wrong for years without anyone being able to see it. The first of those is worth doing now; the other two still need the shared vocabulary.
+>
+> **Rename, agreed 2026-07-28.** The button at line 115 reads `Run Matching Analyser` and does no matching: it categorises from statement rules. Receipt-to-transaction matching is `refreshMatches()`, which runs by itself and has no button. Rename it **Categorise from Rules**, and fix the same wording in the tooltip at line 1324. For the IntelliBooks session.
+>
+> **This also proves why the conflict rule cannot be built yet, rather than merely asserting it.** To say "the receipt says X and the transaction says Y" you need X and Y in one vocabulary, and today one is a nominal code from the vendor tables and the other is a name from `books.categories`. The shared vocabulary is the chart of accounts in section 13. So the ordering above is the part that can be fixed now; the rule itself waits.
+>
+> **Where the gate belongs, per Paul 2026-07-28.** Not on the receipt. A receipt is a document and may reasonably have no category. Both routes into the books run through a transaction: `postReceiptToCashbook()` at line 1659 creates one from a receipt, and attach binds one to an existing transaction. So the rule to enforce is that **a transaction must not be posted with a blank category**, which covers both routes with one control instead of policing receipts at three points.
 - Bulk actions on the queue.
 - Editing or deleting extraction rows. Forbidden by `CLAUDE.md`.
 - Any JSON API, OAuth, SSO, JWT or permission matrix.
@@ -799,7 +1186,11 @@ Each a deliberate deferral.
 
 ## 15. Test plan
 
-Syntax check with `python -m py_compile`, verify imports, then functional tests. The suite passes 17 of 17; keep it green.
+Syntax check with `python -m py_compile`, verify imports, then functional tests. Keep the suite green.
+
+> **Amended 2026-07-26, count updated 2026-07-27.** The suite was 17 of 17 when this was written. It is **64 of 64** after phase 0 steps 1, 3 and 4, under both `python -m unittest discover -s tests` and `python -m pytest -q`, which agree. `pytest` is not a runtime dependency and was missing from `.venv`; it is now pinned in `requirements-dev.txt`.
+>
+> **Every test that reaches a writer must redirect `config.LOGS_DIR` and `config.RUNS_LOG`, and restore them afterwards.** The suite was appending synthetic rows into the live `logs\receipt_events_{firm_id}.ndjson` and `logs\runs.ndjson`, which is not tidiness: the intake panel at 8.6 reads those files, so a row like `"receipt_id": "recent-receipt"` would surface in the console as a real intake problem. Fixed in `2d19521`, with `tests/test_logs_isolation.py` asserting that a run creates nothing under the real `LOGS_DIR`. Redirect both constants, not just `LOGS_DIR`, for the reason in 6.5. Three synthetic rows written before the fix are still in the live event logs and are Paul's to decide about.
 
 **Phase 0 regressions, each red before its fix:**
 
@@ -827,7 +1218,7 @@ Syntax check with `python -m py_compile`, verify imports, then functional tests.
 13. Mismatched `expected_extraction_id` returns `stale` and writes nothing.
 14. Locked receipt returns `locked`.
 15. Nonexistent receipt returns `not_found`, does not raise, does not `sys.exit`.
-16. Still-invalid correction returns `still_invalid`, appends a note, writes a `resolution_events` row, does not file.
+16. Still-invalid correction returns `still_invalid`, **appends a new extraction row carrying the validation notes and leaves the previous row byte-identical**, writes a `resolution_events` row, does not file. Amended 2026-07-27, see 4.3 step 6. Superseded wording: "appends a note".
 17. Successful resolve writes exactly one new extraction row and leaves the original untouched.
 18. GL override leaves `suggested_code` unchanged, sets `correction_code`, and the written sidecar carries the corrected code and name.
 19. Opt-in mapping checkbox off leaves `categorisations_client_vendors` unchanged.
@@ -877,21 +1268,40 @@ Commit after each step.
 
 0. Discard the two disposable failed test receipts. Delete the two untracked draft files. Merge `fix/imap-message-id-dedup` into `main`. Start a fresh branch. Ordering matters: every commit bumps `pipeline_version` and triggers an auto-retry pass, so clear the discards first.
 
+> **Amended 2026-07-26. Step 0 was done differently and the merge is cancelled.** What actually happened, and why it matters to anyone reading this later.
+>
+> The discards were done. The merge was not, and should not be attempted on the basis written above. `main` is **42 commits behind** `fix/imap-message-id-dedup` and diverged by one, not six behind as the 2026-07-25 handover recorded. The single commit `main` holds is `965cb24`, a merge commit whose two parents are both ancestors of the working branch and whose tree is byte-identical to a recomputed clean merge of them, so it contributes no content. Nothing on `main` is needed. The only tracked files there and not on the working branch are the three `logs\*.ndjson`, deliberately untracked by `0859817`.
+>
+> Before this was noticed, a branch `docs/console-design` had been cut from `main` and this document committed on it, leaving the working tree missing 13 files of the built system, including `resolve_receipt.py`, `worker/extraction_pipeline.py` and three regression tests. Recovered on 2026-07-26: the two doc commits were cherry-picked onto `fix/imap-message-id-dedup`, and `feat/console-phase0` was cut from that. `docs/console-design` is kept as a safety net. One casualty: `logs\runs.ndjson` lost its records between 24 July 13:20 and 25 July, restored as far as `0859817^` allows. Log history only, no database or client file affected.
+>
+> **Phase 0 and everything after it happens on `feat/console-phase0`.** Bringing `main` up to date is its own session, with its own care, and is not a prerequisite for anything here.
+
 **Phase 0:**
 
-1. The auto-retry loop fix, 3.1, with tests 1 to 3. **First: it is the only bug costing money continuously.**
-2. `save_extraction(update_status=False)`.
-3. `parse_corrections` plus the zero-value and coercion fixes, tests 4 to 6, 10, 11. Highest value after 3.1.
-4. Review-pair cleanup and `review_count` from the DB, tests 7, 8.
-5. Sidecar `category_code` and `category_name`, test 9.
-6. Move post-processing to `worker/extraction/postprocess.py`, test 12. Pure move.
-7. Extraction factory and `extractor.name`, replacing the hardcoded strings.
+1. ~~The auto-retry loop fix, 3.1, with tests 1 to 3.~~ **Built 2026-07-26 in `787493f`**, with `tests/test_auto_retry_no_loop.py`. See the note in 3.1. Ordering deviation, deliberate: step 2 was built first, in `22130d7`, because the fix cannot be written without it.
+2. ~~`save_extraction(update_status=False)`.~~ **Built 2026-07-26 in `22130d7`**, as `update_status=True` by default with `False` at the two new call sites. Plus `BaseExtractor.name` in `117fb1b`, pulled forward from step 7, see 10.1. Plus two unplanned commits the work exposed: `2d19521`, test log isolation, see section 15; and `285ed63`, actually writing `data/run.log`, see 4.3 and 6.5.
+3. ~~`parse_corrections` plus the zero-value and coercion fixes, tests 4 to 6, 10, 11.~~ **Built 2026-07-27** in `c0ac145`, `worker/resolution/service.py` with `tests/test_parse_corrections.py`, and `0cae398`, the CLI rewired with `tests/test_resolve_receipt_zero_and_types.py`. See the note in 4.2. Suite 48 of 48.
+4. ~~Review-pair cleanup and `review_count` from the DB, tests 7, 8. Also `processed_today`, per 3.10.~~ **Built 2026-07-27** in `dce1fdc`, `remove_review_pair()` in `worker/filing.py` with `tests/test_review_pair_cleanup.py`, and `25c6665`, `review_count` and `processed_today` from the database with `tests/test_status_counts_from_db.py`. See the notes in 3.5, 3.6 and 3.10. Suite 64 of 64.
+5. ~~Sidecar `category_code` and `category_name`, test 9.~~ **Built 2026-07-27** in `9f5cdad`, all four call sites plus the removal of the post-hoc mutation, with `tests/test_sidecar_category_keys.py`, and `96a5c5a`, `retroactive_categorise.py` with `tests/test_retroactive_categorise_sidecar.py`. See the notes in 3.7. Suite 73 of 73.
+6. ~~Move post-processing to `worker/extraction/postprocess.py`, test 12. Pure move.~~ **Built 2026-07-27** in `bf1976d`, with `tests/test_postprocess.py`. Suite 94 of 94. See the note in 10.2, which records the seven defects the move exposed and did not fix.
+6b. ~~Fix findings 1, 2, 6 and 7 from the 10.2 note.~~ Inserted 2026-07-27 by decision, see 17.4. **Built 2026-07-27** in `725545b`, `843a6b1`, `f0e0613` and `dc2e2ae`, with `tests/test_prefer_dayfirst_isolation.py` added. Suite 116 of 116.
+6c. ~~Write `extractions.details`, per 3.11.~~ **Built 2026-07-27** in `4aeadcd`. The write was dropped by `799cead` on 21 July, confirmed from the diff: it removed the parameter, the column and the value in a commit that rewrote 457 lines of `app.py`.
+7. ~~Extraction factory and `extractor.name`, replacing the hardcoded strings.~~ **Built 2026-07-27** in `71fe757`, the factory plus `config.EXTRACTION_ENGINE`, and `d931045`, the three failure paths. Suite 134 of 134. `app.py` no longer imports `OpenAIVisionExtractor` at all, so the concrete class is reachable only through the registry.
+7b. ~~Pass `pipeline_version` at the two embedded-image writes, per 3.12.~~ **Built 2026-07-27** in `684216f`. All six writes in `app.py` now pass it, checked programmatically.
 
 **Resolution service:**
 
-8. `worker/resolution/service.py`, tests 13 to 21.
-9. `resolve_receipt.py` as a thin CLI, plus `discard_receipt.py`. Verify test 40 by hand.
+8. ~~`worker/resolution/service.py`, tests 13 to 21.~~ **Built 2026-07-27** in `4c7c733` the `resolution_events` table, `f700706` the read side, and `60df040` `resolve_receipt()` and `discard_receipt()` with 23 tests. Suite 181 of 181. See the 2026-07-27 amendments to 4.2, 4.3 and 5.1 for the five points the control flow left open.
+8b. ~~The three service corrections: the `already_filed` guard, preserving `possible_duplicate` on `still_invalid`, and the `reason` column.~~ **Built 2026-07-27** in `d3bf4e1`, `4fddcb0` and `39d28b5`.
+9. ~~`resolve_receipt.py` as a thin CLI, plus `discard_receipt.py`. Verify test 40 by hand.~~ **Built 2026-07-27** in `e44be94` and `d4a5a97`. Suite 221 of 221. Test 40 run by hand against a temp database in all three modes, with the audit trail in `resolution_events` quoted in the report. `add_validation_note()` removed from `Repository`. One file per entry point for logging, `run.log`, `resolve.log`, `discard.log`, `console.log` reserved: the `QueueHandler` alternative was rejected because its listener has to be a process that owns the file, which means either the pipeline must be running before the CLI can log or there is a log daemon, and logging then stops silently if the listener is down.
+9b. Two small corrections from the 4.4 amendment: call `confirm_duplicated_action()`, and add `receipts.filed_at` per 5.1a. **Next, with step 10.**
+9c. Move the folder-intake original out of the inbox on every outcome, per 3.13. One commit. Do it in the same session as 9b, because it is live and costing an OpenAI call per poll for any receipt sitting in review.
+   Original step 9 text, for the record: **Also `worker/logging_setup.py`**, per 6.5: move `attach_run_log_handler()` out of `app.py`, call it from every entry point, and settle whether it is one log file per process or a single writer. 4.3's accepted trade-off is unsound until this is done.
 10. Back-feed consumer and `apply_resolution_note()`, tests 22 to 28.
+
+**The clean-slate reset:**
+
+10c. The staged clear-down in 17.5. **After the live round trip, test 41, and before any console work.** Placed here on 2026-07-28 by decision. Not before step 10, because resetting and then changing the pipeline is two variables at once; not after step 11, because the console should be built on a clean slate rather than on 27 test receipts. The consultant session supervises it stage by stage, verifying state before and after each stage rather than at the end.
 
 **Console:**
 
@@ -906,7 +1316,7 @@ Commit after each step.
 19. Costs API client and the spend panel.
 20. Billing-error classification, 3.9.
 21. `RECEIPT_CAPTURE_GUIDE.md`: starting the console, login, resolving through the UI, the GL override, finding a client's receipts for a tax year, that both tools can resolve safely, and OpenAI auto-recharge as a setup step.
-22. `CLAUDE.md`: new tables, the resolution service boundary, the back-feed contract, and the rule that the domain layer stays free of web imports.
+22. `CLAUDE.md`: new tables, the resolution service boundary, the back-feed contract, and the rule that the domain layer stays free of web imports. **Also the Claude Code permissions setup**, added 2026-07-28: the pre-approved command list lives in `.claude/settings.local.json`, because **allow rules in `.claude/settings.json` are ignored unless the workspace is trusted, while the local file's are not**. That cost three attempts to find. `.claude/settings.json` holds the same content and is committed, so a fresh checkout can recreate the local file from it with a single copy; until someone does, every command prompts. `.claude/settings.local.json` is gitignored and machine-local by design. This belongs here rather than in `RECEIPT_CAPTURE_GUIDE.md`, which is written for the day-to-day operator and has no business carrying developer environment setup. Leave the existing AUTOMATIC Task Mode section alone while doing this step.
 
 Steps 1 to 10 are worth doing even if the console slips. They fix live bugs and close the divergence.
 
@@ -950,6 +1360,39 @@ More current, 19 July, but: line 28 describes Desktop's review-and-file flow as 
 - Extend `chart_of_accounts_DRAFT.csv` with income, equity and remaining balance sheet accounts. Not blocking; the 23 expense accounts cover the receipts module.
 - Issue a dedicated OpenAI API key or project for this app, needed for clean cost attribution (9.3).
 - Whether an org-level OpenAI Admin key on this workstation is acceptable. If not, 9.3 is skipped and the local ledger stands alone.
-- Whether `export_bookkeeping.py` needs the effective-GL-code treatment (11.2).
+- ~~Whether `export_bookkeeping.py` needs the effective-GL-code treatment (11.2).~~ **Answered 2026-07-27: it cannot need it, because it exports no category at all.** The script is 45 lines and selects `receipt_id`, `firm_id`, `client_id`, `supplier_name`, `invoice_date`, `net_amount`, `vat_amount`, `gross_amount`, `currency`, `status`, `MIN(extracted_at)`, `MAX(validation_status)` and `MAX(validation_notes)`. No `categorisations` join, no nominal code. So 11.2's effective-code rule has no route into it, and whether a bookkeeping export **should** carry the GL code is a new and separate question. It probably should, given that is the point of categorising, but it is a change of purpose rather than a bug fix.
+  Two real defects found in it while answering, both out of scope and neither touched. First, `e.supplier_name` and the other bare `e.*` columns sit outside the `GROUP BY`, so SQLite takes them from an arbitrary row in the group: a receipt with three extraction attempts can export the supplier from one attempt and the amounts from another. Second, `MAX(e.validation_status)` and `MAX(e.validation_notes)` are aliased `latest_*`, but `MAX` on text is alphabetical, not latest, and `MAX('ok','failed')` is `'ok'`, so a receipt whose most recent attempt failed can export as `ok`. Both matter more than the missing GL code, because both silently produce a wrong figure or a wrong status in something called a bookkeeping export.
 - Whether the browse page should export CSV. `export_bookkeeping.py` already exists and two divergent export formats is worse than one; if yes, reuse its logic.
 - Confirm IntelliBooks change log item 19 has been tested end to end before the back-feed is built on it. Note that testing it creates the divergence deliberately, so reset the receipt's DB status afterwards.
+
+Added 2026-07-26, neither blocking phase 0:
+
+- **How should the CLI express "clear this field"?** `parse_corrections` in 4.2 distinguishes omission from an explicit clear, where `""` means clear. `resolve_receipt.py`'s interactive prompt already treats a blank answer as "keep existing", which is documented in `RECEIPT_CAPTURE_GUIDE.md` and must not change. So the CLI currently has no way to clear a wrongly extracted reference number, while the console will have one. Options: a typed sentinel, a `--clear field` flag, or accept the asymmetry and leave clearing to the console. Do not invent a sentinel without deciding.
+- **Should `add_validation_note()` stop mutating extraction rows?** It runs `UPDATE extractions SET validation_notes = ?` on the latest row, at `repository.py:571`. `CLAUDE.md` says extractions are append-only, and 4.3 step 6 tells the resolution service to call it on a `still_invalid` outcome, so the service as specified mutates an append-only row. Either notes are agreed to be mutable metadata while values are not, and `CLAUDE.md` says so explicitly, or the `still_invalid` path appends a new `manual_correction` row carrying the notes instead. Decide before step 8. Phase 0 step 1 already took the second route for the missing-file branch, see 3.1.
+- ~~Should the `category` key be backfilled in the 32 sidecars already filed?~~ **Asked and answered 2026-07-27: no. Paul confirms every filed receipt and sidecar on disk is test data, on test clients and his own record, not a third party's books.** So there is nothing to preserve and nothing to correct. Step 5 fixes the writer, the existing files stay as they are, and if they are ever in the way they can be deleted rather than rewritten. Anyone reading 3.7's table later should read it as forensic evidence of how the field drifted, not as a client data problem.
+- ~~Fix the four small defects the step 6 move exposed, or carry on?~~ **Decided 2026-07-27: fix them now, as step 6b, before step 7.** Findings 1, 2, 6 and 7 in 10.2. Findings 3, 4 and 5 stay deferred. Original reasoning kept below. Finding 2 is the one that argues for doing it: for a receipt that prints an ISO date, the day-first fix does not apply at all, and it fails silently, so nobody would find it without reading the code. Finding 1 puts a false label on the note an operator reads to decide whether to trust a date. Finding 6 is three `logger.warning` calls that change nothing on the happy path. Finding 7 is two lines of test hygiene, now unblocked because step 6 is committed. Together they are one small commit each in a single area, with tests, and they are cheaper to do now while the code is fresh than after the console is built on top of it. Against: it is not in the agreed phase 0 list and it delays step 7. Findings 3, 4 and 5 should wait either way.
+- **A receipt filed with no category: where the risk actually is.** Added 2026-07-28, found during the item 19 test, and **corrected by Paul the same day.**
+  Superseded framing, recorded because it was wrong in a way worth not repeating: I first wrote that an uncategorised receipt is invisible in the HMRC and P&L reports it should appear in. That is not how this system works. **Receipts do not map to HMRC boxes or to the P&L. Transactions do.** A receipt is a document; a receipt can be attached to a transaction, and a transaction can be created from a receipt. The accounting record is the transaction.
+  So filing a receipt with a blank category is not itself an accounting gap. The risk is one step removed, at `postReceiptToCashbook()`, `IntelliBooks-Desktop-v3.html:1659`, which creates a transaction from a receipt and does `t.category = r.category || ""`. A blank category on the receipt therefore produces a transaction with a blank category, and **that** is the record the reports read. The toast it shows says "Review the category, then Post", so the flow expects the operator to fix it, which is a prompt rather than a control.
+  The other route is attaching a receipt to an existing transaction, where the transaction already has its own category from a statement rule. That is the disagreement handled by the category-conflict rule in section 14: receipt wins on high confidence, statement rule wins on low, flag either way, never auto-update the rule.
+  So the question narrows usefully: not "should Desktop require a category before filing", but **"should a transaction be allowed to reach the books with a blank category"**. Paul's call, it lives in Desktop rather than here, and it belongs in the brief for the IntelliBooks session.
+- **The three synthetic rows in the live event logs.** Written by the test suite before `2d19521` fixed the isolation. Identifiable by `receipt_id` values `recent-receipt` and `56b29977`. They will show in the intake panel at 8.6 unless removed or filtered. Removing lines from an operational log is Paul's call.
+
+
+### 17.5 The clean-slate reset, added 2026-07-28
+
+Paul intends to clear the database and the test clients and start testing afresh, soon. Every filed receipt, sidecar and books entry on disk today is test data, which is why several decisions above are "no backfill" and "no migration". This section records what the reset must and must not touch, because two parts of it are not disposable and one of them costs money to get wrong.
+
+**Do not clear: the vendor mappings.** `categorisations_client_vendors` holds 100 rows for `Client_001` and one for `Client_003`. That is real practice knowledge, imported from `categorisations_client_vendors_cleaned.csv`, and it is what makes the categorisation engine's layers 1 and 3 work at all. It is recoverable from that CSV if lost, and `import_vendor_csv.py` and `seed_client_vendors.py` exist for the purpose, but it should be preserved deliberately rather than rebuilt by accident. `categorisations_firm_vendors` and `categorisations_client_rules` are both empty, so nothing to protect there.
+
+**Do not clear `processed_attachments` without checking the mailbox first, and this is the one that costs money.** It holds 20 rows, and it is the only record that a given email attachment has already been extracted. `fetch_new_messages()` selects `INBOX` and searches `ALL`, at `worker/email/reader.py:47` and `:171`, so it re-reads everything sitting in `INBOX` on every poll and relies on `processed_attachments` to know what to skip. Emails that were processed have been moved out to `INBOX.Processed Receipts` and the other routing folders, so in principle `INBOX` is empty and a reset is free. **Verify that before clearing, not after**: anything still in `INBOX` will be re-extracted at one OpenAI call per attachment, and with a fresh database there is nothing to stop it.
+
+**Safe to clear:** `receipts`, `extractions`, `categorisations`, `resolution_events`, `statements` (empty), `email_alerts` (3 rows, all test alerts), and `email_delta`. On disk: `Clients\Test\`, `Clients\Test 2\`, the two `Books\TEST*-books.json` files, `data/files/`, and the filed receipts under `Clients\Paul Keating\Receipts\`, which are Paul's own and also test material.
+
+**The order matters.** Stop the pipeline first, so nothing is mid-write. Back up `data/receipts.db` before touching it, `repo.backup_db()` exists for this. Then clear, then run `init_db()` once to rebuild an empty schema, then re-import the vendor mappings if they were lost, then start the pipeline and confirm one clean cycle before creating any new test fixture.
+
+**Scheduled at step 10c**, after the live round trip and before any console work, agreed 2026-07-28. Not earlier, because step 10 changes the pipeline and resetting either side of a code change means two variables at once. Not later, because the console should be built against a clean slate rather than against 27 test receipts and a books file full of import artefacts.
+
+**Supervised, not handed over.** Paul has asked the consultant session to run this stage by stage. That means: a plan enumerating every stage before anything is deleted; a database backup and a file-tree listing captured first; the state verified before and after each stage rather than once at the end; nothing deleted in the same stage as anything else; and the mailbox checked before `processed_attachments` is touched. If a stage does not verify, stop there rather than continue and reconcile later.
+
+**Worth treating as a test in its own right.** A clean start exercises the paths nobody has run since May: an empty database, `init_db()` from nothing, `clients.csv` resolution with no history, and Desktop opening a books file it has to create. If any of those are broken, better to find out deliberately than on the first real client.

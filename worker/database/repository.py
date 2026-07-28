@@ -111,6 +111,53 @@ class Repository:
         ).fetchone()
         return dict(row) if row else None
 
+    def find_receipts_by_filename(self, filename: str) -> list[dict]:
+        """Every receipt with this original filename, case-insensitively.
+
+        The fallback match for a back-feed note whose review sidecar carried no
+        receipt id, per design document 12.3 step 2. Case-insensitive because
+        Desktop leaves a filename as it found it and the pipeline lowercases the
+        supplier part, so the two tools produce differently cased names for the
+        same receipt. Returns every match: an ambiguous match is the caller's
+        problem to refuse, not this method's to guess at.
+        """
+        if not filename:
+            return []
+        rows = self._conn.execute(
+            "SELECT * FROM receipts WHERE LOWER(filename) = LOWER(?)",
+            (filename,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def find_coa_account_by_name(self, account_name: str) -> Optional[dict]:
+        """Look up a chart of accounts entry by name. None if there is no match.
+
+        Design document 12.3 step 6. `coa_accounts` (5.5) is not created until step
+        11 and not populated until step 12, so until then this returns None for
+        every name, which 12.3 says is expected and not an error. Written so it
+        starts working when the table arrives with no change here.
+
+        Only the default scope. The client and group tiers in section 13 need the
+        client_id and business_type to resolve safely, and that belongs to step 11's
+        query layer rather than to a lookup that would otherwise be able to return
+        another client's account.
+        """
+        if not account_name:
+            return None
+        try:
+            row = self._conn.execute("""
+                SELECT code, name FROM coa_accounts
+                WHERE LOWER(name) = LOWER(?)
+                  AND scope = 'default'
+                  AND status = 'active'
+                LIMIT 1
+            """, (account_name,)).fetchone()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                return None
+            raise
+        return dict(row) if row else None
+
     def get_unfiled_ok_receipts(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT receipt_id, client_id, firm_id, client_code, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"

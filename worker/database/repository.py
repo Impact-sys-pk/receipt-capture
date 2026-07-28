@@ -155,9 +155,14 @@ class Repository:
         return [{"nominal_code": r["nominal_code"], "account_name": r["account_name"]} for r in rows]
 
     def mark_receipt_filed(self, receipt_id: str, filed_path: str):
+        """Record where a receipt was filed, and when.
+
+        The only writer of filed_path, and therefore the only writer of filed_at,
+        so the two cannot disagree. Design document 5.1a.
+        """
         self._conn.execute(
-            "UPDATE receipts SET filed_path = ? WHERE receipt_id = ?",
-            (str(filed_path), receipt_id)
+            "UPDATE receipts SET filed_path = ?, filed_at = ? WHERE receipt_id = ?",
+            (str(filed_path), datetime.now(timezone.utc).isoformat(), receipt_id)
         )
         self._conn.commit()
 

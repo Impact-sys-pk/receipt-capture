@@ -209,6 +209,16 @@ def init_db():
     if "locked_at" not in existing_receipt_columns:
         conn.execute("ALTER TABLE receipts ADD COLUMN locked_at TIMESTAMP")
 
+    # Design document 5.1a. 4.3 step 1a's already_filed message promises the
+    # operator a date and 8.3 lists a "filed" column that would otherwise only
+    # ever be a yes or no. mark_receipt_filed() is the only writer of filed_path,
+    # so it is the only writer of this and the two stay consistent by
+    # construction. Existing rows keep NULL and are deliberately not back-filled
+    # from a file mtime: that records when a copy was written rather than when the
+    # practice filed it, and a plausible wrong date is worse than a NULL.
+    if "filed_at" not in existing_receipt_columns:
+        conn.execute("ALTER TABLE receipts ADD COLUMN filed_at TEXT")
+
     conn.commit()
 
     # Design document 5.1 as amended. discard_receipt() takes a reason and the

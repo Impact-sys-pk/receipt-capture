@@ -306,12 +306,17 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
     #     come through here; 12.3 step 5 calls mark_receipt_filed() directly.
     filed_path = receipt.get("filed_path")
     if filed_path:
+        # filed_at is NULL for anything filed before 5.1a added the column, and is
+        # deliberately not back-filled, so the date is offered when it is known and
+        # left out rather than guessed when it is not.
+        filed_at = receipt.get("filed_at")
+        when = f" on {filed_at}" if filed_at else ""
         return ResolutionOutcome(
             outcome="already_filed", receipt_id=receipt_id,
             extraction_id=(repo.get_extraction_for_receipt(receipt_id) or {}).get("extraction_id"),
             filed_path=filed_path,
             message=(
-                f"This receipt has already been filed, as {filed_path}. "
+                f"This receipt has already been filed{when}, as {filed_path}. "
                 "Nothing was changed. Open that file to check it, or discard the "
                 "receipt if it was filed in error."
             ),

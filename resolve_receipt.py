@@ -103,7 +103,13 @@ def show_receipt_state(view: ResolutionView):
 
 
 def confirm_duplicated_action(receipt: dict) -> str:
-    """Ask staff to confirm duplicate decision."""
+    """Ask staff to confirm duplicate decision.
+
+    Called for every `possible_duplicate` receipt that arrives without a
+    `--duplicate-decision` flag, before any correction is read. Resolving a
+    `possible_duplicate` is the "file it anyway" path, per design document 4.3 as
+    amended, so skipping this question is the CLI filing a duplicate silently.
+    """
     while True:
         choice = input(
             "Is this a genuine duplicate? (file/discard): "
@@ -230,7 +236,14 @@ def main():
 
         show_receipt_state(view)
 
-        if view.receipt['status'] == 'possible_duplicate' and args.duplicate_decision == 'discard':
+        # A possible_duplicate is decided before anything else is asked. The state
+        # is shown first because the answer depends on seeing it, and the two
+        # receipts are named in that output.
+        duplicate_decision = args.duplicate_decision
+        if view.receipt['status'] == 'possible_duplicate' and duplicate_decision is None:
+            duplicate_decision = confirm_duplicated_action(view.receipt)
+
+        if view.receipt['status'] == 'possible_duplicate' and duplicate_decision == 'discard':
             return _report(discard_receipt(
                 repo, args.receipt_id,
                 reason="confirmed duplicate via CLI",

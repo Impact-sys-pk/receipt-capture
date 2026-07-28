@@ -3,6 +3,7 @@ import json
 import logging
 import logging.handlers
 import os
+import shutil
 import sqlite3
 import sys
 import time
@@ -153,6 +154,82 @@ def _remove_inbox_pair(intake) -> None:
                 intake.sidecar_path.unlink()
         except OSError:
             logger.warning(f"Failed to remove inbox sidecar: {intake.sidecar_path}")
+
+
+INBOX_PROCESSED_DIRNAME = "Processed"
+
+
+def _unique_processed_stem(directory: Path, name: str) -> str:
+    """A stem in `directory` that neither an image nor a sidecar already uses.
+
+    Same `-2`, `-3` convention as `_unique_path()` in worker/filing.py. The stem
+    is chosen for the pair rather than the image alone, because the inbox scanner
+    finds a sidecar with `Path.with_suffix('.json')`: an image landing as
+    `x-2.png` needs its sidecar at `x-2.json` or the two stop being a pair.
+    """
+    stem = Path(name).stem
+    ext = Path(name).suffix
+    index = 1
+    while True:
+        candidate = stem if index == 1 else f"{stem}-{index}"
+        if not (directory / f"{candidate}{ext}").exists() and not (
+            directory / f"{candidate}.json"
+        ).exists():
+            return candidate
+        index += 1
+
+
+def _move_inbox_pair_to_processed(intake) -> None:
+    """Move a folder-intake original, and any sidecar, out of the client's inbox.
+
+    Design document 3.13. This runs on **every** outcome, not only `ok`. Anything
+    left behind is found by `find_by_hash()` on the next poll, is not
+    `is_recorded_and_filed()` because `filed_path` is NULL, and is then
+    deliberately reprocessed: a new receipt row, a new extraction row, a new
+    Review pair and one OpenAI call, every five minutes, indefinitely.
+
+    A move rather than a delete, per CLAUDE.md's no-data-loss rule, and that
+    applies to the `ok` path too, which used to delete. The reprocessing rule this
+    makes unreachable is deliberately left alone: it still guards the genuine
+    resend of a file an operator puts back by hand.
+    """
+    source = intake.source_path
+    sidecar = intake.sidecar_path
+    if not source.exists() and not (sidecar and sidecar.exists()):
+        return
+
+    processed_dir = source.parent / INBOX_PROCESSED_DIRNAME
+    try:
+        processed_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.error(
+            f"could not create {processed_dir}: {exc}; leaving {source.name} in the inbox, "
+            "where it will be reprocessed on the next poll"
+        )
+        return
+
+    stem = _unique_processed_stem(processed_dir, source.name)
+
+    if source.exists():
+        destination = processed_dir / f"{stem}{source.suffix}"
+        try:
+            shutil.move(str(source), str(destination))
+            logger.info(f"inbox original moved out of the inbox: {destination}")
+        except OSError as exc:
+            logger.error(
+                f"could not move {source} to {destination}: {exc}; it will be reprocessed "
+                "on the next poll"
+            )
+            return
+
+    if sidecar and sidecar.exists():
+        destination = processed_dir / f"{stem}.json"
+        try:
+            shutil.move(str(sidecar), str(destination))
+        except OSError as exc:
+            # An orphaned sidecar is re-read by scan_inbox() on every poll, but it
+            # produces no receipt and costs nothing, so this is a warning.
+            logger.warning(f"could not move inbox sidecar {sidecar} to {destination}: {exc}")
 
 
 def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]) -> None:
@@ -772,10 +849,6 @@ def process_once():
                     pipeline_version=pipeline_version
                 )
 
-                # Remove inbox pair if successfully processed
-                if status == "ok":
-                    _remove_inbox_pair(intake)
-
             except Exception as exc:
                 logger.error(f"capture extraction failed {receipt_id[:8]}... [{intake.filename}]: {exc}", exc_info=True)
                 stats["extraction_failures"] += 1
@@ -816,6 +889,13 @@ def process_once():
                     review_reason=str(exc),
                     run_id=run_id
                 )
+
+            finally:
+                # Every outcome, per design document 3.13, and last: the failure
+                # branch above copies the original into the Review folder, so the
+                # move has to happen after it, and a `finally` is the only place
+                # that covers both branches without repeating the call.
+                _move_inbox_pair_to_processed(intake)
 
         for msg in messages:
             message_id = msg["id"]

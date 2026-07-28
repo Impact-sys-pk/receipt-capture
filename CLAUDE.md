@@ -76,6 +76,45 @@ Add this policy so reviewers know the agent will propose commits and push/PR wor
 
 ---
 
+### AUTOMATIC Task Mode
+
+**Trigger.** A task whose title or first line contains **`AUTOMATIC task`** runs under this section. Anything else keeps the default behaviour, where you propose and I approve.
+
+**What this section changes.** It does not change what you are allowed to run: that is the permission layer in `.claude/settings.json`. It changes when you stop to ask me a question.
+
+**Under `AUTOMATIC task`, do not stop to ask about any of the following. They are pre-approved by the fact that the task says `AUTOMATIC`.**
+
+- `git add`, `git commit`, `git switch`, `git checkout -b`, `git cherry-pick`.
+- `git push` to the branch named in the task, when it is a fast-forward. Check with `--dry-run` first and never use `--force`.
+- Creating, editing or deleting files the task names, including new modules, new test files and new directories under the repository.
+- Editing existing code where the task describes the change, including editing existing tests when the task says to.
+- Running the test suite, `py_compile`, read-only database queries, and read-only git commands, as often as you like.
+- Choosing test names, fixture shapes, file layout within a module, and commit message wording, following the templates in this document.
+- Deleting scratch files, throwaway worktrees and temporary copies you created yourself.
+
+**Stop and ask, even under `AUTOMATIC task`.** This list is short on purpose. If it is not on it, proceed.
+
+1. Anything on the Destructive Git Operations list below. That list is unchanged and it outranks this section.
+2. Anything that writes, moves or deletes a file **outside** `C:\LastingImpact\receipt_capture`, in particular anything under `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`. Client folders, `clients.csv`, the books, the Review folders and `pipeline-status.json` are all out there.
+3. Any `INSERT`, `UPDATE` or `DELETE` against `data/receipts.db`. Read-only is fine, and temp databases in tests are fine.
+4. Adding a dependency, or installing anything.
+5. A change that would alter behaviour the task did not ask you to change, including a change you believe is an obvious improvement.
+6. A point where the task and the design document disagree, or where the design document does not say and the answer changes agreed behaviour. Report it, do not choose.
+7. Anything that would cost money: a real OpenAI call, or a change that makes one more likely.
+
+**What does not change, and is the reason this build has gone well.**
+
+- Red before green. If the test cannot be written first, prove the suite discriminates by mutating the behaviour and showing which tests catch it.
+- Flag, do not fix. Something wrong that the task did not ask about gets reported, not repaired.
+- Disclose your own mistakes, including ones you caught and corrected yourself. A report that hides a corrected error is worth less than one that shows it.
+- Verify claims against the thing itself rather than against your own summary. Read the file back, query the row, count the files on disk.
+- Report at the end of the task rather than at each step. Fewer, better interruptions.
+
+- **One command per Bash call, and never prefix with `cd`.** The working directory is already `C:\LastingImpact\receipt_capture`, so `cd c:/LastingImpact/receipt_capture && python -m pytest -q` is the same as `python -m pytest -q` with a redundant prefix. It matters because the permission matcher compares the whole command string against its rules and does not split on `&&`, so a `cd` prefix stops an otherwise pre-approved command from matching and I get asked about it for nothing.
+- **Do not chain commands with `&&`, `;` or `||` to save a round trip.** Run them separately. A chain is matched as one string, so it is both less likely to be pre-approved and, where it is approved, wider than intended.
+- **A pipe into a reader is fine**, for example `python -m pytest -q | tail -20`, because the command still begins with the part that is pre-approved. Prefer it to a chain.
+  **If in doubt, the test is this:** would I be annoyed to be asked, or annoyed not to have been? Commits, files and tests, proceed. Client data, money, and decisions I have not made, ask.
+
 ### Destructive Git Operations
 
 **CRITICAL: Always warn before destructive commands**
@@ -360,11 +399,13 @@ Automatic GL code assignment via 6-layer lookup strategy:
 All receipts are automatically matched to a client via `clients.csv`:
 
 **For email receipts:**
+
 - Sender's email address is looked up in `clients.csv`
 - If found: `client_id`, `firm_id`, `business_type` assigned from CSV
 - If not found: defaults to `client_id=UNKNOWN`, `firm_id=INTELLITAX`, `business_type=UNSPECIFIED`
 
 **For folder intake:**
+
 - `client_code` from sidecar file is looked up in `clients.csv`
 - If found: `client_id`, `firm_id` assigned from CSV
 - If not found: defaults to `client_id=UNKNOWN`, `firm_id=INTELLITAX`
@@ -406,6 +447,7 @@ Status assignment:
 - Uses message_id from email headers for deduplication (not IMAP UIDs)
 
 **Email routing by outcome:**
+
 - **Processed Receipts** — Validation status "ok" ✓ Filed
 - **Needs Review** — Validation status "needs_review" (data present but inconsistent)
 - **Failed Processing** — Extraction error (AI couldn't read document)
@@ -415,6 +457,7 @@ Status assignment:
 - **Duplicates** — Duplicate detected (same message_id, file_hash, or transaction)
 
 **Embedded image handling:**
+
 - Emails with embedded images (iOS share button) are automatically extracted
 - Extracted images processed like normal file attachments
 - No alert sent (processed silently)
@@ -422,11 +465,13 @@ Status assignment:
 - Only alerts "no attachment" if email has neither file attachments NOR embedded images
 
 **Automated alerts (no manual action needed):**
+
 - **No-attachment emails:** Alert includes firm name (from client resolution). Client recognizes their firm name, not "Lasting Impact".
 - **Unknown senders:** Alert asks them to contact support@lastingimpact.co.uk to register.
 - Alert tracking prevents duplicate alerts for same email.
 
 **Configuration:**
+
 - IMAP: mail.lastingimpact.co.uk, port 993 (configured in .env)
 - SMTP: mail.lastingimpact.co.uk, port 465 (for sending alerts from alerts@lastingimpact.co.uk)
 - Firms: Loaded from IntelliBooks/firms.csv for alert display
@@ -446,20 +491,20 @@ Status assignment:
 
 ### receipts
 
-| Field             | Type        | Notes                                      |
-| ----------------- | ----------- | ------------------------------------------ |
-| receipt_id        | TEXT (UUID) | Primary key, unique per attachment         |
-| firm_id           | TEXT        | Defaults to 'INTELLITAX', multi-firm ready |
-| client_id         | TEXT        | Defaults to 'UNKNOWN'                      |
-| message_id        | TEXT        | Email message ID (for duplicate detection) |
-| email_subject     | TEXT        | Subject line                               |
-| email_from        | TEXT        | Sender address                             |
-| email_received_at | TEXT        | ISO timestamp                              |
-| filename          | TEXT        | Original attachment filename               |
-| file_path         | TEXT        | Local storage path                         |
-| file_hash         | TEXT        | SHA256 hash (dedup)                        |
+| Field             | Type        | Notes                                                                            |
+| ----------------- | ----------- | -------------------------------------------------------------------------------- |
+| receipt_id        | TEXT (UUID) | Primary key, unique per attachment                                               |
+| firm_id           | TEXT        | Defaults to 'INTELLITAX', multi-firm ready                                       |
+| client_id         | TEXT        | Defaults to 'UNKNOWN'                                                            |
+| message_id        | TEXT        | Email message ID (for duplicate detection)                                       |
+| email_subject     | TEXT        | Subject line                                                                     |
+| email_from        | TEXT        | Sender address                                                                   |
+| email_received_at | TEXT        | ISO timestamp                                                                    |
+| filename          | TEXT        | Original attachment filename                                                     |
+| file_path         | TEXT        | Local storage path                                                               |
+| file_hash         | TEXT        | SHA256 hash (dedup)                                                              |
 | status            | TEXT        | pending \| ok \| needs_review \| failed \| possible_duplicate \| retry_exhausted |
-| created_at        | TEXT        | ISO timestamp                              |
+| created_at        | TEXT        | ISO timestamp                                                                    |
 
 ### extractions
 

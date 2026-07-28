@@ -8,3 +8,4 @@ __pycache__/
 venv/
 .history/
 logs/
+.claude/settings.local.json

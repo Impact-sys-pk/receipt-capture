@@ -34,15 +34,19 @@ Three sessions, none of which can see the others, and Paul is the only channel b
 
 Every number below was read from the thing itself on 2026-07-29, not carried forward.
 
-**Repository.** Branch `feat/console-phase0`, tip `ffe4464`, pushed and level with origin. `main` is still 42 commits behind and deliberately unmerged; that is its own session. Do not delete `docs/console-design`, which is a safety net.
+**Repository, as at commit `56e994c` on 2026-07-29.** Re-check every figure in this section rather than trusting it: a handover that states repository state in the present tense is wrong the moment anything is committed, and this one was, twice, within minutes of being written. That is the day's own lesson arriving one last time.
 
-**Three tracked files are modified and uncommitted:**
+Branch `feat/console-phase0`, tip `56e994c`, pushed and level with origin. **The working tree is clean** apart from one deliberately untracked file, `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md`, which is a superseded draft of the tracked `RECEIPT_CAPTURE_GUIDE.md`; Paul will keep or delete it.
 
-- `2026-07-25_CONSOLE_DESIGN.md`, now 1,519 lines, 20 sections, 64 amendments, contiguous from 1. Carries new section **13A**, the file reconciliation specification.
-- `CLAUDE.md`, carrying the new "How this project is worked" section.
-- `PROMPT_intellibooks_desktop_changes.md`, the Desktop brief.
+`main` is still 42 commits behind and deliberately unmerged; that is its own session. Do not delete `docs/console-design`, which is a safety net.
 
-**Seventeen untracked files**, all in the repository root: twelve `PROMPT_claude_code_*.md`, three handovers, a guide draft, and the two test fixtures plus `check_test41.py` from today. Whether the prompts and handovers are committed is a standing decision of Paul's, not a task.
+The last three commits are the whole of this session's record:
+
+- **`56e994c`** the decision trail, fifteen files: twelve step prompts and three older handovers, untracked until the handover forced the question.
+- **`bc53c4d`** this handover, `CLAUDE.md`'s "How this project is worked", amendments 55 to 64 including new section **13A**, the Desktop brief, and the unsent prompt for steps 10a and 10b.
+- **`ffe4464`** test 41 recorded as passed, amendments 51 to 53.
+
+`2026-07-25_CONSOLE_DESIGN.md` was 1,519 lines, 20 sections and 64 amendments contiguous from 1 when it was committed. **Check the contiguity if you edit that table**: a greedy pattern edit corrupted it once and it had to be restored, so prefer exact-string edits there.
 
 **Database**, `data/receipts.db`: 24 `ok`, 5 `discarded`, 53 extractions, **2 `resolution_events`**, 20 `processed_attachments`. The two resolution events are test 41 and they are the first this table has ever held. Vendor mappings: 100 rows for `Client_001`, 1 for `Client_003`. **Those mappings are real practice knowledge and must survive the reset**, per 17.5.
 
@@ -138,7 +142,7 @@ The pattern in all of it is the same, and it is the one thing worth carrying for
 
 ## 9. Reference
 
-- Repository: `C:\LastingImpact\receipt_capture`, branch `feat/console-phase0`, tip `ffe4464`.
+- Repository: `C:\LastingImpact\receipt_capture`, branch `feat/console-phase0`, tip `56e994c` at the time of writing. Check it.
 - Practice root: `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`, holding `Clients\`, `IntelliBooks\` and `Scripts\`.
 - Desktop app: `IntelliBooks\App\IntelliBooks-Desktop-v3.html`, 2,380 lines. Do not read it in full; search it, and use the landmarks in its handover.
 - Prompts, all in the repository root: `PROMPT_claude_code_step10a_and_10b.md` is written and unsent. `PROMPT_intellibooks_desktop_changes.md` is the live Desktop brief. The rest are history.

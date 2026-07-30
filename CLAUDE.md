@@ -324,7 +324,76 @@ Document the analysis before committing to the design. This prevents surprise co
 
 ## 🟦 PROJECT-SPECIFIC SECTION (This Project Only)
 
-This section is specific to the Uber Phase 1 Ingestion Worker project.
+This section is specific to the Receipt Capture App Project
+
+---
+
+## How this project is worked
+
+Added 2026-07-29, ahead of handing the project to another account in the organisation. This section is the **working method**: who does what, what standard of evidence is expected, and how to write for the person operating the system. It is deliberately separate from the current state of the build, which lives in the design document and in the handover.
+
+Read this before doing anything. Most of it was learned by getting it wrong.
+
+### Three sessions, and none of them can see the others
+
+| Session                  | Runs in     | Owns                                                                                                                 |
+| ------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Consultant**           | Cowork      | Verification, the design document, and the prompts the other two work from. Does not write production code.          |
+| **Implementation**       | Claude Code | The Python pipeline at `C:\LastingImpact\receipt_capture`. Works from `PROMPT_*.md` files written by the consultant. |
+| **IntelliBooks Desktop** | Cowork      | `IntelliBooks-Desktop-v3.html` in OneDrive. Works from `PROMPT_intellibooks_desktop_changes.md`.                     |
+
+Paul is the only channel between them. Everything one session learns reaches another only because he pastes it. Two consequences that shape everything else:
+
+- **A contract built by two sessions that cannot see each other is compatible by luck until someone checks.** The resolution back-feed in section 12 of the design document was built in halves and five points disagreed. Every one was found by reading both halves, not by either session reporting a problem.
+- **Anything decided in a chat and not written to a file is lost.** Decisions go in the design document's amendment record, with the reasoning and with superseded wording struck through rather than deleted.
+
+### The standard of evidence
+
+This is the part that has produced results, and it is not optional.
+
+- **Verify against the thing itself, never against a summary of it.** Read the file back, query the database, count the files on disk. A session reporting "done" is a claim, not a fact. Roughly half the defects found on this project were found by checking a claim that was made in good faith and was wrong.
+- **Red before green**, with the failing output quoted. Where a test cannot come first, mutate the behaviour from a pristine copy and show which tests catch each mutation and that no others do.
+- **An existing line is not a specification.** Copying the shape of nearby code carries its bugs with it. `delCategory()` inherited a missing `renderRules()` from `addCategory()`, which put a hole in the very thing that change was written to prevent, and two sessions read that function without seeing it. If you copy a line, say why it is right, not that it was already there. **The inverse is equally productive:** before changing a line, ask what is quietly relying on it. `addRule()` never cleared its own input box because it relied on `renderRules()` rebuilding the row empty, so making that row preserve what was typed would have left the pattern in place after Add and invited the same rule twice. That was caught by reading the caller first rather than by testing afterwards.
+- **Flag, do not fix.** Something wrong that the task did not ask about gets reported, not repaired. This has surfaced more real defects than any other single rule.
+- **Disclose your own mistakes, including ones you caught and corrected.** A report that hides a corrected error is worth less than one that shows it.
+- **State a confidence level, and say what it rests on.** "High, because I read it back" and "high, because it seemed right" are different claims.
+
+### Writing for the operator
+
+Paul is the test suite for anything with a user interface. Manual checks are real steps, not a formality, and they have to be written from the thing that renders them.
+
+Four rules, each of which exists because a check failed for the wrong reason:
+
+- **Name what is on screen, not what is in the code.** The resolution note says `discarded`; the button says **Delete**. Nothing in Desktop says "discard".
+- **Check the control is visible before telling him to press it.** The bulk toolbar is `display:none` until rows are ticked, so "press Apply Category" was impossible to follow.
+- **Quote screen counts, not file counts.** The receipts list is filtered by tax year, so a books file with five of something shows four.
+- **Say where the file went.** A downloaded file is in the browser's Downloads folder, and a 9 MB JSON will not open in Notepad.
+
+Write a manual check so that **it cannot be completed if the change is incomplete.** Change C's guard was correct and its check could not be run at all, which is how a pre-existing defect in `addCategory()` was found after two sessions had read that function without seeing it.
+
+### Paul's role, and how to take a correction
+
+Paul is the accountant. On any question of accounting treatment he is the authority and the session is not.
+
+He has corrected substantive errors more than once, and each correction changed a design decision:
+
+- Receipts do not map to HMRC boxes or to the profit and loss. **Transactions do.** A receipt is a document; the accounting record is the transaction created from it. The consequence is that gates belong at the point a transaction is posted, not at the point a receipt is filed.
+- A small test set is not evidence of rarity. Six statement rules across a handful of test transactions says nothing about the rate in a real practice.
+
+When corrected, **record the superseded wording alongside the correction** rather than quietly fixing it. The trail is worth more than a tidy document.
+
+### How to communicate
+
+- UK plain English, short sentences, short paragraphs. No em dashes anywhere, including in generated documents. Single hyphens are fine.
+- Be direct. Paul would rather be told something is wrong than have it hedged.
+- Give a source URL for any factual claim about the outside world. Flag speculation as speculation.
+- One or two sentences for a simple update. Do not recap what he has just watched you do.
+- State the date and the verbosity level at the top of every reply.
+
+### Two traps that cost hours
+
+- **The permission layer is not `CLAUDE.md`.** Prose cannot suppress a permission prompt. Allow rules in `.claude/settings.json` are ignored unless the workspace is trusted, while `.claude/settings.local.json`'s are not. The working rules live in the local file, which is gitignored; `settings.json` holds the same content so a fresh checkout can recreate it.
+- **Do not report a dirty working tree from the Linux sandbox.** Git for Windows normalises line endings and the sandbox does not see its configuration, so around thirty files look modified when the tree is clean. Confirm on Windows or do not claim it.
 
 ---
 

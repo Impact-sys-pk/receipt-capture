@@ -16,7 +16,7 @@ Three documents carry everything durable. **This handover deliberately repeats n
 |---|---|
 | `CLAUDE.md`, section **"How this project is worked"** | The working method. Who does what, the standard of evidence, how to write instructions Paul can follow, how to take a correction. It is the induction and it is short. |
 | `2026-07-25_CONSOLE_DESIGN.md`, **the amendment record at the top** | Every decision with its reasoning, 64 rows, superseded wording struck through rather than deleted. Section 16 is the build order. Read the amendments before the body: half of them correct the body. |
-| `IntelliBooks\App\Docs\IntelliBooks-Desktop-Handover-2026-07-29.md` | The Desktop side. Line landmarks, the `.bak` files, eighteen open flags in one list, and an exact account of what has been tested as against merely built. Machine-checked; I verified 74 of its line numbers independently and all 74 were right. |
+| `2026-07-29_HANDOVER_intellibooks_desktop.md`, in this repository | The Desktop side. Line landmarks, the `.bak` files, eighteen open flags in one list, and an exact account of what has been tested as against merely built. Machine-checked; I verified 74 of its line numbers independently and all 74 were right. **It was written into `IntelliBooks\App\Docs\` and moved here**, because a user-profile OneDrive path may not be readable by another Windows login while the repository travels with git. If a copy is still sitting in that Docs folder, delete it: this one is authoritative. |
 
 Then this file, for where things stand and what to do next.
 
@@ -44,7 +44,7 @@ Branch `feat/console-phase0`, pushed and level with origin. **The working tree i
 
 What is in them, in the order they landed:
 
-- **`58a7e07`** amendments 44 to 50 and the `clients.csv` duplicate `client_id` fix. Written by this session and committed the previous evening, which is why the boundary is `dba5894` rather than anything later.
+- **`58a7e07`** amendments 44 to 50. Written by this session and committed the previous evening, which is why the boundary is `dba5894` rather than anything later. **Its subject line also mentions the `clients.csv` duplicate `client_id` fix and the diff does not contain it**, because `clients.csv` lives in OneDrive outside the repository. Only amendment 49, which records the fix, is in that commit. The change itself was made on disk, with `clients.csv.bak-2026-07-28` beside it, and `SHERUNSIT` moved from `Client_004` to `Client_005`. Nothing in git will show you that; do not go looking.
 - **`11ba8c6`** the two test fixtures and `check_test41.py`.
 - **`ffe4464`** test 41 recorded as passed, amendments 51 to 53.
 - **`bc53c4d`** this handover, `CLAUDE.md`'s "How this project is worked", amendments 55 to 64 including new section **13A**, the Desktop brief, and the unsent prompt for steps 10a and 10b.
@@ -151,6 +151,6 @@ The pattern in all of it is the same, and it is the one thing worth carrying for
 - Practice root: `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`, holding `Clients\`, `IntelliBooks\` and `Scripts\`.
 - Desktop app: `IntelliBooks\App\IntelliBooks-Desktop-v3.html`, 2,380 lines. Do not read it in full; search it, and use the landmarks in its handover.
 - Prompts, all in the repository root: `PROMPT_claude_code_step10a_and_10b.md` is written and unsent. `PROMPT_intellibooks_desktop_changes.md` is the live Desktop brief. The rest are history.
-- Change log: `IntelliBooks\App\Docs\IntelliBooks-Change-Log.md`, items 24 to 31 are today's.
+- Change log: `IntelliBooks\App\Docs\IntelliBooks-Change-Log.md`, items 24 to 31 are today's. It stays in OneDrive because it is Desktop's own operational document and the Desktop session maintains it. **If that folder is not readable, the Desktop handover in this repository is the fallback**: its section 4 summarises items 24 to 31 in one line each.
 
 **Confidence: high on section 3**, every figure read from git, the database or the file on 2026-07-29, except the test count which I could not run and have flagged as such. **High on sections 4 to 7**, which are the project's own record. **High on section 8**, which is a list of things I did.

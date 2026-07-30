@@ -368,6 +368,7 @@ Four rules, each of which exists because a check failed for the wrong reason:
 - **Check the control is visible before telling him to press it.** The bulk toolbar is `display:none` until rows are ticked, so "press Apply Category" was impossible to follow.
 - **Quote screen counts, not file counts.** The receipts list is filtered by tax year, so a books file with five of something shows four.
 - **Say where the file went.** A downloaded file is in the browser's Downloads folder, and a 9 MB JSON will not open in Notepad.
+- **Give the full path on first mention, every time.** "The Docs folder" cost a round trip: this repository has a `docs\` directory and so does `IntelliBooks\App\`, and only one of them was meant. The same goes for any shared name. `IntelliBooks\App\Docs\` is unambiguous and costs four extra words.
 
 Write a manual check so that **it cannot be completed if the change is incomplete.** Change C's guard was correct and its check could not be run at all, which is how a pre-existing defect in `addCategory()` was found after two sessions had read that function without seeing it.
 

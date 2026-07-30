@@ -34,17 +34,22 @@ Three sessions, none of which can see the others, and Paul is the only channel b
 
 Every number below was read from the thing itself on 2026-07-29, not carried forward.
 
-**Repository, as at commit `56e994c` on 2026-07-29.** Re-check every figure in this section rather than trusting it: a handover that states repository state in the present tense is wrong the moment anything is committed, and this one was, twice, within minutes of being written. That is the day's own lesson arriving one last time.
+**Repository, as at the end of 2026-07-29.** Re-check every figure in this section rather than trusting it. A handover that states repository state in the present tense is wrong the moment anything is committed, and this one was, three times, within minutes of being written. It is fixed here by naming a fixed point rather than a moving one, which is the only version that stays true.
 
-Branch `feat/console-phase0`, tip `56e994c`, pushed and level with origin. **The working tree is clean** apart from one deliberately untracked file, `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md`, which is a superseded draft of the tracked `RECEIPT_CAPTURE_GUIDE.md`; Paul will keep or delete it.
+Branch `feat/console-phase0`, pushed and level with origin. **The working tree is clean** apart from one deliberately untracked file, `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md`, a superseded draft of the tracked `RECEIPT_CAPTURE_GUIDE.md`; Paul will keep or delete it.
 
 `main` is still 42 commits behind and deliberately unmerged; that is its own session. Do not delete `docs/console-design`, which is a safety net.
 
-The last three commits are the whole of this session's record:
+**This session's record is every commit after `dba5894`**, which was the tip when it started. `git log --oneline dba5894..HEAD` is the whole of it and stays correct however many more land. Written that way on purpose: I first listed the commits by name and count, and each correction to the list added another commit to it.
 
-- **`56e994c`** the decision trail, fifteen files: twelve step prompts and three older handovers, untracked until the handover forced the question.
-- **`bc53c4d`** this handover, `CLAUDE.md`'s "How this project is worked", amendments 55 to 64 including new section **13A**, the Desktop brief, and the unsent prompt for steps 10a and 10b.
+What is in them, in the order they landed:
+
+- **`58a7e07`** amendments 44 to 50 and the `clients.csv` duplicate `client_id` fix. Written by this session and committed the previous evening, which is why the boundary is `dba5894` rather than anything later.
+- **`11ba8c6`** the two test fixtures and `check_test41.py`.
 - **`ffe4464`** test 41 recorded as passed, amendments 51 to 53.
+- **`bc53c4d`** this handover, `CLAUDE.md`'s "How this project is worked", amendments 55 to 64 including new section **13A**, the Desktop brief, and the unsent prompt for steps 10a and 10b.
+- **`56e994c`** the decision trail, fifteen files: twelve step prompts and three older handovers, untracked until the handover forced the question.
+- **Then one or more corrections to this file.** See the log rather than this list.
 
 `2026-07-25_CONSOLE_DESIGN.md` was 1,519 lines, 20 sections and 64 amendments contiguous from 1 when it was committed. **Check the contiguity if you edit that table**: a greedy pattern edit corrupted it once and it had to be restored, so prefer exact-string edits there.
 
@@ -142,7 +147,7 @@ The pattern in all of it is the same, and it is the one thing worth carrying for
 
 ## 9. Reference
 
-- Repository: `C:\LastingImpact\receipt_capture`, branch `feat/console-phase0`, tip `56e994c` at the time of writing. Check it.
+- Repository: `C:\LastingImpact\receipt_capture`, branch `feat/console-phase0`. Do not trust any tip quoted in a document; run `git log --oneline -1`.
 - Practice root: `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`, holding `Clients\`, `IntelliBooks\` and `Scripts\`.
 - Desktop app: `IntelliBooks\App\IntelliBooks-Desktop-v3.html`, 2,380 lines. Do not read it in full; search it, and use the landmarks in its handover.
 - Prompts, all in the repository root: `PROMPT_claude_code_step10a_and_10b.md` is written and unsent. `PROMPT_intellibooks_desktop_changes.md` is the live Desktop brief. The rest are history.

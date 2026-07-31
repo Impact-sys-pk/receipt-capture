@@ -16,7 +16,7 @@ Self-contained on purpose. Everything from the previous brief that still applies
 - **One change at a time**, and stop after each so Paul can try it. Do not batch them and hand back a single edited file.
 - **Read the changed region back out of the file after each edit** and quote it, rather than reporting what you intended to write.
 - **Give Paul a manual check per change**, phrased as steps he can follow in the UI, because he is the test suite here.
-- **Keep every change additive where you can.** The backup fix replaces one path. The rename is text. The category guard adds conditions to an existing check. Change D is the only one that adds a new branch.
+- **Keep every change additive where you can.** The backup fix replaces one path. The rename is text. The category guard adds conditions to an existing check. ~~Change D is the only one that adds a new branch.~~ Change D is cancelled, so nothing in this brief adds a new branch.
 - **Syntax-check what you write.** Extract the inline script and run `node --check` on it, as your predecessor did. It caught nothing last time, which is the point.
 
 ## 2. Constraints
@@ -250,7 +250,7 @@ Now compare `bulkCategorise()`, which reaches the same outcome from the bulk bar
 - **Only on overwrite.** Creating a new rule stays silent.
 - Nothing changes about the rule itself, and nothing is blocked. This is a notification, not a guard.
 
-Word it as you see fit and quote the exact wording back before Paul meets it on screen, as with change D.
+Word it as you see fit and quote the exact wording back before Paul meets it on screen.
 
 **Do not touch `bulkCategorise()`.** It already handles this case properly and is the model for what good looks like here.
 
@@ -334,7 +334,15 @@ Paul's requirement, stated 2026-07-28: **a category must not be deletable while 
 
 ---
 
-## 5. Change D: warn when a receipt's figures do not reconcile
+## 5. Change D is CANCELLED. Do not build it.
+
+**Cancelled 2026-07-30 by Paul, recorded as amendment 68 of `2026-07-25_CONSOLE_DESIGN.md`.** Replaced by **section 18, Receipt and transaction integrity**, of that document. Read section 18 instead of this section. Nothing in section 5 below is to be built.
+
+**Why, in one paragraph, so nobody reinstates it.** Change D warned when a receipt's net plus VAT did not equal its gross. That is not a validity test, it is a single-rate test. Of the six receipts in the database that fail it, five fail because the three figures do not account for the whole gross, which is exactly what an ordinary mixed-rate receipt looks like: an optician selling exempt dispensing beside standard-rated frames, a café bill with a cold item on it. Only `net + VAT > gross` is impossible, because the parts cannot exceed the whole. Built as specified, the warning would have fired on correct receipts until it meant nothing.
+
+**Section 5 is kept below, struck through in effect rather than deleted, because its reasoning explains a real property of the system** that section 18 depends on: a transaction has `amount` and `vat` and no net field, so net is always derived, and a receipt's stated net is never carried across. That fact survives. The warning built on it does not.
+
+### ~~5. Change D: warn when a receipt's figures do not reconcile~~ (cancelled, read for the mechanism only)
 
 **Paul's decision, 2026-07-29.** A warning, not a block. Nothing is written into the books entry.
 
@@ -384,11 +392,72 @@ Two call sites, both of which create a transaction from a receipt.
 
 ---
 
-## 6. The blank category at posting: still open, deliberately
+## 5A. Change I: two identical statement rules can be created, and they diverge silently
+
+**Added 2026-07-30. Paul's decision the same day, and it is the guard rather than a warning.** Recorded as amendment 66 of `2026-07-25_CONSOLE_DESIGN.md`, which carries the full reasoning.
+
+~~Build this in the same visit as change D. Desktop is being opened for D anyway, and this is one guard in one function.~~ **Built 2026-07-30, and its five-step check below was run by Paul the same day and passed.** Change D was cancelled after this was written, so it ended up as a change on its own.
+
+### What is wrong
+
+`addRule()` at line 2160 ends `books.rules.push({pattern:p,category:$("nr-cat").value})` with **no check for an existing rule**. Press Add twice on the same pattern and there are two rules.
+
+While the pair stays identical it is harmless. `bestRuleFor()` at line 985 reduces with `r.pattern.length>b.pattern.length`, a strict comparison, so on a tie the first survives and both carry the same category anyway.
+
+**They do not stay identical.** `setCategory()` at line 943 finds the rule to update with `books.rules.find(r=>r.pattern===key&&!r.op)`, and `find` returns the first match only. So categorising a transaction from the row dropdown updates one of the duplicates and leaves the other holding the old category. Change G's toast reports the change correctly. **Change H says nothing**, because its filter is `r.pattern===key&&r.op` and a duplicate pattern-only rule has no `op`. The pair is now divergent and nothing on screen refers to it.
+
+The harm arrives one step later. **Remove the first of the two from the rules table and the second becomes live**, so future transactions from that supplier are categorised the way the operator moved away from, with nothing having been said at any point. `applyRules()` skips transactions that already carry a category, so it only shows on new imports, which makes it quieter again.
+
+**And the case that makes prevention clearly right rather than merely tidy.** `ruleMatchForm()` at line 920 uppercases, strips everything outside `A-Z` and a space, and removes a list of noise words including `LTD`, `LIMITED`, `PAYMENT` and `CARD PAYMENT`. So `Apple Bill Ltd`, `apple-bill`, `CARD PAYMENT APPLE BILL` and `APPLE BILL` all normalise to the same pattern. An operator can therefore create a duplicate **without typing anything that looks like a duplicate**, and then cannot see why the rules table has two rows that appear different and behave as one.
+
+### What to build
+
+In `addRule()`, after `ruleMatchForm()` has normalised the input and after the existing empty-pattern guard, refuse the addition when a **pattern-only** rule with that pattern already exists.
+
+Four things about that, and each one is load-bearing:
+
+- **Compare the normalised pattern, not the raw input.** The comparison is against `p`, the value `ruleMatchForm()` returned. Comparing raw text would miss every case in the paragraph above, which is most of them.
+- **Only pattern-only rules block.** The test is `r.pattern===p && !r.op`. A pattern-only rule and one or more amount-conditioned rules sharing a pattern are **legitimate and must stay possible**; that combination is what change H exists to explain. Blocking it would break a working feature.
+- **Do not clear the input box.** `addRule()` currently clears `#nr-pattern` at line 2164 once the rule is created. On the refusal path, leave the text where it is so the operator can see what was rejected and edit it. Return before the `push`, before the clear and before `scheduleSave()`, so nothing is written.
+- **Name the existing rule and its category in the toast**, and say what to do instead. "A rule already exists" without saying which or what it does is not actionable, and the operator cannot tell whether their intent is already satisfied. Handle a rule with an empty category too; that is possible and reads badly if not.
+
+### Wording
+
+Draft it and **quote it back in your report before Paul sees it on screen**, as with any wording an operator will meet. Something in this shape, but the English is yours to get right:
+
+> A rule for APPLE BILL already exists and categorises as Software. Edit that rule above rather than adding a second.
+
+And where the existing rule has no category set, say so plainly rather than printing an empty gap.
+
+### What not to do
+
+- **Do not remove or merge duplicates that already exist.** Paul considered a cleanup and rejected it: it is data repair rather than a fix, it would run against test data that step 10c clears, and it is against flag-do-not-fix. If you find existing duplicates, report the count and the client and leave them.
+- **Do not touch `bestRuleFor()`, `setCategory()` or change H.** The guard removes the condition at source. Changing how the pair is resolved as well would be two mechanisms for one problem.
+- **Do not add a duplicate check to `setCategory()`'s learn path.** It already uses `find`, so it updates rather than creating, and it cannot mint a duplicate.
+
+### Manual check
+
+Write it so it cannot be completed if the guard is missing.
+
+1. On any client, Settings tab, add a rule with the pattern `ZZZ DUPE CHECK` and any category. Confirm it appears in the table.
+2. Type `ZZZ DUPE CHECK` into the bottom row again and press **Add**. It must be refused, the toast must name the category the existing rule uses, and the text must still be in the box.
+3. Now type `zzz dupe check ltd` and press **Add**. **This must also be refused**, because it normalises to the same pattern. This is the step that proves the comparison is on the normalised value, and it is the one that cannot be passed by a guard that compares raw text.
+4. Set the existing rule's Amount to `=` and any figure, then add `ZZZ DUPE CHECK` as a new rule again. **This must now succeed**, because the existing rule is amount-conditioned and a pattern-only rule alongside it is legitimate. This is the step that proves the guard did not break change H's case.
+5. Remove both rules.
+
+---
+
+## 6. The blank category at posting: CLOSED
+
+**Closed 2026-07-30.** It is no longer open and it was not closed by a policy decision. Section 18 establishes that a VAT amount cannot exist without a rate, and the rate comes from the category. So creating a transaction from a receipt requires a category, because otherwise the receipt brings a VAT amount to a transaction that has no rate. Amendment 53's question answers itself. See 18.5a.
+
+The section below is kept for the reasoning, which is still correct, and for the flag in its last paragraph, which is still open.
+
+### ~~6. The blank category at posting: still open, deliberately~~
 
 Section 8 of the previous brief asked whether a transaction should be allowed to reach the books with a blank category. Paul was asked again on 2026-07-29, at the same time as change D and knowing it sits in the same two functions, and **chose to leave it open.** Recorded as amendment 53.
 
-So: **do not build anything for it, and do not fold it into change D.** The existing toast at line 1671 already says "Review the category, then Post", which is a prompt of a kind. When the question is taken it will be one more condition in the same guard you are about to write, so write that guard in a way that a second condition can join it later without restructuring. That is the only thing this section asks of you.
+~~So: **do not build anything for it, and do not fold it into change D.** The existing toast at line 1671 already says "Review the category, then Post", which is a prompt of a kind. When the question is taken it will be one more condition in the same guard you are about to write, so write that guard in a way that a second condition can join it later without restructuring. That is the only thing this section asks of you.~~ **Superseded 2026-07-30.** There is no guard to write, because change D is cancelled. The question is answered in 18.5a: creating a transaction from a receipt requires a category, because a VAT amount cannot exist without a rate and the rate comes from the category.
 
 While you are in those two functions: `bulkCashbook()` at line 1534 and `postReceiptToCashbook()` at line 1666 both write `t.category=r.category||""` with no guard. Both act on a transaction created one line earlier, so nothing is overwritten and it is harmless today. It would wipe an existing category to an empty string if either were ever pointed at an existing transaction. **Flag it, do not fix it.**
 
@@ -396,9 +465,11 @@ While you are in those two functions: `bulkCashbook()` at line 1534 and `postRec
 
 ## 7. What I want back
 
-1. Each change, one at a time, with the changed region quoted back after you read it from the file, and a manual check Paul can follow in the UI. There are eight, A to H, listed in section 4.
-2. For change D, the exact wording of the confirm box and of the bulk count message, quoted, so Paul can correct the English before he ever sees it on screen.
-3. New entries in `Docs\IntelliBooks-Change-Log.md`, continuing from item 24, following the existing convention.
+**Rewritten 2026-07-30. The lettered series A to I is closed and there is nothing left in it to build.** A, B, C, E, F, G, H and I are all built, and change I's five-step check was run by Paul on 2026-07-30 and passed. Change D is cancelled, see section 5.
+
+1. **Nothing, for now.** Do not start work from this brief. It is kept as the record of changes A to I and as the source of section 5A, change I, which is built and tested.
+2. **The next piece of work is not a lettered change.** It is section 18 of `2026-07-25_CONSOLE_DESIGN.md`, Receipt and transaction integrity, and it is larger than everything A to I put together. It will be briefed separately, and not until Paul has settled 18.2, which decides where each module keeps its own copy of a receipt document.
+3. **Update `IntelliBooks\App\Docs\IntelliBooks-Change-Log.md` as part of every change**, in the existing format, including the wording of anything that appears on screen and the manual check with its result. That document is yours to maintain; the consultant session does not edit it. Change I needs an entry recording that its check was run on 2026-07-30 and passed.
 4. **Anything where this brief and the code disagree.** Say it rather than working around it. Your predecessor did exactly this on two points and both were right; that is the standard.
 5. Your own mistakes, including ones you caught and corrected. A report that hides a corrected error is worth less than one that shows it.
 
@@ -411,7 +482,7 @@ While you are in those two functions: `bulkCashbook()` at line 1534 and `postRec
 ## 8. Reference
 
 - Pipeline side, built and tested: `C:\LastingImpact\receipt_capture\`, branch `feat/console-phase0`.
-- The design document: `C:\LastingImpact\receipt_capture\2026-07-25_CONSOLE_DESIGN.md`, v1.4. Amendment 52 is change D and its reasoning, 53 the category question, 44 and 45 the two divergences from change 1. Section 12 is the back-feed contract as built.
-- The validation rule change D must match: `worker/validation/rules.py`, `_VAT_TOLERANCE` at line 7 and the mismatch branch in `validate()`.
+- The design document: `C:\LastingImpact\receipt_capture\2026-07-25_CONSOLE_DESIGN.md`, **now v1.6 with 71 amendments and a new section 18. Read section 18 before the body.** ~~v1.4. Amendment 52 is change D and its reasoning~~ Amendment 52 specified change D and is superseded by amendment 68. Amendment 53's category question is closed by 18.5a. Amendments 44 and 45 are the two divergences from change 1 and still stand. Section 12 is the back-feed contract as built, and 18.3 narrows what it is for.
+- ~~The validation rule change D must match: `worker/validation/rules.py`, `_VAT_TOLERANCE` at line 7 and the mismatch branch in `validate()`.~~ **Superseded.** That test is a single-rate test rather than a validity test, per amendment 68, and the tolerance becomes one penny per 18.4. Nothing in Desktop should be built to match it.
 - Previous brief, now history and not needed to do this work: `PROMPT_intellibooks_resolution_backfeed.md`.
 - Existing conventions: `Docs\IntelliBooks-Change-Log.md`, items 12, 13, 19, 21 and 24.

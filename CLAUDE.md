@@ -383,6 +383,21 @@ He has corrected substantive errors more than once, and each correction changed 
 
 When corrected, **record the superseded wording alongside the correction** rather than quietly fixing it. The trail is worth more than a tidy document.
 
+### Terminology, added 2026-07-30
+
+**The Python system is named Intellibills.** Amendment 72 of the design document. Use Intellibills, or "the pipeline" where the distinction from IntelliBooks is not the point. `Receipt Capture` is the name of the repository and of nothing else. IntelliBooks Desktop is unchanged. The console is still the Flask app not yet built. Never say "the app".
+
+**Note for Paul:** the Claude project instructions for this project still say "the pipeline or Receipt Capture for the Python system". Only you can edit those, and until you do, a new session will be told the old name.
+
+**Two names that mean different things and are one word apart on screen.** `postTxn()` and the **Post Selected** button sign off a transaction that already exists. `postReceiptToCashbook()` and **Post Selected to Cashbook** create a new transaction from a receipt. And **Attach** means receipt to transaction, while **Link** means transaction to transaction, as for a transfer. Anything written for Paul to follow has to disambiguate both pairs.
+
+### Two rules about `clients.csv`, added 2026-07-30
+
+Both are easy to break by accident, and one of them would be broken by a change that looks like a fix. From amendment 74.
+
+- **One client may have more than one email address**, expressed as two rows differing **only** in the email column. This works: `load_clients()` at `config.py:71` indexes every row that has an email, `resolve_client_info()` at `worker/database/repository.py:57` is the only consumer of that index, and nothing enumerates it as a client list. **The rows must be identical apart from the email**, because the code index takes whichever loaded last while the email index keeps both, so a mismatched `business_type` would depend on which address a receipt arrived from.
+- **Do not add a duplicate-`client_id` check.** It would break the above. The defect amendment 49 fixed was one `client_id` given to two genuinely **different** clients, which conflated them. That is a different thing. The test is whether the other columns match, not whether the id repeats.
+
 ### How to communicate
 
 - UK plain English, short sentences, short paragraphs. No em dashes anywhere, including in generated documents. Single hyphens are fine.

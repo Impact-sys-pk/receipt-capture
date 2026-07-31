@@ -75,8 +75,8 @@ Inline script runs from **line 348** to **line 2378**. Everything below is insid
 | 1276 | `scanFiledReceipts()` |
 | 1602 | `renderReceipts()`, Review rows from 1616, filed rows from 1631, the No amount pill at 1640 |
 | 1672 | `editReceipt(id)` |
-| 1706 | `postReceiptToCashbook(rid)`, where change D goes |
-| 1569 | `bulkCashbook()`, where change D's count goes |
+| 1706 | `postReceiptToCashbook(rid)`. ~~where change D goes~~ Change D is cancelled; this is where 18.5a's cashbook check goes. Note the line has moved with change I: search, do not trust it. |
+| 1569 | `bulkCashbook()`. ~~where change D's count goes~~ Change D is cancelled; this is where 18.7's bulk rule goes. |
 
 **Review items and the pipeline contract**
 
@@ -139,21 +139,21 @@ One list, with locations, so nobody reconstructs it from eight reports. Nine of 
 1. **`runAnalyser()` keeps its name** (line 1003) behind a button labelled Categorise from Rules (line 115). Amendment 60. Fold the rename in only if you are already editing that region.
 2. **Item 26 is forward-only.** A receipt already in the books never gains a thumbnail retrospectively, because of the dedup `continue` at line 1216. Amendment 59. `TEST2` will show thumbnail-less receipts on 2026-27 indefinitely. That is the expected state.
 3. **The existing `img_` duplicates stay.** As last counted: TEST 9, TEST2 8, PAUL 4. Do not write a cleanup. They cannot be posted, because posting refuses a gross of 0.
-4. **The blank category at posting is open on purpose.** Amendment 53. Do not fold it into change D. The toast at line 1718 already says "Review the category, then Post".
+4. ~~**The blank category at posting is open on purpose.** Amendment 53. Do not fold it into change D. The toast at line 1718 already says "Review the category, then Post".~~ **Closed 2026-07-30.** A VAT amount cannot exist without a rate and the rate comes from the category, so creating a transaction from a receipt requires one. See 18.5a. Change D is cancelled.
 5. **`bestRuleFor()`'s precedence is correct.** An amount-conditioned rule beating a pattern-only rule is the feature, not a bug. Item 30 reports it; it does not change it.
 6. **The registry name disagreement is not a Desktop problem.** `IntelliBooks-Practice.json` holds `{"name":"TEST","code":"TEST"}` while `clients.csv` holds `Test`. Amendments 44 and 45. Do not patch it here; a patch would hide it. It works only because Windows filenames are case-insensitive.
 7. **Do not edit `IntelliBooks-System-Specification.md` or `IntelliBooks-System-Overview.md`.** Both need corrections spanning the pipeline and are handled elsewhere.
 
 ### Open, nobody has decided
 
-8. **`t.category=r.category||""` is unguarded**, at line 1580 in `bulkCashbook()` and line 1713 in `postReceiptToCashbook()`. Harmless today because both act on a transaction created one line earlier. It would wipe an existing category to an empty string if either were ever pointed at an existing transaction. You will be in both functions for change D.
+8. **`t.category=r.category||""` is unguarded**, at line 1580 in `bulkCashbook()` and line 1713 in `postReceiptToCashbook()`. Harmless today because both act on a transaction created one line earlier. It would wipe an existing category to an empty string if either were ever pointed at an existing transaction. ~~You will be in both functions for change D.~~ Change D is cancelled, but both functions are where section 18's cashbook check and bulk rule go, so you will still be in them.
 9. **The "To Cashbook" button is offered on rows posting will refuse**, line 1649, whenever `rGross(r)<=0`. Hiding or disabling it is Paul's call. The No amount pill at line 1640 makes the situation legible either way.
 10. **Two rules for one supplier have no visible relationship.** The larger question behind item 30. An operator can hold a pattern-only rule and several amount rules for the same pattern with nothing in the rules table showing they interact. Paul's own note on this is worth carrying: six rules across a handful of test transactions says nothing about the rate in a real practice, so do not defer this on the grounds that it is rare.
 11. **The success toast in `fileReviewReceipt()` prints the raw client name**, line 1899, while the folder it names was created with `safeName(c.name)` at line 1840. For any client whose name contains one of `\ / : * ? " < > |` the toast names a path that does not exist. Cosmetic, and the resolution note itself correctly uses `safeName`.
 12. **A malformed sidecar loses its image to the loose-image loop.** `JSON.parse` throws at line 1201, before the image is claimed at 1202 to 1213, and the `catch` at line 1224 only warns. The image then becomes an `img_` entry. Arguably right, since an unreadable sidecar leaves the image genuinely unaccompanied, but it is a behaviour nobody chose.
 13. **The legacy `{stem}.json` fallback takes the first candidate.** Line 1209 warns to the console when more than one image could match. No file on disk is in that shape today; every sidecar is `{full filename}.json`.
 14. **A `between` rule missing its second amount prints `£0.00`** in item 30's toast. Such a rule is incomplete anyway and nothing validates it.
-15. **`PKPH-books.json` has no client in the practice registry.** Still on disk as of this writing. It is in no backup. Item 25's second pass exists to name it, and that check has not been confirmed as run. See section 5.
+15. ~~**`PKPH-books.json` has no client in the practice registry.** Still on disk as of this writing. It is in no backup. Item 25's second pass exists to name it, and that check has not been confirmed as run. See section 5.~~ **Closed 2026-07-30. Item 25's second pass was run and named `PKPH` in both the toast and the console, and the file has been deleted.** `IntelliBooks\Books\` now holds three files, `PAUL-books.json`, `TEST-books.json` and `TEST2-books.json`. Nothing to do.
 
 ### My judgement calls, easy to reverse
 
@@ -196,18 +196,24 @@ Be careful with this section. "Built" and "working" are different claims and the
 - **Item 29, second pass.** Paul found the missing `renderRules()` by running step 4 of the check and failing to complete it.
 - **Items 30 and 31.** Manual checks pass. Paul additionally checked the pill counts against the tax-year filter, which the report had not: `TEST2` on 2023-24 and `PAUL` on 2025-26 both correctly show zero pills.
 
-### Built, verified against the file, but not confirmed as run
+### Was: built, verified against the file, but not confirmed as run
 
-- **Item 25, second pass. The orphaned books file check.** This is the important one. The clause naming `*-books.json` files with no registry client has not been reported as seen on screen, and `PKPH-books.json` is still on disk. Paul's stated intent was to delete it only after the check had been seen to name it, on the principle that a check which has never reported anything has not been tested. **Do not treat this as working.** Export a backup and confirm the toast reads, and the console logs, `PKPH`.
-- **Item 27's two toast strings.** The wordings were approved, but I was not told the empty case, `No rules matched yet. Categorise a few transactions so rules can be learned.`, was seen firing. Press Categorise from Rules twice.
-- **Item 29, third pass, in the UI.** The `#nr-pattern` preservation and the `addRule()` clear were verified against the file and the decision on the persisting category was taken, but the seven UI steps were not reported as run. The one to run first is: type a pattern, do not press Add, add a category, confirm the pattern survives; then press Add and confirm the box empties. That second half is where my own change could have introduced a duplicate-rule regression.
-- **Item 26 on TEST2 and PAUL.** Confirmed by inference from the books files rather than by a rescan of each.
+**All three were run by Paul on 2026-07-30 and all three passed.** Superseded wording kept below so the trail survives. **Nothing in this subsection is outstanding. Do not re-run these.**
+
+- ~~**Item 25, second pass. The orphaned books file check.** This is the important one. The clause naming `*-books.json` files with no registry client has not been reported as seen on screen, and `PKPH-books.json` is still on disk. Paul's stated intent was to delete it only after the check had been seen to name it, on the principle that a check which has never reported anything has not been tested. **Do not treat this as working.** Export a backup and confirm the toast reads, and the console logs, `PKPH`.~~ **Passed 2026-07-30.** The toast and the console both named `PKPH`, the console line being `IntelliBooks-Desktop-v3.html:2235 Books files with no client in the practice list, not backed up: PKPH`. `PKPH-books.json` has been deleted. **One consequence outside Desktop:** the pipeline's reconciliation check at step 10b has a finding for exactly this fault, `books_file_unregistered`, and that file was its only live specimen, so the finding now needs a test fixture. Recorded as amendment 66.
+- ~~**Item 27's two toast strings.** The wordings were approved, but I was not told the empty case, `No rules matched yet. Categorise a few transactions so rules can be learned.`, was seen firing. Press Categorise from Rules twice.~~ **Passed 2026-07-30** on `TEST2`. **Worth carrying forward, because the check as written would have produced a false pass:** it named `PAUL` as a client to use, and `PAUL-books.json` holds 0 transactions and 0 rules, so `applyRules()` would have looped over nothing, returned 0 and shown the empty-case toast anyway. Paul used `TEST2`, which has 25 transactions and 2 rules. The lesson is section 6's, again: the check could have been completed while testing nothing.
+- **Change I, the duplicate statement rule guard. Built and PASSED 2026-07-30.** All five steps of its check were run by Paul, including step 3, `zzz dupe check ltd` refused because it normalises to the same pattern, and step 4, a pattern-only rule accepted alongside an amount-conditioned one. So the guard compares the normalised pattern and it does not break change H's case.
+- ~~**Item 29, third pass, in the UI.** The `#nr-pattern` preservation and the `addRule()` clear were verified against the file and the decision on the persisting category was taken, but the seven UI steps were not reported as run. The one to run first is: type a pattern, do not press Add, add a category, confirm the pattern survives; then press Add and confirm the box empties. That second half is where my own change could have introduced a duplicate-rule regression.~~ **Passed 2026-07-30**, including that a deleted category leaves the rules dropdown, which amendment 63 called the more serious direction. **And it produced a new finding, from Paul's question rather than from anyone reading the code: `addRule()` has no duplicate check at all.** Two identical pattern-only rules can be created, they can then diverge silently, and neither change G nor change H mentions the second one. That is now **change I**, specified in section 5A of the brief. See the "Not built" list below.
+- **Item 26 on TEST2 and PAUL.** Confirmed by inference from the books files rather than by a rescan of each. **Still true, and still the one item in this section resting on inference.**
 
 ### Not built
 
-- **Change D**, the reconciliation warning at posting. Deferred past this handover, amendment 64. Its ordering constraint is unchanged and it matters: **D must be built and tested before the clean-slate reset at step 10c**, because its check requires posting an unreconciled receipt out of the books and the reset empties them.
+**Change D is cancelled. Change I is built and unchecked. The lettered series is closed.**
 
-**Confidence: high on the passed list, which is quoted from what Paul and the consultant session reported back. Medium to high on the unconfirmed list**, because it rests on the absence of a confirmation rather than on a statement that something was not run. The `PKPH-books.json` entry is the firmest of them, because the file is still on disk and its continued existence is exactly the evidence Paul said he was waiting for.
+- ~~**Change D**, the reconciliation warning at posting. Section 5 of the brief. Deferred past this handover, amendment 64. Its ordering constraint is unchanged and it matters: **D must be built and tested before the clean-slate reset at step 10c**, because its check requires posting an unreconciled receipt out of the books and the reset empties them.~~ **Cancelled 2026-07-30, amendment 68.** Its test, `net + VAT = gross`, is not a validity test but a single-rate test, and it fails on ordinary mixed-rate receipts: five of the six receipts in the database that fail it are the normal case, not faults. Replaced by section 18 of `2026-07-25_CONSOLE_DESIGN.md`, Receipt and transaction integrity, which is a much larger piece of work and will be briefed separately. **The ordering constraint against step 10c goes with it**, and 10c is suspended anyway, per amendment 70.
+- **Change I**, the duplicate statement rule guard. Section 5A of the brief. Added 2026-07-30, from running the item 29 check. `addRule()` at line 2160 pushes with no duplicate check, so two identical pattern-only rules can exist; `setCategory()` then updates only the first, because it uses `find`, and change H's toast never mentions the second, because its filter requires `r.op`. Remove the first from the rules table and the second goes live carrying the old category. Paul's decision on 2026-07-30 was to guard it at source rather than report it. **The trap in it:** the comparison must be on the pattern **after** `ruleMatchForm()` has normalised it, because that function strips everything outside `A-Z` and a space and removes noise words including `LTD` and `CARD PAYMENT`, so `Apple Bill Ltd` and `CARD PAYMENT APPLE BILL` both reduce to `APPLE BILL`. A guard comparing raw text catches almost nothing.
+
+**Confidence: high on the passed list**, which now includes the three items previously unconfirmed, all reported by Paul from the running app on 2026-07-30. **High on the two outstanding changes**, both of which are specified in the brief. The one claim still resting on inference rather than on a run is item 26 on `TEST2` and `PAUL`, noted above.
 
 ---
 
@@ -247,7 +253,7 @@ The brief asserted that `if(imf&&/image/.test(imf.type||"x")!==false)` is always
 
 The brief has been corrected in place as it went, which is right, but a newcomer reading it cold will meet several of those corrections without context.
 
-**Stale counts, harmless but confusing.** Section 1 says the file is around 2,250 lines; it is 2,380. Section 7's first deliverable still says "The four changes, one at a time" while section 4 now describes eight, A to H. Neither changes what to do.
+**Stale counts, harmless but confusing.** Section 1 of the brief says the file is around 2,250 lines. ~~it is 2,380~~ **It is 2,467 as of 2026-07-30, after change I.** Section 7 of the brief has been rewritten and no longer miscounts the changes. Every line number in this handover predates change I and is out by a few dozen lines: search, do not trust them.
 
 **Change H's "five lines" is an underestimate.** It reads as a budget. Meeting the four wording requirements, naming amounts, wording the operators, capping at three, and saying which wins, takes about eighteen lines with singular and plural agreement. Anyone treating five as a target will drop the cap or the agreement.
 
@@ -263,6 +269,10 @@ The brief has been corrected in place as it went, which is right, but a newcomer
 
 ## Where to start
 
+**Updated 2026-07-30.**
+
 1. Read the brief, then diff the live file against `bak-2026-07-29` to see the whole of 29 July as one change set.
-2. Run the three unconfirmed checks in section 5 before building anything. The `PKPH` one takes a minute and gates a file deletion Paul is waiting on.
-3. Then change D, before the clean-slate reset at step 10c.
+2. ~~Run the three unconfirmed checks in section 5 before building anything. The `PKPH` one takes a minute and gates a file deletion Paul is waiting on.~~ **Done. All three passed on 2026-07-30 and `PKPH-books.json` is deleted. Do not re-run them.** Read the section 5 entries anyway: two of them record something that came out of the running app and not out of the code, and one of those is change I.
+3. **Take a fresh backup copy before your first edit, one per change rather than one per day**, per section 2. Name them `IntelliBooks-Desktop-v3.html.bak-before-change-D` and `.bak-before-change-I`. Everything built on 29 July sits between `bak-2026-07-29` and the live file and cannot be bisected; do not repeat that.
+4. ~~Then **change D, section 5 of the brief, and change I, section 5A**, in one visit. Both before the clean-slate reset at step 10c.~~ **Corrected 2026-07-30. Change D is cancelled, change I is built, and change I's five-step check was run by Paul on 2026-07-30 and passed.** So the lettered series is closed and there is nothing outstanding in it.
+5. **Then stop and wait.** The next piece of work is section 18 of `2026-07-25_CONSOLE_DESIGN.md`, and it is larger than A to I combined. It will be briefed separately, and not until Paul has settled 18.2, which decides where each module keeps its own copy of a receipt document.

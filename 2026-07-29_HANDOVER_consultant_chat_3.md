@@ -8,6 +8,28 @@ The project is also moving to a different account in the organisation, so assume
 
 ---
 
+## 0. Before you read anything, check the environment
+
+This handover carries the knowledge. It cannot carry the environment, and four things it depends on are deliberately outside git. If any is missing, stop and tell Paul rather than working around it.
+
+**Two folders must be mounted in this session**, not one:
+
+- `C:\LastingImpact\receipt_capture`, the repository. It sits at the root of `C:` rather than inside a user profile, so a different Windows login can normally reach it.
+- `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`, the practice root, holding `Clients\`, `IntelliBooks\` and `Scripts\`. **This one is a user profile path.** If the account running this session is a different Windows login, Windows will refuse it, and then almost nothing works: no books, no `clients.csv`, no `Resolutions\`, no filed receipts, and no way to verify anything on the Desktop side. Establish this first. It is not a documentation problem and no document can fix it.
+
+**Four things are gitignored and were present on the machine this was written on.** They are not in the repository and a fresh clone does not have them:
+
+| Not in git | Why it matters |
+|---|---|
+| `.env` | `OPENAI_API_KEY`, and the IMAP and SMTP credentials. Nothing runs without it. `.env.example` lists the required fields. |
+| `data/` | The database, every stored receipt file, and the logs. **The whole audit trail lives here and nowhere else.** |
+| `.claude/settings.local.json` | The pre-approved command list for Claude Code. Without it every command prompts. `.claude/settings.json` is committed and holds the same content, so one copy recreates it. See the trap in `CLAUDE.md`: rules in the committed file are ignored unless the workspace is trusted, while the local file's are not. |
+| `.venv/` | A Windows virtual environment. Do not try to use it from a Linux sandbox; that is why the test count in section 3 could not be verified here. |
+
+And one thing that is not a file at all: **the Claude project instructions**, which orient a chat that has no folder mounted. If this project did not transfer with its instructions, ask Paul for them.
+
+---
+
 ## 1. Read these first, in this order
 
 Three documents carry everything durable. **This handover deliberately repeats none of them**, because two documents saying the same thing drift apart, and that has already happened once on this project.

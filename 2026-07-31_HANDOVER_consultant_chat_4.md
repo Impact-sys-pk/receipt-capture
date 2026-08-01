@@ -4,7 +4,13 @@
 
 Supersedes `2026-07-29_HANDOVER_consultant_chat_3.md`, which started the session that wrote this one. That file stays in the repository. Read its sections 6 and 7 for the traps; everything else in it about state and next steps is out of date and this file replaces it.
 
-**Nothing has been sent to either build session.** No prompt has been issued today. That is deliberate: the handover happens immediately before instructions are given, so the session that gives them is the session that owns them.
+## Start here
+
+**Your first task is the plan for section 17.5a**, the combined clean-slate reset and practice root restructure. Not the code, not a prompt: the plan enumerating every stage before anything is deleted, which is Paul's own requirement from 17.5. Read section 1 below, then 17.5a and 18.2a, then write it.
+
+**Why that first rather than the three open decisions in 18.10.** Two of the three concern data the reset deletes. The chart of accounts is loaded fresh from `chart_of_accounts_DRAFT.csv` at console step 12, and the categories question is about vocabulary that exists today only as test mappings and test category names. Deciding either against data about to be deleted means specifying it twice. After the reset there is nothing to migrate and the chart of accounts is a blank sheet, which is the cheapest moment it will ever be to extend.
+
+**No design work has been handed to either build session.** One mechanical task was sent to Claude Code on 2026-07-30 and completed: stage, commit and push the day's documentation, which produced `ac2d1be`, plus a test run. Nothing else. No section 18 work, no folder work, no prompt for either module's next build. That is deliberate: the handover happens immediately before instructions are given, so the session that gives them is the session that owns them.
 
 ---
 
@@ -43,21 +49,49 @@ Three sessions, none of which can see the others, and Paul is the only channel. 
 
 Read from git, the database and the files on 2026-07-30.
 
-**Repository.** Branch `feat/console-phase0`, tip `461f9d1`, level with origin. `main` is still 42 commits behind and deliberately unmerged.
+**Repository.** Branch `feat/console-phase0`, tip **`ac2d1be`**, pushed and level with origin. `main` is still 42 commits behind and deliberately unmerged.
 
-**Five tracked files are modified and uncommitted.** All of them by this session except the second:
+`ac2d1be` is the day's documentation: eight files, 843 insertions, 66 deletions. It carries section 18, amendments 65 to 74, the `CLAUDE.md` terminology and `clients.csv` rules, this handover, and the two prompts.
 
-- `2026-07-25_CONSOLE_DESIGN.md`, now 1,728 lines, 21 sections, **71 amendments, contiguous from 1, checked programmatically**. Carries new section 18.
-- `2026-07-29_HANDOVER_consultant_chat_3.md`, carrying 22 lines somebody else added and never committed, a section 0 about the environment. **Not mine and not this session's to commit.** It is a real improvement and losing it would be a shame.
-- `2026-07-29_HANDOVER_intellibooks_desktop.md`, change D cancelled in two places.
-- `PROMPT_claude_code_step10a_and_10b.md`, suspended with a header saying so.
-- `PROMPT_intellibooks_desktop_changes.md`, change D cancelled, section 6 closed, section 7 rewritten.
+**The design document** is 21 sections and **74 amendments, contiguous from 1, checked programmatically after every edit.**
 
-**Three untracked files:** `PAUL_CHECKS_2026-07-30.md`, `PROMPT_desktop_session_start_2026-07-30.md`, `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md`. Whether any is committed is Paul's call.
+**Three tracked files are modified and uncommitted, and the recommendation is to commit all three before starting work.**
+
+- `2026-07-25_CONSOLE_DESIGN.md`, carrying one addition made after `ac2d1be`: the datetime-adapter deprecation, in 17.4.
+- `2026-07-31_HANDOVER_consultant_chat_4.md`, this file, edited after `ac2d1be` to add Start here and to correct its own state figures.
+- `2026-07-29_HANDOVER_consultant_chat_3.md`, carrying 22 lines added by somebody else and never committed, a section 0 about the environment and the four gitignored things a fresh clone lacks. **It has now survived two sessions uncommitted. Commit it.** Two sessions have each declined on the grounds that it was not theirs, which is how a good addition gets lost. It is documentation, the authorship is recorded in the commit message below, and the risk of losing it outweighs the tidiness of leaving it.
+
+**Recommended commit, first thing, staged by name:**
+
+    git add 2026-07-25_CONSOLE_DESIGN.md 2026-07-31_HANDOVER_consultant_chat_4.md 2026-07-29_HANDOVER_consultant_chat_3.md
+
+    git status --short
+
+Expect exactly those three with a change in the first column, and `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md` still showing `??`. Then:
+
+    docs: handover start point, the datetime deprecation, and a stray section 0
+
+    Adds a Start here section to the 2026-07-30 handover naming the first task,
+    the plan for 17.5a, and corrects its own state figures against git.
+
+    Records in 17.4 the datetime-adapter deprecation found by running the suite
+    on 30 July: 166 warnings from the receipt locking code in
+    worker/database/repository.py, which becomes a suite-wide failure after a
+    Python upgrade. Flagged, not fixed.
+
+    Also commits section 0 of the 2026-07-29 consultant handover, on the
+    environment and the four gitignored things a fresh clone lacks. It was
+    written by neither the session that produced that handover's committed
+    version nor the two after it, and each declined to commit it as not theirs.
+    Committed now rather than lost.
+
+**Do not use `git add .`.** `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md` is an old untracked draft and is Paul's call, not this commit's.
 
 **Database, `data/receipts.db`:** 24 ok, 5 discarded, 53 extractions, 2 resolution events, 20 processed attachments. Vendor mappings 100 rows for `Client_001` and 1 for `Client_003`; firm vendors and client rules both empty. Unchanged since 29 July.
 
-**Tests.** 263 reported on 29 July and I could not run them: the sandbox has no pytest and `.venv` is a Windows environment. A static count gives 259 `def test_` functions, which is consistent with 263 collected once parametrisation expands. **Ask Claude Code for the real count before trusting either figure.**
+**Tests. 263 passing, confirmed by a real run on 2026-07-30**, plus 87 subtests, nothing failing, 10.65s. That closes an item that had been carried on trust since 29 July: I could not run the suite myself, because the sandbox has no pytest and `.venv` is a Windows environment. The static count of 259 `def test_` functions reconciles with 263 collected once parametrisation expands.
+
+**One thing that run turned up, recorded in 17.4 and not fixed.** 166 deprecation warnings, almost all `The default datetime adapter is deprecated as of Python 3.12`, from the receipt locking code in `worker/database/repository.py` around lines 588 and 680, which pass a Python `datetime` straight to SQLite. Noise now, a suite-wide failure after a Python upgrade.
 
 **Desktop.** `IntelliBooks-Desktop-v3.html`, 2,467 lines, 139,104 bytes. **Changes A, B, C, E, F, G, H and I all built and tested. Change I's five-step check was run by Paul on 2026-07-30 and passed, including step 3, which proves the guard compares the normalised pattern, and step 4, which proves it did not break change H's case.** Change D cancelled. **The lettered series is closed and there is nothing outstanding in it.** Backups `.bak-before-change-D` at 132,918 bytes and `.bak-before-change-I` at 136,902 sit beside the live file.
 
@@ -85,19 +119,19 @@ The afternoon took the project somewhere else. It began with Paul objecting to c
 
 ## 5. What happens next, in order
 
-**1. Paul settles the three postponed items in 18.10**, listed below. The storage and delivery questions are settled: see 18.2a, 18.2b, 18.2c and 17.5a.
+**1. Plan the combined reset and restructure, 17.5a.** Six stages: stop the pipeline, back up, reset, restructure, change the code on both sides, then one clean cycle. The plan comes before any deletion. **Two precautions from 17.5 still bite and neither is optional:** keep the vendor mappings, which are 101 rows of real practice knowledge, and confirm `INBOX` is empty before touching `processed_attachments`, because anything sitting there is re-extracted at one OpenAI call each. All of `Clients\Paul Keating\` and `PAUL-books.json` are confirmed disposable. **Supervised stage by stage, verified before and after each stage rather than once at the end. If a stage does not verify, stop there.**
 
-Those three are: categories in receipts and transactions, extending `chart_of_accounts_DRAFT.csv`, and whether a filed receipt gets a correction route. Paul has said twice that they are postponed but not for long.
+**2. Then the three postponed items in 18.10.** Paul has twice called them postponed but not for long, and after the reset they are cheaper rather than more urgent, for the reason in Start here.
 
-**2. Then plan the combined reset and restructure, per 17.5a.** Six stages, reset first, restructure second, code change last, supervised stage by stage. All of `Clients\Paul Keating\` and `PAUL-books.json` are confirmed disposable. Two precautions still bite: keep the vendor mappings, and check `INBOX` is empty before touching `processed_attachments`, because anything there is re-extracted at one OpenAI call each.
+Those three are: categories in receipts and transactions, extending `chart_of_accounts_DRAFT.csv`, and whether a filed receipt gets a correction route.
 
-**3. Then rewrite steps 10a and 10c** against 18.2a, and brief Claude Code. **Step 10b is gone from the pipeline**, amendment 73: section 13A is now IntelliBooks' work.
+**3. Then rewrite steps 10a and 10c** against 18.2a, and brief Claude Code. 10a shrinks a long way, because Intellibills no longer writes into `Clients\` at all: what remains is moving its own paths, with the layout in config constants rather than string literals. **Step 10b is gone from the pipeline**, amendment 73: section 13A is now IntelliBooks' work.
 
 **4. Then brief the Desktop session on section 18.** It is larger than changes A to I combined and it now also carries the client folder copy, the delivery log and section 13A. Do not bolt it onto the existing brief.
 
 **One thing only Paul can do, and it is not in any file I can edit.** The Claude project instructions still name the Python system "the pipeline or Receipt Capture". It is now **Intellibills**, amendment 72. Until Paul updates those instructions, every new session starts with the old name.
 
-**Nothing is sent until 1 is done.** `PROMPT_claude_code_step10a_and_10b.md` carries a suspension header saying so, and `PROMPT_desktop_session_start_2026-07-30.md` tells a fresh Desktop session to read itself in and wait rather than build.
+**Nothing is sent until 1 is done.** `PROMPT_claude_code_step10a_and_10b.md` carries a suspension header saying so, and `PROMPT_desktop_session_start_2026-07-31.md` tells a fresh Desktop session to read itself in and wait rather than build.
 
 ---
 
@@ -141,7 +175,7 @@ Recorded because the same mistakes are available to you, and because three of th
 
 ## 8. Reference
 
-Repository: `C:\LastingImpact\receipt_capture`, branch `feat/console-phase0`, tip `461f9d1`.
+Repository: `C:\LastingImpact\receipt_capture`, branch `feat/console-phase0`, tip `ac2d1be`, pushed. Remote `https://github.com/Impact-sys-pk/receipt-capture.git`.
 
 Practice root: `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`.
 
@@ -149,7 +183,7 @@ Desktop app: `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBook
 
 Change log: `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\App\Docs\IntelliBooks-Change-Log.md`. Maintained by the Desktop session on the consultant session's instruction, not edited by the consultant session.
 
-Live briefs, both in the repository root: `PROMPT_intellibooks_desktop_changes.md` for Desktop, and `PROMPT_desktop_session_start_2026-07-30.md`, which is the text to paste into a fresh Desktop chat. `PROMPT_claude_code_step10a_and_10b.md` is suspended.
+Live briefs, both in the repository root: `PROMPT_intellibooks_desktop_changes.md` for Desktop, and `PROMPT_desktop_session_start_2026-07-31.md`, which is the text to paste into a fresh Desktop chat. `PROMPT_claude_code_step10a_and_10b.md` is suspended.
 
 `python check_test41.py` prints receipt ids, what the extractor read, the resolution events and the state of the Resolutions folder. Read-only, safe at any time.
 

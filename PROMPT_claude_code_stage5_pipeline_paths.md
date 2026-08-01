@@ -10,6 +10,10 @@ Runs under `AUTOMATIC Task Mode` in `CLAUDE.md`. Its "stop and ask" list is unch
 
 ## What this is, and what it is not
 
+**Stage 4 is complete as of 2026-08-01 and the tree is already the right shape.** Verified on disk: `Intellibills\Documents\`, `Review\` and `Exports\` exist and are empty; `Backups\` holds 13 database backups; `Receipt Inbox\` and `Resolutions\` are moved across; `clients.csv`, `firms.csv` and `pipeline-status.json` are in `Intellibills\`; and `C:\Intellibills\db\` and `C:\Intellibills\logs\` exist outside OneDrive. **You are pointing code at folders that are already there.** You create none of them by hand.
+
+**One artefact you will see and should not be misled by.** `IntelliBooks\Backups\` exists again and is empty. `config.py:68` runs `BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)` at import and `BACKUPS_ROOT` still resolves there, so any import of `config` recreates it. **Task 2 removes the cause.** Do not delete the folder as part of this task; report that it is empty once your change is in.
+
 **This is stage 5 of a six-stage operation. Stages 1 to 3 are done and the system is empty.** The database has no receipts, no client folders hold documents, and `data\files\` is gone. **That is what makes this safe: there is nothing on disk to strand.**
 
 **This is a path change. It is not a feature build.** No new behaviour, no new module, no change to how a receipt is processed. If you find yourself designing something, stop and report.
@@ -152,6 +156,30 @@ Two need naming individually.
 ## Commit
 
 Small, focused, in this order, staging by name. **Never `git add .`**; `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md` must still show `??`.
+
+**Commit 0 first, before you change a line of code.** Four things are already uncommitted when you start and none of them is yours. Getting them in first means your diff is readable and the tree you work from is clean.
+
+    git add 2026-07-25_CONSOLE_DESIGN.md CATEGORISATION.md PROMPT_claude_code_2026-08-01_require_client_id.md
+
+    docs: amendments 81 and 82, and the prompt the client_id fix came from
+
+    Amendment 81 is the decision behind e4f60ad, committed after it rather
+    than before. Amendment 82 is a rule that came out of that task: history
+    keeps retired identifiers, live documentation is corrected. It exists
+    because the brief asked for a Client_001 sweep that could only have been
+    passed by editing three handovers, the reset plan and a committed prompt,
+    which is what amendment 78 forbids.
+
+    CATEGORISATION.md:189 verified list_client_vendors('Client_001') as step 3
+    of a procedure whose step 2 now imports to Client_006, so following it end
+    to end returned 0 and read as a failed import. Fixed. The two remaining
+    live-documentation errors, RECEIPT_CAPTURE_GUIDE.md:221 and
+    EMAIL_PROCESSING_MICROSTEPS.md:179, wait for the documentation pass after
+    this stage, which will rewrite those files' paths anyway.
+
+**Confirm with `git --no-optional-locks status --short` that only `RECEIPT_CAPTURE_GUIDE_DRAFT_2026-07-24.md` remains before you start commit 1.** If a `.py` file is modified at that point, something is wrong and you should stop.
+
+Then, your own work:
 
 1. `refactor(config): remove DATA_DIR and land five independent path constants`
 2. `refactor(paths): move Receipt Inbox, Resolutions, pipeline status and lock to Intellibills`

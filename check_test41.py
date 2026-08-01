@@ -14,7 +14,7 @@ from pathlib import Path
 
 import config
 
-DB = Path("data/receipts.db")
+DB = config.DB_PATH
 
 
 def main() -> None:

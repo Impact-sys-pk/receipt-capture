@@ -406,10 +406,11 @@ Both are easy to break by accident, and one of them would be broken by a change 
 - One or two sentences for a simple update. Do not recap what he has just watched you do.
 - State the date and the verbosity level at the top of every reply.
 
-### Two traps that cost hours
+### Three traps that cost hours
 
 - **The permission layer is not `CLAUDE.md`.** Prose cannot suppress a permission prompt. Allow rules in `.claude/settings.json` are ignored unless the workspace is trusted, while `.claude/settings.local.json`'s are not. The working rules live in the local file, which is gitignored; `settings.json` holds the same content so a fresh checkout can recreate it.
 - **Do not report a dirty working tree from the Linux sandbox.** Git for Windows normalises line endings and the sandbox does not see its configuration, so around thirty files look modified when the tree is clean. Confirm on Windows or do not claim it.
+- **Do not run git write commands from the Linux sandbox.** Reads are safe and are what it is for. `git add`, `git commit`, `git mv` and anything else that takes the index lock must be run on Windows. The sandbox can create a file in the mounted folder but cannot unlink one, so git leaves `.git\index.lock` behind and cannot clean it up, and every git write in the repository fails until somebody notices and deletes it by hand. That is worse than the trap above, which only misleads. Clear it with `del .git\index.lock` from the repository root, after checking with `tasklist /FI "IMAGENAME eq git.exe"` that no git process is running.
 
 ---
 
@@ -693,7 +694,7 @@ Status assignment:
 ### File Storage
 
 - Never overwrite files
-- Date-based folder structure: `data/files/YYYY/MM/DD/`
+- ~~Date-based folder structure: `data/files/YYYY/MM/DD/`~~ **Wrong, corrected 2026-08-01 by amendment 77.** The code writes **client code first, then year and month, with no day level**: `save_file()` and `save_inbox_file()` at `worker/storage/store.py:20` and `:34` both use `FILES_DIR / client_code / year / month`. The date is the date of arrival, not the document date, so a path never changes when an invoice date is corrected. Both shapes exist on disk today because the code changed and nothing migrated; the reset clears them. **After the move the store is `Intellibills\Documents\{CODE}\{year}\{month}\{receipt id}_{filename}`**, see 18.2a of the design document.
 - Filenames: `{receipt_id}_{original_filename}`
 - Supported: PDF, JPG, PNG, GIF, WebP, TIFF, BMP
 

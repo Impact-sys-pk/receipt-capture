@@ -47,7 +47,7 @@ ENTRY_POINT_LOGS = {
 def log_path_for(entry_point: str) -> Path:
     """Where this entry point's log lives. Unknown names get their own file."""
     filename = ENTRY_POINT_LOGS.get(entry_point, f"{entry_point}.log")
-    return config.DATA_DIR / filename
+    return config.LOGS_DIR / filename
 
 
 def attach_log_handler(entry_point: str) -> Optional[Path]:
@@ -56,7 +56,7 @@ def attach_log_handler(entry_point: str) -> Optional[Path]:
     Idempotent: calling it twice in one process adds one handler. Returns the path
     it attached, or the path it found already attached.
 
-    Call from `main()`, never at import. `data/` is gitignored.
+    Call from `main()`, never at import.
     """
     root = logging.getLogger()
     path = log_path_for(entry_point)
@@ -66,7 +66,7 @@ def attach_log_handler(entry_point: str) -> Optional[Path]:
             if Path(getattr(existing, "baseFilename", "")) == path:
                 return path
 
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(
         path,
         maxBytes=MAX_BYTES,

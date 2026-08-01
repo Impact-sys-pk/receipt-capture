@@ -6,12 +6,14 @@ modules the way tests/test_prefer_dayfirst_isolation.py imports its subjects.
 Every environment redirects config.LOGS_DIR and config.RUNS_LOG as well as
 DB_PATH: the console's intake panel reads the live event logs, so a synthetic row
 there reads as a real intake problem, and RUNS_LOG resolves from LOGS_DIR at
-import so redirecting one does not move the other.
+import so redirecting one does not move the other. LOGS_DIR also carries the four
+process log files since design document 18.2a, so redirecting it is what keeps a
+CLI run under test out of the live resolve.log as well.
 
-It also redirects every path that lives under OneDrive: the Receipt Inbox, the
-practice status file, the backup folder and the Resolutions folder. A test that
-drives process_once() writes all four, and three of them are read by IntelliBooks
-Desktop.
+It also redirects every path that lives under OneDrive: the document store, the
+Receipt Inbox, the Review folder, the practice status file, the backup folder and
+the Resolutions folder. A test that drives process_once() writes all six, and
+three of them are read by IntelliBooks Desktop.
 """
 
 import tempfile
@@ -36,11 +38,11 @@ class TempEnvironment:
             "ONEDRIVE_ROOT": config.ONEDRIVE_ROOT,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
-            "DATA_DIR": config.DATA_DIR,
             "FILES_DIR": config.FILES_DIR,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "RECEIPT_INBOX_ROOT": config.RECEIPT_INBOX_ROOT,
+            "REVIEW_ROOT": config.REVIEW_ROOT,
             "RESOLUTIONS_DIR": config.RESOLUTIONS_DIR,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
             "BACKUPS_ROOT": config.BACKUPS_ROOT,
@@ -50,21 +52,26 @@ class TempEnvironment:
         config.ONEDRIVE_ROOT = self.path
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
-        # DATA_DIR as well as LOGS_DIR: attach_log_handler() resolves DATA_DIR at
-        # call time, so a test that runs a CLI entry point appends to the live
-        # data/resolve.log without this. Same class of leak as the ndjson one that
-        # 2d19521 fixed, found the same way: by checking rather than assuming.
-        config.DATA_DIR = self.path / "data"
-        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        config.FILES_DIR = config.DATA_DIR / "files"
+        # The document store. Independent of the database and of the logs since
+        # amendment 76: it used to be config.DATA_DIR / "files", which reproduced
+        # inside this fixture the shared parent that put the live database one
+        # rename away from OneDrive.
+        config.FILES_DIR = self.path / "Documents"
         config.FILES_DIR.mkdir(parents=True, exist_ok=True)
+        # LOGS_DIR carries the ndjson event logs and, since 18.2a, the four
+        # process logs as well: attach_log_handler() resolves it at call time, so
+        # a test that runs a CLI entry point appends to the live resolve.log
+        # without this. Same class of leak as the ndjson one that 2d19521 fixed,
+        # found the same way: by checking rather than assuming.
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        # Under OneDrive in real life. The inbox and the Resolutions folder are
-        # deliberately not created here: the code under test creates them on
-        # demand, and the tests that assert that must start without them.
+        # Under OneDrive in real life. The inbox, the Review folder and the
+        # Resolutions folder are deliberately not created here: the code under
+        # test creates them on demand, and the tests that assert that must start
+        # without them.
         config.RECEIPT_INBOX_ROOT = self.path / "Receipt Inbox"
+        config.REVIEW_ROOT = self.path / "Review"
         config.RESOLUTIONS_DIR = self.path / "Resolutions"
         config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
         config.BACKUPS_ROOT = self.path / "Backups"

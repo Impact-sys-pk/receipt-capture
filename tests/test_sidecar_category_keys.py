@@ -46,19 +46,20 @@ class TempEnvironment:
         self.path = Path(self._temp.name)
         self._saved = {
             "DB_PATH": config.DB_PATH,
-            "DATA_DIR": config.DATA_DIR,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
+            "REVIEW_ROOT": config.REVIEW_ROOT,
         }
         config.DB_PATH = self.path / "receipts.db"
-        # attach_log_handler() resolves DATA_DIR at call time, so a test that
-        # runs a CLI entry point appends to the live data/*.log without this.
-        config.DATA_DIR = self.path / "data"
-        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
+        # Not created: file_review() makes it on demand.
+        config.REVIEW_ROOT = self.path / "Review"
+        # attach_log_handler() resolves LOGS_DIR at call time, so a test that runs
+        # a CLI entry point appends to the live resolve.log without this. The four
+        # process logs moved here from DATA_DIR with 18.2a.
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
@@ -120,7 +121,8 @@ class TempEnvironment:
         return json.loads(found[0].read_text(encoding="utf-8"))
 
     def review_sidecar(self):
-        found = sorted(config.CLIENTS_ROOT.glob("*/Review/*.review.json"))
+        # Intellibills\Review\{CODE}\, not the client folder, since 18.2a.
+        found = sorted(config.REVIEW_ROOT.glob("*/*.review.json"))
         assert len(found) == 1, f"expected exactly one review sidecar, found {found}"
         return json.loads(found[0].read_text(encoding="utf-8"))
 

@@ -38,16 +38,29 @@ from worker.logging_setup import (
 import resolve_receipt
 
 
-class TempDataDir:
+class TempLogsDir:
+    """Redirect the constant log_path_for() actually reads.
+
+    That was config.DATA_DIR until design document 18.2a moved the four process
+    logs out from beside the database and into config.LOGS_DIR, which now lives
+    at C:/Intellibills/logs and holds the ndjson event logs as well. Only the
+    constant changed: what this class exists to prevent, a suite run appending to
+    the live run.log, is the same thing it prevented before.
+
+    Deliberately not created here. attach_log_handler() makes it, and
+    RotatingFileHandler raises if it does not, so the assertions below that the
+    file exists are also the check that the handler creates its own folder.
+    """
+
     def __enter__(self):
         self._temp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.path = Path(self._temp.name)
-        self._original = config.DATA_DIR
-        config.DATA_DIR = self.path / "data"
+        self._original = config.LOGS_DIR
+        config.LOGS_DIR = self.path / "logs"
         return self
 
     def __exit__(self, *exc):
-        config.DATA_DIR = self._original
+        config.LOGS_DIR = self._original
         self._temp.cleanup()
         return False
 
@@ -77,9 +90,9 @@ def _file_handlers():
 
 class AttachLogHandlerTest(unittest.TestCase):
     def test_attaching_writes_to_that_entry_points_file(self):
-        with TempDataDir() as env, _HandlerGuard():
+        with TempLogsDir() as env, _HandlerGuard():
             path = attach_log_handler("resolve")
-            self.assertEqual(path, config.DATA_DIR / "resolve.log")
+            self.assertEqual(path, config.LOGS_DIR / "resolve.log")
 
             logging.getLogger("test.logging_setup").warning("a line for the log")
             for handler in _file_handlers():
@@ -88,10 +101,10 @@ class AttachLogHandlerTest(unittest.TestCase):
             self.assertTrue(path.exists())
             self.assertIn("a line for the log", path.read_text(encoding="utf-8"))
             # And it did not land in the pipeline's file.
-            self.assertFalse((config.DATA_DIR / "run.log").exists())
+            self.assertFalse((config.LOGS_DIR / "run.log").exists())
 
     def test_it_is_idempotent(self):
-        with TempDataDir(), _HandlerGuard():
+        with TempLogsDir(), _HandlerGuard():
             before = len(_file_handlers())
             attach_log_handler("resolve")
             after_one = len(_file_handlers())
@@ -112,7 +125,7 @@ class AttachLogHandlerTest(unittest.TestCase):
         self.assertEqual(log_path_for("something_new").name, "something_new.log")
 
     def test_two_entry_points_in_one_process_get_two_handlers(self):
-        with TempDataDir(), _HandlerGuard():
+        with TempLogsDir(), _HandlerGuard():
             before = len(_file_handlers())
             attach_log_handler("resolve")
             attach_log_handler("discard")
@@ -153,9 +166,9 @@ class SuiteWritesNoLogsTest(unittest.TestCase):
 
     def _sizes(self):
         return {
-            name: (config.DATA_DIR / name).stat().st_size
+            name: (config.LOGS_DIR / name).stat().st_size
             for name in ENTRY_POINT_LOGS.values()
-            if (config.DATA_DIR / name).exists()
+            if (config.LOGS_DIR / name).exists()
         }
 
     def test_importing_the_entry_points_writes_nothing(self):
@@ -167,7 +180,7 @@ class SuiteWritesNoLogsTest(unittest.TestCase):
 
         self.assertEqual(self._sizes(), before)
 
-    def test_running_a_cli_writes_to_the_redirected_data_dir_not_the_real_one(self):
+    def test_running_a_cli_writes_to_the_redirected_logs_dir_not_the_real_one(self):
         real_before = self._sizes()
 
         with TempEnvironment() as env:
@@ -184,12 +197,12 @@ class SuiteWritesNoLogsTest(unittest.TestCase):
                 exit_code = resolve_receipt.main()
 
             self.assertEqual(exit_code, 0, out.getvalue())
-            temp_log = config.DATA_DIR / "resolve.log"
+            temp_log = config.LOGS_DIR / "resolve.log"
             self.assertTrue(temp_log.exists(), "the CLI must have logged somewhere")
 
         self.assertEqual(
             self._sizes(), real_before,
-            "a CLI run under test must not touch the live data/*.log files",
+            "a CLI run under test must not touch the live process log files",
         )
 
 

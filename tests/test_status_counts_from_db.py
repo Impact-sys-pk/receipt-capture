@@ -40,6 +40,8 @@ class TempEnvironment:
             "DB_PATH": config.DB_PATH,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "FILES_DIR": config.FILES_DIR,
+            "REVIEW_ROOT": config.REVIEW_ROOT,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
@@ -49,6 +51,12 @@ class TempEnvironment:
         config.DB_PATH = self.path / "receipts.db"
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
+        # Both moved into OneDrive at 18.2a: the document store from the
+        # repository's data\files\, and Review out of the client folder that
+        # CLIENTS_ROOT above used to cover.
+        config.FILES_DIR = self.path / "Documents"
+        config.FILES_DIR.mkdir(parents=True, exist_ok=True)
+        config.REVIEW_ROOT = self.path / "Review"
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"

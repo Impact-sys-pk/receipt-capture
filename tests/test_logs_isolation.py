@@ -74,16 +74,24 @@ class LogsIsolationTest(unittest.TestCase):
     def test_config_is_restored_after_redirection(self):
         # A test that leaks a redirected LOGS_DIR would silently disarm this
         # guard for every test that runs after it.
-        self.assertEqual(config.LOGS_DIR, config.BASE_DIR / "logs")
+        self.assertEqual(config.LOGS_DIR, config.LOCAL_ROOT / "logs")
         self.assertEqual(config.RUNS_LOG, config.LOGS_DIR / "runs.ndjson")
 
 
 # Everything process_once() creates or writes outside the test's own temp tree.
-# Three of these live in OneDrive and two are read by IntelliBooks Desktop.
+# Five of these live in OneDrive and three are read by IntelliBooks Desktop.
+#
+# FILES_DIR and REVIEW_ROOT were added when 18.2a moved them. FILES_DIR was in the
+# repository at data\files\ and REVIEW_ROOT did not exist, its contents living
+# under a CLIENTS_ROOT the environments already redirected. Both now point into
+# OneDrive, so an environment that misses one writes the practice's live document
+# store or its live review queue.
 PROCESS_ONCE_WRITES = (
     "DB_PATH",
     "LOGS_DIR",
     "RUNS_LOG",
+    "FILES_DIR",
+    "REVIEW_ROOT",
     "PIPELINE_STATUS_PATH",
     "BACKUPS_ROOT",
     "RESOLUTIONS_DIR",

@@ -53,6 +53,7 @@ class TempEnvironment:
             "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
             "CLIENTS": config.CLIENTS,
             "FILES_DIR": config.FILES_DIR,
+            "REVIEW_ROOT": config.REVIEW_ROOT,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
@@ -62,8 +63,11 @@ class TempEnvironment:
         config.DB_PATH = self.path / "receipts.db"
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
-        config.FILES_DIR = self.path / "files"
+        config.FILES_DIR = self.path / "Documents"
         config.FILES_DIR.mkdir(parents=True, exist_ok=True)
+        # Review left the client folder at 18.2a, so redirecting CLIENTS_ROOT no
+        # longer covers it. Not created: file_review() makes it on demand.
+        config.REVIEW_ROOT = self.path / "Review"
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"

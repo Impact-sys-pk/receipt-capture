@@ -1,6 +1,10 @@
 # Handover: consultant session, Receipt Capture and IntelliBooks
 
-**Written 2026-07-30.** Paste this whole file into a new Cowork chat. Use Claude Opus 5.
+**Written 2026-07-30 to 2026-07-31.** ~~Written 2026-07-30.~~ Paste this whole file into a new Cowork chat. Use Claude Opus 5.
+
+> **Dates in this file were corrected on 2026-08-01. Read this before section 3.** The session that wrote it began on 30 July and finished on 31 July, and dated everything to the 30th. **The morning is genuinely 30 July and those dates stand:** the three Desktop checks, `PKPH-books.json` deleted, change I built and passed. **The afternoon, section 18, and everything this file says about reading the repository are 31 July.** Six claims were wrong against evidence and are corrected inline with the old wording struck through. Two others span both days and now say so. Two could not be dated either way and are left alone.
+>
+> **The proof, so this does not have to be taken on trust.** Section 3 below says the tip is `ac2d1be`, and `ac2d1be` is authored `2026-07-31 15:38:54 +0100`. A session cannot have read that as the tip on the 30th. Amendment 78 of `C:\LastingImpact\receipt_capture\2026-07-25_CONSOLE_DESIGN.md` carries the full audit and the mtimes that pin the boundary.
 
 Supersedes `2026-07-29_HANDOVER_consultant_chat_3.md`, which started the session that wrote this one. That file stays in the repository. Read its sections 6 and 7 for the traps; everything else in it about state and next steps is out of date and this file replaces it.
 
@@ -10,7 +14,7 @@ Supersedes `2026-07-29_HANDOVER_consultant_chat_3.md`, which started the session
 
 **Why that first rather than the three open decisions in 18.10.** Two of the three concern data the reset deletes. The chart of accounts is loaded fresh from `chart_of_accounts_DRAFT.csv` at console step 12, and the categories question is about vocabulary that exists today only as test mappings and test category names. Deciding either against data about to be deleted means specifying it twice. After the reset there is nothing to migrate and the chart of accounts is a blank sheet, which is the cheapest moment it will ever be to extend.
 
-**No design work has been handed to either build session.** One mechanical task was sent to Claude Code on 2026-07-30 and completed: stage, commit and push the day's documentation, which produced `ac2d1be`, plus a test run. Nothing else. No section 18 work, no folder work, no prompt for either module's next build. That is deliberate: the handover happens immediately before instructions are given, so the session that gives them is the session that owns them.
+**No design work has been handed to either build session.** One mechanical task was sent to Claude Code on **2026-07-31** ~~2026-07-30~~ and completed: stage, commit and push the day's documentation, which produced `ac2d1be`, plus a test run. Nothing else. No section 18 work, no folder work, no prompt for either module's next build. That is deliberate: the handover happens immediately before instructions are given, so the session that gives them is the session that owns them.
 
 ---
 
@@ -47,7 +51,7 @@ Three sessions, none of which can see the others, and Paul is the only channel. 
 
 ## 3. State, verified rather than recalled
 
-Read from git, the database and the files on 2026-07-30.
+Read from git, the database and the files on **2026-07-31** ~~2026-07-30~~. Corrected 2026-08-01: the tip quoted below, `ac2d1be`, is authored 2026-07-31 15:38:54, so this reading is the 31st.
 
 **Repository.** Branch `feat/console-phase0`, tip **`ac2d1be`**, pushed and level with origin. `main` is still 42 commits behind and deliberately unmerged.
 
@@ -60,6 +64,8 @@ Read from git, the database and the files on 2026-07-30.
 - `2026-07-25_CONSOLE_DESIGN.md`, carrying one addition made after `ac2d1be`: the datetime-adapter deprecation, in 17.4.
 - `2026-07-31_HANDOVER_consultant_chat_4.md`, this file, edited after `ac2d1be` to add Start here and to correct its own state figures.
 - `2026-07-29_HANDOVER_consultant_chat_3.md`, carrying 22 lines added by somebody else and never committed, a section 0 about the environment and the four gitignored things a fresh clone lacks. **It has now survived two sessions uncommitted. Commit it.** Two sessions have each declined on the grounds that it was not theirs, which is how a good addition gets lost. It is documentation, the authorship is recorded in the commit message below, and the risk of losing it outweighs the tidiness of leaving it.
+
+> **Done on 2026-08-01, and this block is history.** The work it describes went in as four commits rather than one: `a19e999` the design document and the reset plan, `aa1b956` the two filename corrections, `73bb064` `CLAUDE.md`, and `ddd9ffb` the stray section 0. Pushed as a fast-forward, `ac2d1be..ddd9ffb`. **The message below is left exactly as it was drafted, including its reference to "the 2026-07-30 handover", which is this file under its old name.** A quoted draft is a record of what was proposed and editing it would falsify that.
 
 **Recommended commit, first thing, staged by name:**
 
@@ -75,7 +81,7 @@ Expect exactly those three with a change in the first column, and `RECEIPT_CAPTU
     the plan for 17.5a, and corrects its own state figures against git.
 
     Records in 17.4 the datetime-adapter deprecation found by running the suite
-    on 30 July: 166 warnings from the receipt locking code in
+    on 31 July: 166 warnings from the receipt locking code in
     worker/database/repository.py, which becomes a suite-wide failure after a
     Python upgrade. Flagged, not fixed.
 
@@ -89,7 +95,7 @@ Expect exactly those three with a change in the first column, and `RECEIPT_CAPTU
 
 **Database, `data/receipts.db`:** 24 ok, 5 discarded, 53 extractions, 2 resolution events, 20 processed attachments. Vendor mappings 100 rows for `Client_001` and 1 for `Client_003`; firm vendors and client rules both empty. Unchanged since 29 July.
 
-**Tests. 263 passing, confirmed by a real run on 2026-07-30**, plus 87 subtests, nothing failing, 10.65s. That closes an item that had been carried on trust since 29 July: I could not run the suite myself, because the sandbox has no pytest and `.venv` is a Windows environment. The static count of 259 `def test_` functions reconciles with 263 collected once parametrisation expands.
+**Tests. 263 passing, confirmed by a real run on 2026-07-31** ~~2026-07-30~~, plus 87 subtests, nothing failing, 10.65s. That closes an item that had been carried on trust since 29 July: I could not run the suite myself, because the sandbox has no pytest and `.venv` is a Windows environment. The static count of 259 `def test_` functions reconciles with 263 collected once parametrisation expands.
 
 **One thing that run turned up, recorded in 17.4 and not fixed.** 166 deprecation warnings, almost all `The default datetime adapter is deprecated as of Python 3.12`, from the receipt locking code in `worker/database/repository.py` around lines 588 and 680, which pass a Python `datetime` straight to SQLite. Noise now, a suite-wide failure after a Python upgrade.
 
@@ -99,7 +105,7 @@ Expect exactly those three with a change in the first column, and `RECEIPT_CAPTU
 
 ---
 
-## 4. What happened on 2026-07-30, and it is mostly a demolition
+## 4. What happened on 30 and 31 July, and it is mostly a demolition
 
 The morning was ordinary: three outstanding Desktop checks run and passed, `PKPH-books.json` deleted, change I specified and built, amendments 65 and 66 written.
 
@@ -187,4 +193,4 @@ Live briefs, both in the repository root: `PROMPT_intellibooks_desktop_changes.m
 
 `python check_test41.py` prints receipt ids, what the extractor read, the resolution events and the state of the Resolutions folder. Read-only, safe at any time.
 
-**Confidence.** High on section 3, every figure read from git, the database or the file on 2026-07-30, except the test count which is flagged. High on sections 4 to 6, which are this session's own findings, each read from a file. High on section 7, which is a list of things I did.
+**Confidence.** High on section 3, every figure read from git, the database or the file on **2026-07-31** ~~2026-07-30~~, except the test count which is flagged. High on sections 4 to 6, which are this session's own findings, each read from a file. High on section 7, which is a list of things I did.

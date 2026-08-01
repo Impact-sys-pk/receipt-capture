@@ -7,7 +7,7 @@ Two other sessions work on this project and none of us can see each other. Paul 
 Read these four files before you do anything, in this order:
 
 1. `C:\LastingImpact\receipt_capture\CLAUDE.md`, the section headed "How this project is worked". The working method and the standard of evidence. Short.
-2. `C:\LastingImpact\receipt_capture\2026-07-25_CONSOLE_DESIGN.md`, **section 18 first**, then the amendment record. Section 18 is Receipt and transaction integrity, added 2026-07-30, and it supersedes parts of sections 12, 13A, 14, 16 and 17.5. Reading the body before section 18 will teach you things that are no longer true.
+2. `C:\LastingImpact\receipt_capture\2026-07-25_CONSOLE_DESIGN.md`, **section 18 first**, then the amendment record. Section 18 is Receipt and transaction integrity, added **2026-07-31** ~~2026-07-30~~, and it supersedes parts of sections 12, 13A, 14, 16 and 17.5. Reading the body before section 18 will teach you things that are no longer true.
 3. `C:\LastingImpact\receipt_capture\2026-07-29_HANDOVER_intellibooks_desktop.md`. The Desktop side: line landmarks, which `.bak` is which, every open flag in one list, and what has been tested as against merely built. Corrected 2026-07-30, so trust it over anything older. Its line numbers predate change I and are out by a few dozen: search, do not trust them.
 4. `C:\LastingImpact\receipt_capture\PROMPT_intellibooks_desktop_changes.md`. The record of changes A to I. Its section 5, change D, is cancelled. Section 5A, change I, is built and passed.
 

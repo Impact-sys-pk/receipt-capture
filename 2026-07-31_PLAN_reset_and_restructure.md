@@ -234,7 +234,9 @@ Everything in this section was read today from git, the database, or the filesys
 
 **Stage 1's gate cannot be met until it is cleared**, because that gate requires the three modified documents to be committed and no commit can be made.
 
-**And a standing rule for any Cowork session on this repository: do not run git write commands from the Linux sandbox.** Reads are safe and are what the sandbox is for. `git add`, `git commit`, `git mv` and anything else that takes the index lock should be run on Windows. This belongs in `CLAUDE.md` beside the existing warning that the sandbox misreports a dirty working tree, and it is a worse trap than that one, because that warning only misleads whereas this one blocks the repository until somebody notices.
+**And a standing rule for any Cowork session on this repository, now in `CLAUDE.md` as the third trap: do not run git from the Linux sandbox without `--no-optional-locks`.** ~~Reads are safe and are what the sandbox is for.~~ **That first wording was wrong and it was disproved within the hour, by me, running the very command it implied was safe.** `git status` and `git diff` refresh the index stat cache, which takes the lock, so **`git status` alone recreates the problem.** `git --no-optional-locks status` is the documented flag for it and works even while a stale lock exists. `git log`, `git show` and `git ls-files` never touch the index. Everything that writes belongs on Windows.
+
+**The lock has therefore been recreated twice in this session**, at `15:54:52` on 31 July and at `11:57:34` on 1 August, both by me, both from a bare `git status`. It must be cleared again before stage 1.
 
 ### Repository
 

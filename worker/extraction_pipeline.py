@@ -281,7 +281,7 @@ def process_extraction_result(
         # File to Review folder
         review_path, sidecar_path = file_review(
             file_path,
-            client_name,
+            client_code,
             filename,
             validation.status,
             validation.notes,

@@ -866,8 +866,7 @@ def process_once():
 
                 if not intake.statement_metadata.get("platform") or not intake.statement_metadata.get("week_ending"):
                     logger.warning(f"statement missing metadata, routing to review: {intake.filename}")
-                    client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
-                    file_review(intake.source_path, client_name, intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
+                    file_review(intake.source_path, intake.client_code, intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
                     stats["review_flags_issued"] += 1
                     continue
 
@@ -989,7 +988,7 @@ def process_once():
                 )
                 file_review(
                     intake.source_path,
-                    client_name,
+                    intake.client_code,
                     intake.filename,
                     "failed",
                     [str(exc)],

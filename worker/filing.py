@@ -115,14 +115,13 @@ def file_statement(
 
 def file_review(
     source_file: Path,
-    client_name: str,
+    client_code: str,
     original_filename: str,
     status: str,
     reasons: list[str],
     extracted_values: dict[str, Any],
 ) -> tuple[Path, Path]:
-    client_dir = get_client_directory(client_name)
-    review_dir = client_dir / "Review"
+    review_dir = _review_dir_for_client_code(client_code)
     review_dir.mkdir(parents=True, exist_ok=True)
 
     base_name = Path(original_filename).stem
@@ -154,9 +153,24 @@ def _receipt_id_from_extracted_values(extracted_values: dict[str, Any] | None) -
 
 
 def _review_dir_for_client_code(client_code: str) -> Path:
-    """The client's Review folder, resolved the same way the writer's callers do."""
-    client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)
-    return get_client_directory(client_name) / "Review"
+    """This client's Review folder. Design document 18.2a.
+
+    `Intellibills\\Review\\{CODE}\\`, not `Clients\\{client name}\\Review\\`. Two
+    changes in one, and both are the point.
+
+    It leaves the client folder because a receipt awaiting a human is work in
+    progress rather than a document the client is entitled to see, and the client
+    folder is what a portal would show.
+
+    And it is keyed on the client code rather than the client name. The name came
+    from `CLIENTS_BY_CODE`, so the folder a receipt was written to depended on
+    what `clients.csv` spelled that day, and amendment 44 records the two
+    registries holding different spellings for one client. That worked only
+    because NTFS is case-insensitive; on S3 or Linux they are two folders. The
+    code cannot drift that way, and the writer and the reader now derive the same
+    path from the same value with no lookup in between.
+    """
+    return config.REVIEW_ROOT / client_code
 
 
 def _read_review_sidecar(path: Path) -> dict[str, Any] | None:
@@ -291,10 +305,13 @@ def _scan_other_clients_for_receipt(searched_dir: Path, receipt_id: str) -> Path
 
     Receipt ids are UUIDs, so matching on one is exact and the scan is safe. No
     filename fallback here: a filename is not unique across clients.
+
+    Simpler than it was, because every subfolder of REVIEW_ROOT is a client code
+    rather than a client name with a Review folder somewhere inside it.
     """
-    if not config.CLIENTS_ROOT.exists():
+    if not config.REVIEW_ROOT.is_dir():
         return None
-    for review_dir in sorted(config.CLIENTS_ROOT.glob("*/Review")):
+    for review_dir in sorted(config.REVIEW_ROOT.iterdir()):
         if review_dir == searched_dir or not review_dir.is_dir():
             continue
         found = _find_review_sidecar(review_dir, receipt_id)

@@ -186,7 +186,7 @@ Input: "Nyx*Bp Tyre pressure"
 
 3. **Verify:**
    ```powershell
-   python -c "from worker.database.repository import Repository; r = Repository(); print(len(r.list_client_vendors('Client_001'))); r.close()"
+   python -c "from worker.database.repository import Repository; r = Repository(); print(len(r.list_client_vendors('Client_006'))); r.close()"
    ```
 
 ### Creating Rules

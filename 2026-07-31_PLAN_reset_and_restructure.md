@@ -2,7 +2,11 @@
 
 **Written 2026-07-31 by the consultant session, amended 2026-08-01.** This is the plan required by design document sections 17.5 and 17.5a: every stage enumerated before anything is deleted.
 
-**Nothing in this plan has been run. No file has been deleted, moved or edited by the session that wrote it.**
+> # STATUS 2026-08-01: STAGES 1 TO 3 ARE DONE. STAGE 4 IS PART DONE. STAGES 5 AND 6 ARE NOT STARTED.
+>
+> ~~Nothing in this plan has been run.~~ **The reset was executed on 2026-08-01 by Paul and the implementation session.** What was actually done, what deviated from this plan and what remains is in **section 0.7**. Read that before any other section, because much of what follows below is now a record of a state that no longer exists.
+>
+> **Three things happened that this plan did not specify, and one of them is a correction to a line in it that would have destroyed real client records.** All three are in 0.7.
 
 Authority: `C:\LastingImpact\receipt_capture\2026-07-25_CONSOLE_DESIGN.md`, sections 17.5, 17.5a, 18.2, 18.2a, 18.2b and 18.3. Where this plan and that document disagree, the design document wins and this plan is wrong.
 
@@ -212,6 +216,117 @@ IntelliBooks\Attachments\{CODE}\{year}\{month}\{receipt id}_{original filename}
 
 ---
 
+## 0.7 The reset as executed, 2026-08-01
+
+**Verified by the consultant session against the database, `git log` and the filesystem after the fact, not from the report.** Every figure below was read back.
+
+### 0.7.1 Where the six stages stand
+
+| Stage | State |
+|---|---|
+| 1, stop the pipeline | **Done.** The stale `IntelliBooks\pipeline.lock`, pid 31156 from 29 July, deleted. |
+| 2, back up | **Done.** `IntelliBooks\Backups\receipts-pre-reset-20260801.db`, 233,472 bytes, md5 verified against source, and **the `-wal` sidecar confirmed at 0 bytes before the copy**, which is what makes a plain copy of a WAL database provably complete. That check was not in this plan and should have been. |
+| 3, reset | **Done.** Counts verified below. |
+| 4, restructure | **Part done.** `Intellibills\` exists in the practice root holding four vendor CSVs, committed as `8b1db5d`. Everything else in 0.6.1 and 18.2a remains to move. |
+| 5, change the code | **Not started.** |
+| 6, one clean cycle | **Not started.** |
+
+**The pipeline must not be started until stage 5 is done**, or it will write into the old paths and half-populate a tree that is mid-move.
+
+### 0.7.2 The database, read back
+
+`receipts`, `extractions`, `categorisations`, `resolution_events`, `processed_attachments`, `statements`, `email_alerts` and `email_delta` all read **0**. `categorisations_firm_vendors` and `categorisations_client_rules` read 0 and were untouched.
+
+**`categorisations_client_vendors` reads 100, all under `Client_006`.** It read 101 before, being 100 for `Client_001` and 1 for `Client_003`.
+
+### 0.7.3 The vendor re-key, which this plan did not authorise
+
+**The 100 surviving rows were re-keyed from `Client_001` to `Client_006`, and the single `Client_003` row was deleted.** `clients.csv` was rewritten the same day and `Client_001` ceased to exist, so the lookup at `worker/database/repository.py:344`, which keys on `client_id`, would never have matched them again. `Client_006` is `PKPH`, the same person on the same email with the same `business_type`.
+
+**The reasoning is right and the outcome is right.** Protecting the rows through the reset was not enough if the key they hang off is retired in the same operation, and this plan did not see that. It is recorded here because it is the substantive finding of the whole reset.
+
+**Two things about it are worth stating plainly, and neither is a criticism of the outcome.** It is an `UPDATE` and a `DELETE` against `data/receipts.db`, which `CLAUDE.md`'s AUTOMATIC list requires a session to stop and ask about. And **the row that was deleted is the only thing lost in the entire reset that was not test data**: one real mapping for `Client_003`. Recoverable from `Intellibills\categorisations_client_vendors_cleaned.csv` if it is ever wanted.
+
+### 0.7.4 The correction that matters most
+
+**`C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Clients\Paul Keating\` is not disposable, and this plan said it was.**
+
+It holds eight loose PDFs, four `letter-of-engagement-ke001_*.pdf` and four `proposal-ke001_*.pdf`, plus `Document Requests\` and `Misc\` from another tool. **Those are real firm records.** Only `Receipts\` and `Review\` inside it were disposable, and only those were deleted.
+
+**The trail, because it is the more useful part than the fix.** Section 17.5 scoped it correctly, naming only `Clients\Paul Keating\Receipts\`. Section 17.5a widened it to the whole folder when summarising. **This plan then repeated 17.5a without checking it against 17.5**, and stage 3c said "each in full". Both are now corrected. **And the plan's own section 1 had already noticed:** it listed the eight PDFs, said they came from a different system, and told the operator to "confirm they are included". **The doubt was written down and then a delete instruction was written anyway.** Noticing is not the same as acting, and a note that says "confirm" beside an instruction that says "delete in full" resolves itself the wrong way under time pressure.
+
+### 0.7.5 What was actually deleted and created
+
+**Deleted:** `Clients\Test\`, `Clients\Test 2\`, `Clients\Tom Test\`, `Clients\Paul Keating\Receipts\`, `Clients\Paul Keating\Review\`, the three books files in `IntelliBooks\Books\`, all 96 documents in `receipt_capture\data\files\`, nine `.fuse_hidden` artefacts, and the stale `pipeline.lock`.
+
+**Created:** `Clients\PKPH\`, empty, and `Intellibills\` in the practice root.
+
+**Kept:** `Clients\She Run's It! Ldn Ltd\`, empty, a real future client. `Clients\Paul Keating\` less its two deleted subfolders. `desktop.ini`.
+
+**`receipt_capture\data\` now holds four items only:** `receipts.db`, its `-wal` and `-shm` companions, and `run.log`.
+
+### 0.7.6 The registries, consistent for the first time
+
+`clients.csv` has six rows: `UNKNOWN`; `Client_005 She Run's It! Ldn Ltd / SHERUNSIT`; `Client_006 PKPH / PKPH` on `pdk7@hotmail.co.uk`, `PHV_DRIVER`; `Client_007 Intellitax / INTELLITAX`; `Client_008 Test 3 / TEST3`; `Client_009 Test 4 / TEST4`. `Client_001` to `Client_004` are gone.
+
+`IntelliBooks-Practice.json` rewritten to match, five clients, **names spelled exactly as `clients.csv` spells them.** That closes the `TEST` against `Test` disagreement of amendments 44 and 45, which had survived only because NTFS is case-insensitive and which amendment 44 warned would become two folders on S3 or Linux. Old file kept as `IntelliBooks-Practice.json.bak-2026-08-01`.
+
+**Outstanding on the registries:** all five clients are `vat:false`, and the `yearEnd`, `mtd` and `mtdBasis` values that were on `Paul Keating` were not carried to any client. Set per client in IntelliBooks Desktop.
+
+### 0.7.7 A structural fact the reset created, worth recording
+
+**`Clients\Paul Keating\` now holds the person's engagement letters and proposals, and `Clients\PKPH\` holds the entity's receipts, as a sibling.**
+
+That settles by practice one of the per-firm settings 18.2b left open: **entities sit at the same level as the contact, not beneath it.** It also demonstrates 18.2c's contact-and-entity split existing on disk before any code knows about it, which is exactly the headroom that section was written to preserve.
+
+### 0.7.8 Still outstanding, and one of them is new
+
+**The clean cycle**, stage 6. One receipt to `capture@lastingimpact.co.uk` from `pdk7@hotmail.co.uk`, which now resolves to `PKPH`. That exercises an empty database, a client with no history, and Desktop creating `PKPH-books.json` from nothing, all of which 17.5 names as worth testing deliberately. **It must wait for stage 5.**
+
+**The rest of the restructure.** `Intellibills\` exists, so the remainder can go in piecemeal rather than as one move: `clients.csv`, `firms.csv`, `Receipt Inbox\`, `Review\`, `Resolutions\`, `pipeline-status.json`, the document store to `Intellibills\Documents\`, the live database to `C:\Intellibills\db\`, the logs to `C:\Intellibills\logs\`, and `backup_db()` pointed at `Intellibills\Backups\`. All need the code change.
+
+**New, and nobody asked for it: the event logs were never in scope and still hold the history of the deleted receipts.** See 0.8.4.
+
+---
+
+## 0.8 The last five decisions, closed 2026-08-01
+
+**Paul's decisions. Design document amendments 79 and 80.**
+
+### 0.8.1 Decisions 4 and 5, the folders and the registries
+
+**Made rather than specified.** `Tom Test\` deleted, `She Run's It! Ldn Ltd\` kept as a real future client, `clients.csv` and `IntelliBooks-Practice.json` rewritten to agree. Recorded at 0.7.5 and 0.7.6.
+
+### 0.8.2 Decision 7, the backups
+
+**`Intellibills\Backups\`, and the twelve existing backups move into it.** They are Intellibills' and `IntelliBooks\Backups\` is IntelliBooks' under 18.2a. `receipts-pre-reset-20260801.db` moves with them and is the most valuable of the set, being the only copy of the pre-reset state.
+
+### 0.8.3 Decision 8, the handover folder
+
+**`Handover Pack\`.** `IntelliBooks-Desktop-v3.html:1430` writes `Clients\{name}\Handover\{pack date}\` and becomes one more line in the Desktop half of stage 5.
+
+### 0.8.4 Decision 9, and it closes amendment 76's open item
+
+**Logs go local, beside the database, at `C:\Intellibills\logs\`.** Not into OneDrive. They are appended on every poll, so syncing them is churn for no benefit, and **a OneDrive conflict copy of a log is worse than useless.** Same shape as the database decision in amendment 72 but for a different reason: not corruption, just noise and no upside.
+
+**This closes amendment 76's open item rather than leaving it.** That amendment removed `DATA_DIR` and left `run.log`, `resolve.log`, `discard.log` and `console.log` with no home, and named the trap that `logs\runs.ndjson` and `data\run.log` are one letter apart. **One `C:\Intellibills\logs\` folder takes all of them and both problems go at once.** Answer them separately and the logs end up in three places.
+
+**Exports go to OneDrive, at `Intellibills\Exports\`.** An export is a deliverable produced on demand for a person to read, so it belongs where a person can reach it. **Open, and Paul has called it a real choice: whether an export instead belongs in the client's own folder.** It is the same question 18.2b answered for receipts, and the same answer may not apply, because an export is produced for the firm as often as for the client.
+
+**And a fifth constant, so amendment 76's table is now five and not four:** `FILES_DIR` from the practice root, `DB_PATH` from the local root, `BACKUPS_ROOT` from the practice root, the process log path from the local root, and `EXPORTS_DIR` from the practice root.
+
+### 0.8.5 The event logs, which the reset never covered
+
+**Not in 17.5, not in this plan, and found after the reset.** `logs\runs.ndjson` holds **1,022 lines** ending at `2026-07-29T13:45:33`, describing runs against the 29 receipts that no longer exist, plus the three synthetic rows the test suite wrote before `2d19521`. `logs\receipt_events_FIRM001.ndjson` holds **70** and `logs\receipt_events_INTELLITAX.ndjson` **59**. All three counts read back today.
+
+**The console's intake panel at 8.6 will read all of it.** So the reset cleared the database and left its history behind, and the console would open on events for receipts that no longer exist.
+
+**Archive them into the backup folder beside `receipts-pre-reset-20260801.db` and start clean.** Paul's recommendation and mine. The alternative is to accept an intake panel that opens on ghosts, which is a defect report waiting to be written by whoever meets it first.
+
+**Note the ordering:** archive them **after** the logs move to `C:\Intellibills\logs\` at stage 5, or the move will carry the history across and the problem travels with it.
+
+---
+
 ## 1. State as at 2026-07-31, read rather than recalled
 
 Everything in this section was read today from git, the database, or the filesystem. It is the "before" against which every stage is verified.
@@ -306,7 +421,7 @@ Unchanged from 29 July. The 101 vendor mappings are the rows 17.5 forbids cleari
 
 Plus `desktop.ini`, 84 bytes, a Windows folder-appearance file. Leave it.
 
-`Paul Keating\` holds `Document Requests\`, `Misc\`, `Receipts\{2024-25, 2025-26, 2026-27}\`, `Review\`, and eight loose PDFs, four `letter-of-engagement-ke001_*.pdf` and four `proposal-ke001_*.pdf`, from another tool. **17.5a confirms all of `Clients\Paul Keating\` is disposable.** The eight PDFs are inside that folder. Confirm they are included, because they came from a different system and 17.5's own wording names only `Clients\Paul Keating\Receipts\`.
+`Paul Keating\` holds `Document Requests\`, `Misc\`, `Receipts\{2024-25, 2025-26, 2026-27}\`, `Review\`, and eight loose PDFs, four `letter-of-engagement-ke001_*.pdf` and four `proposal-ke001_*.pdf`, from another tool. ~~**17.5a confirms all of `Clients\Paul Keating\` is disposable.** The eight PDFs are inside that folder. Confirm they are included.~~ **Wrong, corrected 2026-08-01. Only `Receipts\` and `Review\` are disposable.** The eight PDFs are engagement letters and proposals, and `Document Requests\` and `Misc\` come from another tool. **17.5 scoped this correctly and 17.5a widened it when summarising**; this plan then repeated 17.5a. See 0.7.
 
 **`IntelliBooks\`**
 
@@ -432,7 +547,15 @@ Clear: `receipts`, `extractions`, `resolution_events`, `processed_attachments`, 
 
 **3b. The document store.** Delete the contents of `C:\LastingImpact\receipt_capture\data\files\`, all 96 files and their folders. Sweep the 24 `.fuse_hidden*` files in `data\` at the same time.
 
-**3c. The client folders.** Delete `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Clients\Test\`, `...\Test 2\` and `...\Paul Keating\`, each in full. Plus `She Run's It! Ldn Ltd\` and `Tom Test\` if decision 4 says so. Leave `desktop.ini`.
+**3c. The client folders.** ~~Delete `...\Clients\Test\`, `...\Test 2\` and `...\Paul Keating\`, each in full. Plus `She Run's It! Ldn Ltd\` and `Tom Test\` if decision 4 says so.~~
+
+> **Corrected 2026-08-01, and the superseded wording above was dangerous.** It would have deleted eight engagement letters and proposals. **`C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Clients\Paul Keating\` is NOT disposable.** Only `Receipts\` and `Review\` inside it go. See 0.7.
+
+**Delete in full:** `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Clients\Test\`, `...\Clients\Test 2\`, `...\Clients\Tom Test\`.
+
+**Delete inside `...\Clients\Paul Keating\` only:** `Receipts\` and `Review\`. **Leave the eight loose PDFs, `Document Requests\` and `Misc\`.**
+
+**Keep:** `...\Clients\She Run's It! Ldn Ltd\`, empty, a real future client rather than residue. And `desktop.ini`.
 
 **3d. The books.** Delete `PAUL-books.json`, `TEST-books.json` and `TEST2-books.json` from `IntelliBooks\Books\`.
 

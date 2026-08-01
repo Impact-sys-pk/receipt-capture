@@ -306,8 +306,8 @@ Purpose:
 
 **`import_vendor_csv.py`** — Load vendor/supplier mappings
 ```bash
-python import_vendor_csv.py path/to/vendors.csv [client_id]
-python import_vendor_csv.py vendors.csv Client_001
+python import_vendor_csv.py path/to/vendors.csv <client_id>
+python import_vendor_csv.py vendors.csv Client_006
 ```
 Purpose:
 - Import a pre-prepared CSV of supplier → GL code mappings
@@ -317,7 +317,8 @@ Purpose:
 
 **`seed_client_vendors.py`** — Populate vendor mappings from existing receipts
 ```bash
-python seed_client_vendors.py
+python seed_client_vendors.py <csv_path> <client_id>
+python seed_client_vendors.py 'Test Receipts/transactions_sample.csv' Client_006
 ```
 Purpose:
 - Scans all successfully processed receipts
@@ -408,7 +409,7 @@ Look in the database using `view_receipts.py`, then check:
 
 ### Add New Supplier Mappings
 1. Prepare a CSV with supplier → GL code mappings
-2. Run: `python import_vendor_csv.py my_vendors.csv Client_001`
+2. Run: `python import_vendor_csv.py my_vendors.csv Client_006`
 
 ### Re-Categorise Receipts
 If you've added new vendor mappings:

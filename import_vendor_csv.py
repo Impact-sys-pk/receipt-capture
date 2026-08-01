@@ -67,13 +67,13 @@ def import_csv(csv_path: str, client_id: str):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python import_vendor_csv.py <csv_path> [client_id]")
-        print("Example: python import_vendor_csv.py categorisations_client_vendors_cleaned.csv Client_001")
+    if len(sys.argv) < 3:
+        print("Usage: python import_vendor_csv.py <csv_path> <client_id>")
+        print(r'Example: python import_vendor_csv.py "C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\categorisations_client_vendors_cleaned.csv" Client_006')
         sys.exit(1)
 
     csv_path = sys.argv[1]
-    client_id = sys.argv[2] if len(sys.argv) > 2 else "Client_001"
+    client_id = sys.argv[2]
 
     if not Path(csv_path).exists():
         print(f"Error: File not found: {csv_path}")

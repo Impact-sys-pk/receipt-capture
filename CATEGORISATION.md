@@ -181,7 +181,7 @@ Input: "Nyx*Bp Tyre pressure"
 
 2. **Import:**
    ```powershell
-   python import_vendor_csv.py your_file.csv Client_001
+   python import_vendor_csv.py your_file.csv Client_006
    ```
 
 3. **Verify:**

@@ -183,6 +183,14 @@ C:\Intellibills\  db\ (receipts.db + -wal + -shm), logs\ (run.log, runs.ndjson, 
 
 **The Receipts tab has no Category column**, confirmed two ways: the header has ten columns and none is Category, and `renderReceipts()` contains the string `categor` zero times. The field that blocks posting to the cashbook cannot be seen from the screen where posting starts.
 
+**The fallback `firm_id` is stated three times and the three disagree.** Amendment 87, found in the implementation session's last report. `config.py:112` says `FIRM001`, `CLAUDE.md`'s Core Rules 3 says `INTELLITAX` twice, `clients.csv` carries `FIRM001` on every row, and four call sites in `app.py` hardcode `"INTELLITAX"`. Two writers build `receipt_events_{firm_id}.ndjson` from it, so **one firm's intake history lands in two files depending on which code path logged it.** That is a live defect on the road to 8.6's intake panel, and it is unfixed because it changes behaviour on four paths.
+
+**Use `git grep`, never plain `grep -rn`.** `.history\` is gitignored and holds 79 dated copies of files including `app.py` and `worker/filing.py`. A plain recursive grep returns hundreds of stale hits and buries the real ones. **This cost me several timed-out searches before anyone worked out why.**
+
+**There are two dependency files, not one.** `requirements.txt`, three lines, and `requirements-dev.txt`, whose only entry is `pytest>=8.0.0`. Installing both is the documented setup. **And every `flask` hit in tracked source is a prohibition rather than a dependency:** `worker/resolution/service.py:5` forbids importing it and `tests/test_resolution_view.py` enforces that.
+
+**`C:\LastingImpact\receipt_capture\data\run.log`, 43,365 bytes, is stranded.** Section 0.8.5 archived the three `.ndjson` files and missed it, so it is the last pre-reset process log in the repository and nothing will ever append to it again: the live one is `C:\Intellibills\logs\run.log`. Archive it beside the others in `Intellibills\Backups\`. The repository's `data\` and `exports\` folders are otherwise empty and can go with it.
+
 **One receipt is in the system and it is uncategorised**, because none of the 100 mappings, drawn from a PHV driver's history, matches an airport car park. That is correct behaviour and it is also the first live demonstration of why the chart of accounts matters.
 
 ---

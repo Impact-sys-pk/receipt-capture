@@ -1,3 +1,5 @@
+> **SUPERSEDED. This task was run and is `5d50388`.** A second commit followed it, adding amendment 87 and three corrections the implementation session's final report produced. Kept as the record of what was asked.
+
 # AUTOMATIC task: commit the handover documents, then the project changes hands
 
 **Written 2026-08-02 by the consultant session, for Claude Code. Paste this whole file in.**

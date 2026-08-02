@@ -342,6 +342,14 @@ Read this before doing anything. Most of it was learned by getting it wrong.
 | **Implementation**       | Claude Code | The Python pipeline at `C:\LastingImpact\receipt_capture`. Works from `PROMPT_*.md` files written by the consultant. |
 | **IntelliBooks Desktop** | Cowork      | `IntelliBooks-Desktop-v3.html` in OneDrive. Works from `PROMPT_intellibooks_desktop_changes.md`.                     |
 
+**Changed 2026-08-02, to stop Paul being the hands as well as the channel.** Through the reset and restructure he ran every check and moved every file himself, and the round trips cost more than the work. From now on:
+
+- **The consultant session runs any test it is capable of running**, rather than writing instructions for Paul to follow. It reports the result and the evidence, not the steps.
+- **The consultant session makes file changes, moves and deletions itself, after asking and getting a yes.** Ask once, name the full paths, then do it. This covers the practice root as well as the repository, which the AUTOMATIC list still forbids to Claude Code.
+- **Paul still runs what only he can run**, and the list is short and worth knowing: starting the pipeline, anything in IntelliBooks Desktop, sending a receipt, and anything in the mailbox.
+
+**Four things the consultant session cannot do, so do not promise them.** It has no pytest and `.venv` is a Windows environment, so it cannot run the suite. It cannot start the pipeline. It cannot drive Desktop, which needs a real browser with folder access. And **its Linux sandbox can create a file in a mounted folder but cannot unlink one**, so a deletion needs Paul's approval through the interface each time, while a rename or a move within a mounted folder works. Git writes stay off the sandbox entirely, per the third trap below.
+
 Paul is the only channel between them. Everything one session learns reaches another only because he pastes it. Two consequences that shape everything else:
 
 - **A contract built by two sessions that cannot see each other is compatible by luck until someone checks.** The resolution back-feed in section 12 of the design document was built in halves and five points disagreed. Every one was found by reading both halves, not by either session reporting a problem.

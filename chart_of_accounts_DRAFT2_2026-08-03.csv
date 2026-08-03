@@ -1,0 +1,43 @@
+code,name,type,hmrc_box,vat_treatment,parent_code,status,qbo_detail_type,xero_tax_type,notes
+001,Sales income,income,turnover,20%,,active,Service/Fee Income,OUTPUT2,ADDED. Name taken from Desktop's default chart so the two agree. 001 is FreeAgent's own Sales code. PHV fares are standard rated: passenger transport is zero-rated only in a vehicle designed to carry 10 or more passengers.
+002,Other income,income,other_income,Not set,,active,Other Primary Income,NONE,"ADDED. Name from Desktop's default chart. Treatment depends on what it is, so no default rate."
+101,Cost of sales,expenses,cogs,20%,,active,Supplies & Materials - COGS,INPUT2,ADDED. Name from Desktop's default chart. Code allocated by me inside FreeAgent's 096-199 cost of sales range; it is not FreeAgent's own code.
+104,Parking & Toll Charges,expenses,travel,20%,,active,Auto,INPUT2,"Mixed in practice: private and off-street council car parks 20%, on-street council parking and the Dart Charge and the congestion charge outside scope. Default 20% because airport car parks dominate this client's history."
+105,EV Charging,expenses,travel,20%,,active,Auto,INPUT2,"Public charge points 20%. Home charging is a 5% domestic supply with input tax restricted, so a home-charged receipt needs the rate overridden."
+106,Fuel,expenses,travel,20%,,active,Auto,INPUT2,"ADDED. Name from Desktop's default chart. Code allocated by me alongside 104 and 105, which is where the existing chart puts a PHV driver's direct running costs."
+210,Staff costs,expenses,wages,Outside scope,,active,Payroll Expenses,NONE,ADDED. Name from Desktop's default chart. Wages are not a supply.
+260,Advertising and marketing,expenses,advertising,20%,,active,Advertising/Promotional,INPUT2,"ADDED. Name from Desktop's default chart. Business entertainment shares this HMRC box and its input tax is blocked, so entertainment must not inherit this rate. See the blocked-input-tax note."
+269,Computer Software,expenses,office,20%,,active,Office/General Administrative Expenses,INPUT2,Overseas suppliers may be reverse charge; override where the invoice shows no UK VAT. Desktop's equivalent is named 'Software and subscriptions'.
+270,Office costs,expenses,office,20%,,active,Office/General Administrative Expenses,INPUT2,ADDED. Name from Desktop's default chart.
+271,Office Equipment,expenses,office,20%,,active,Office/General Administrative Expenses,INPUT2,CHECK carried forward from the original draft: expense or capitalised asset? 601 below is the asset alternative I have drafted. One of the two should go.
+274,Telephone,expenses,office,20%,,active,Utilities,INPUT2,Desktop's equivalent is named 'Phone and internet'.
+279,"Water, Tissues & Newspapers for Passengers",expenses,other,20%,,active,Other Miscellaneous Service Cost,INPUT2,"PHV-specific. Genuinely spans two rates: bottled water and tissues 20%, printed newspapers zero-rated. Default 20%."
+281,Motor Expenses - Maintenance,expenses,travel,20%,283,active,Auto,INPUT2,Desktop's 'Repairs and maintenance' is premises work; vehicle maintenance stays here.
+282,Motor Expenses - Insurance,expenses,travel,Exempt,283,active,Insurance,EXEMPTEXPENSES,Insurance is exempt. Insurance premium tax is not VAT and is not recoverable.
+283,Motor Expenses,expenses,travel,Not set,,active,Auto,NONE,"Parent of 281, 282, 286, 287 and 386. Nothing should post here. Not set rather than a rate, because a parent carrying a default rate invites posting to it."
+284,Subsistence,expenses,travel,20%,,active,Travel Meals,INPUT2,"Spans two rates: restaurant and hot takeaway 20%, cold takeaway food zero-rated. Default 20%."
+285,Lodging/Hotels,expenses,travel,20%,,active,Travel,INPUT2,
+286,Motor Expense - Car Tax,expenses,travel,Outside scope,283,active,Taxes Paid,NONE,"VED is outside the scope. NAMING carried forward from the original draft: singular 'Expense' here, plural everywhere else."
+287,Car Wash,expenses,travel,20%,283,active,Auto,INPUT2,"Coin-operated washes are often run by unregistered operators, so there is frequently no VAT to recover even though the rate is 20%."
+292,Accountancy Fees,expenses,professional,20%,,active,Legal & Professional Fees,INPUT2,
+293,Legal and professional fees,expenses,professional,20%,,active,Legal & Professional Fees,INPUT2,ADDED. 292 is accountancy only. Desktop's single 'Professional fees' covers both.
+300,Repairs and maintenance,expenses,repairs,20%,,active,Repair & Maintenance,INPUT2,ADDED. Name from Desktop's default chart. Premises work; vehicle maintenance stays at 281.
+320,Insurance,expenses,premises,Exempt,,active,Insurance,EXEMPTEXPENSES,"ADDED. Name from Desktop's default chart. Non-motor only; motor insurance stays at 282. Note Desktop puts insurance in the premises box and this chart puts motor insurance in travel, so the same word reaches two HMRC boxes."
+358,Postage,expenses,office,Exempt,,active,Office/General Administrative Expenses,EXEMPTEXPENSES,"Royal Mail's universal service, meaning ordinary stamps, is exempt. Couriers, Parcelforce and business account mail are 20%. This default is a judgement and it is the one of mine I am least sure of."
+362,Interest Payable,expenses,interest,Exempt,,active,Interest Paid,EXEMPTEXPENSES,Desktop merges interest and bank charges into one category; this chart splits them across 362 and 363.
+363,Bank/Finance Charges,expenses,bank,Exempt,,active,Bank Charges,EXEMPTEXPENSES,
+366,Use Of Home,expenses,premises,Outside scope,,active,Office/General Administrative Expenses,NONE,"Not a purchase. A computed apportionment posted by journal, so there is no supply and no input tax."
+367,"Statutory Fees, Licenses and permits",expenses,other,Outside scope,,active,Taxes Paid,NONE,"PHV licensing and DVLA fees are statutory functions, outside the scope."
+380,Irrecoverable debts written off,expenses,baddebts,Outside scope,,active,Bad Debts,NONE,ADDED. The HMRC box exists in Desktop's list with no account against it.
+386,Motor Expenses - Car Tax - Private Use,expenses,,Outside scope,283,active,Auto,NONE,"CHECK carried forward: private-use adjustment, disallowable, and no HMRC box assigned. FLAG: the vendor mappings CSV spells this name with em dashes and this file uses hyphens, so one code has two name strings."
+390,Sundry expenses,expenses,other,Not set,,active,Other Miscellaneous Service Cost,NONE,"ADDED. Name from Desktop's default chart. Deliberately no default rate: a catch-all that carries one is how a wrong rate gets applied confidently. A cluster of transactions here is a missing account, per section 13."
+601,Equipment,assets,,20%,,active,Machinery & Equipment,INPUT2,"ADDED. Name from Desktop's default chart. The asset alternative to 271. The rate is set because input tax is recoverable on the purchase even though the account is balance sheet. FLAG: I inferred the 600s as FreeAgent's capital asset range from a sub-account example in its API docs, not from a published range table. Moderate confidence, needs checking."
+603,Motor vehicles,assets,,20%,,active,Vehicles,INPUT2,"ADDED. A PHV driver's car. The supply is standard rated but input tax on a car is blocked unless it is used exclusively for business, which a PHV car normally is not. See the blocked-input-tax note: this chart cannot express that, and the rate alone will mislead."
+620,Prepayments,assets,,Not set,,active,Prepaid Expenses,NONE,Balance sheet. FLAG: 620 sits outside FreeAgent's 671-720 current asset range and inside its capital asset range. Possible mis-code carried in from the vendor mappings.
+681,Trade Debtors,assets,,Not set,,active,Accounts Receivable (A/R),NONE,Balance sheet. 681 is inside FreeAgent's 671-720 current asset range.
+731,Bounce Back Loan,liabilities,,Not set,,active,Notes Payable,NONE,Balance sheet. Loan principal is outside the scope; the interest goes to 362.
+740,Loans,liabilities,,Not set,,active,Notes Payable,NONE,ADDED. Name from Desktop's default chart. 731 is one specific loan and Desktop's chart has only the generic. Decide whether both survive.
+750,Trade creditors,liabilities,,Not set,,active,Accounts Payable (A/P),NONE,ADDED. Code allocated by me inside FreeAgent's 731-780 range.
+760,VAT liability,liabilities,,Not set,,active,Other Current Liabilities,NONE,"ADDED. Needed as soon as any client is VAT registered. All five are vat:false today, per section 0.7.6 of the reset plan."
+921,Drawings,equity,,Not set,,active,Owner's Equity,NONE,ADDED. Name from Desktop's default chart. 921 is the first code in FreeAgent's 921-960 equity range.
+922,Capital introduced,equity,,Not set,,active,Owner's Equity,NONE,ADDED. Name from Desktop's default chart.

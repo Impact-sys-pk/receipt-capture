@@ -415,13 +415,23 @@ Both are easy to break by accident, and one of them would be broken by a change 
 - One or two sentences for a simple update. Do not recap what he has just watched you do.
 - State the date and the verbosity level at the top of every reply.
 
-### Three traps that cost hours
+### Four traps that cost hours
 
 - **The permission layer is not `CLAUDE.md`.** Prose cannot suppress a permission prompt. Allow rules in `.claude/settings.json` are ignored unless the workspace is trusted, while `.claude/settings.local.json`'s are not. The working rules live in the local file, which is gitignored; `settings.json` holds the same content so a fresh checkout can recreate it.
 - **Do not report a dirty working tree from the Linux sandbox.** Git for Windows normalises line endings and the sandbox does not see its configuration, so around thirty files look modified when the tree is clean. Confirm on Windows or do not claim it.
 - **Do not run git from the Linux sandbox without `--no-optional-locks`.** ~~Reads are safe and are what it is for.~~ **Corrected 2026-08-01, within an hour of this bullet being written, by breaking it.** `git status` and `git diff` look like reads and are not: they refresh the index stat cache, which takes the lock, so **`git status` alone recreates the problem.** Use `git --no-optional-locks status`, which is the documented flag for exactly this and works even while a stale lock exists.
 
   **Take the flag as a mitigation, not a guarantee, and this is the safe way to hold it.** The git manual defines `--no-optional-locks` only as "do not perform optional operations that require locks" and names no command it does or does not cover, at https://git-scm.com/docs/git. So rather than keeping a list of which commands are safe with it: **`git log`, `git show` and `git ls-files` never touch the index and are safe unconditionally. Treat everything else as able to take the lock**, use the flag when you must run it, and run anything that writes on Windows. `git add`, `git commit` and `git mv` are unaffected by the flag in any case. Flagged by the implementation session on 2026-08-01, which reported that `git --no-optional-locks diff` can still write the index on some paths. **Neither confirmed nor refuted here**: the only test is to run it and see whether a lock appears, and the consultant session had already left that lock behind twice in one day. The sandbox can create a file in the mounted folder but cannot unlink one, so git leaves `.git\index.lock` behind and cannot clean it up, and every git write in the repository fails until somebody notices and deletes it by hand. That is worse than the trap above, which only misleads. Clear it with `del .git\index.lock` from the repository root, after checking with `tasklist /FI "IMAGENAME eq git.exe"` that no git process is running.
+
+- **Never import `config.py` from the Linux sandbox.** Added 2026-08-03 after finding the folder it made on 29 July. `config.py:92-97` calls `mkdir(parents=True, exist_ok=True)` on six paths at import, and `ONEDRIVE_ROOT` and `LOCAL_ROOT` default to Windows path strings at `:24-28`. **A backslash is an ordinary filename character on Linux**, so those strings become relative folder names and the mkdir block builds them inside the repository. The one it built is still there:
+
+  ```
+  C:\LastingImpact\receipt_capture\C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\Backups
+  ```
+
+  Three nested empty folders whose top-level name is the literal practice root. `IntelliBooks\Backups` dates it exactly: that is what `BACKUPS_ROOT` resolved to before amendment 79 moved it. **An import today would make a fresh one** holding `Intellibills\Documents`, `Backups` and `Exports`, plus a `C:\Intellibills` beside it.
+
+  **What makes it worse than untidy is that git cannot see it.** It is not gitignored, but git does not track empty directories, so `git status` has been silent about it for five days and would stay silent. The moment anything writes a file inside it, it becomes untracked and trips `app.py:1207`'s clean-tree warning with a path nobody will recognise. **Anything in the pipeline that needs a config value from the sandbox: read the constant out of the file, do not import the module.** Removal needs Paul, because the sandbox can delete neither a file nor a directory in a mounted folder.
 
 ---
 

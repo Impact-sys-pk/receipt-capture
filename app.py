@@ -1032,7 +1032,7 @@ def process_once():
                     logger.info(f"skip unsupported: {filename}")
                     _log_receipt(
                         str(uuid.uuid4()), message_id, filename, "unsupported_file_type",
-                        firm_id="INTELLITAX", run_id=run_id
+                        firm_id=config.DEFAULT_FIRM_ID, run_id=run_id
                     )
                     move_email_to_folder(uid, "INBOX.Unsupported Files")
                     continue
@@ -1042,7 +1042,7 @@ def process_once():
                     stats["duplicates_skipped"] += 1
                     _log_receipt(
                         str(uuid.uuid4()), message_id, filename, "duplicate_skipped",
-                        firm_id="INTELLITAX", duplicate_reason="message_id_match",
+                        firm_id=config.DEFAULT_FIRM_ID, duplicate_reason="message_id_match",
                         run_id=run_id
                     )
                     move_email_to_folder(uid, "INBOX.Duplicates")
@@ -1058,7 +1058,7 @@ def process_once():
                     stats["duplicates_skipped"] += 1
                     _log_receipt(
                         str(uuid.uuid4()), message_id, filename, "duplicate_skipped",
-                        firm_id="INTELLITAX", duplicate_of=existing,
+                        firm_id=config.DEFAULT_FIRM_ID, duplicate_of=existing,
                         duplicate_reason="file_hash_match",
                         run_id=run_id
                     )
@@ -1091,7 +1091,7 @@ def process_once():
                     # Move to Unknown Sender folder
                     move_email_to_folder(uid, "INBOX.Unknown Sender")
                     _log_receipt(receipt_id, message_id, filename, "unknown_sender",
-                                firm_id="INTELLITAX", run_id=run_id)
+                                firm_id=config.DEFAULT_FIRM_ID, run_id=run_id)
                     continue
 
                 file_path = save_file(receipt_id, client_code, filename, file_data)

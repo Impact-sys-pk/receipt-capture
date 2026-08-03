@@ -509,13 +509,13 @@ All receipts are automatically matched to a client via `clients.csv`:
 
 - Sender's email address is looked up in `clients.csv`
 - If found: `client_id`, `firm_id`, `business_type` assigned from CSV
-- If not found: defaults to `client_id=UNKNOWN`, `firm_id=INTELLITAX`, `business_type=UNSPECIFIED`
+- If not found: defaults to `client_id=UNKNOWN`, `firm_id=FIRM001` (amendment 89; `config.DEFAULT_FIRM_ID` is the single source), `business_type=UNSPECIFIED`
 
 **For folder intake:**
 
 - `client_code` from sidecar file is looked up in `clients.csv`
 - If found: `client_id`, `firm_id` assigned from CSV
-- If not found: defaults to `client_id=UNKNOWN`, `firm_id=INTELLITAX`
+- If not found: defaults to `client_id=UNKNOWN`, `firm_id=FIRM001` (amendment 89; `config.DEFAULT_FIRM_ID` is the single source)
 
 **clients.csv format:** email, client_id, client_code, firm_id, business_type, name
 

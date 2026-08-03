@@ -97,6 +97,14 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# The fallback firm_id, and the single source of it. Amendment 89.
+# Every row of clients.csv carries FIRM001, so this is the value that is
+# actually in the data. Do not restate it as a literal anywhere else:
+# app.py had four hardcoded "INTELLITAX" call sites and the intake event
+# log split into two files as a result.
+DEFAULT_FIRM_ID = "FIRM001"
+
+
 def load_clients():
     """Load clients.csv into dicts: email -> client data and code -> client data."""
     clients_by_email = {}
@@ -109,7 +117,7 @@ def load_clients():
                 client_code = row.get("client_code", "").strip()
                 client_data = {
                     "client_id": row.get("client_id", "UNKNOWN"),
-                    "firm_id": row.get("firm_id", "FIRM001"),
+                    "firm_id": row.get("firm_id", DEFAULT_FIRM_ID),
                     "business_type": row.get("business_type", "UNSPECIFIED"),
                     "client_code": client_code or row.get("client_id", "UNKNOWN"),
                     "client_name": row.get("name", "")

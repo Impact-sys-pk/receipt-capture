@@ -807,7 +807,7 @@ list_intake_issues() -> dict                              # section 8.6
 
 **Two processes cannot share one `RotatingFileHandler` on Windows.** The loser of a rollover cannot rename a file the winner holds open, and it raises. The pipeline and the console are designed to run at the same time, and the CLI can run alongside both. So it is one file per entry point, `run.log`, `resolve.log`, `console.log`, or a single writer behind a `QueueHandler`. Not the same rotating handler in three processes. Decide at step 9. Current settings: 5 MB, three backups, UTF-8, append.
 
-**Two config traps.** `config.RECEIPTS_LOG` at `config.py:15` points at `receipt_events.ndjson` and is referenced nowhere in tracked source; the real writers build `receipt_events_{firm_id}.ndjson` from `LOGS_DIR` directly, at `app.py:84` and `worker/extraction_pipeline.py:96`. Delete it or wire it up before the intake panel at 8.6 reads these files, because a dead constant with a plausible name is a trap. And `config.RUNS_LOG` is resolved from `LOGS_DIR` at import, so redirecting `LOGS_DIR` alone does not move it. Anything that redirects one must redirect both.
+**Two config traps.** `config.RECEIPTS_LOG` at `config.py:52` points at `receipt_events.ndjson` and is referenced in tracked source only by `tests/test_path_layout.py:83`, which asserts its value; no production code reads it. The real writers build `receipt_events_{firm_id}.ndjson` from `LOGS_DIR` directly, at `app.py:102` and `worker/extraction_pipeline.py:96`. Delete it or wire it up before the intake panel at 8.6 reads these files, because a dead constant with a plausible name is a trap. And `config.RUNS_LOG`, at `config.py:51`, is resolved from `LOGS_DIR` at import, so redirecting `LOGS_DIR` alone does not move it. Anything that redirects one must redirect both. ~~`config.RECEIPTS_LOG` at `config.py:15` ... referenced nowhere in tracked source ... at `app.py:84`~~ **Three stale facts corrected 2026-08-03, amendment 92.**
 
 ---
 
@@ -949,7 +949,7 @@ Problems that never become receipt rows, so a DB-only queue is blind to them. `a
 | Files waiting in Receipt Inbox | filesystem count under `RECEIPT_INBOX_ROOT` | none |
 | Unknown senders | `email_alerts` where `alert_type='unknown_sender'` | **Register this client** |
 | No-attachment alerts | `email_alerts` where `alert_type='no_attachment'` | none |
-| Unsupported file types | `logs/receipt_events_*.ndjson`, action `unsupported_file_type` | none |
+| Unsupported file types | `C:\Intellibills\logs\receipt_events_*.ndjson`, action `unsupported_file_type` | none |
 
 **Register this client** is the one that earns its place, and it needs care. `config.CLIENTS` is loaded once at import (`config.py` line 100), so appending a row to `clients.csv` does not reach the running pipeline. Two parts:
 

@@ -85,7 +85,7 @@ def scan_inbox() -> list[IntakeRecord]:
             firm_id = client["firm_id"]
         else:
             client_id = "UNKNOWN"
-            firm_id = "INTELLITAX"
+            firm_id = config.DEFAULT_FIRM_ID
 
         for item in sorted(client_dir.iterdir()):
             if item.is_dir():

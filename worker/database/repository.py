@@ -72,16 +72,6 @@ class Repository:
         client_id, firm_id, _ = self.resolve_client_info(email_from)
         return client_id, firm_id
 
-    def resolve_client_by_code(self, client_code: str) -> tuple[str, str, str]:
-        """Match client_code from folder intake to client data."""
-        if not client_code:
-            return ("UNKNOWN", "INTELLITAX", "UNKNOWN")
-
-        client = config.CLIENTS_BY_CODE.get(client_code.upper())
-        if client:
-            return (client["client_id"], client["firm_id"], client.get("client_code", client_code.upper()))
-        return ("UNKNOWN", "INTELLITAX", client_code.upper())
-
     def save_statement(
         self, statement_id, client_id, client_code, platform,
         week_ending, source, file_hash, file_path, status="filed"

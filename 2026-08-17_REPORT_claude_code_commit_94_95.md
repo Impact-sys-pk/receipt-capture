@@ -231,7 +231,77 @@ matter, restated one commit later as if new.
 
 ## 7. Evidence, post-commit
 
-Filled in after the commit and the push. See the end of this file.
+**This section could not exist inside the commit it describes, so it is a second,
+small commit on top of it. Disclosed because the brief said one commit.** The choice
+was between a report that promises post-commit evidence and never carries it, and one
+extra commit that carries it. Everything the brief asked the report to contain, the
+two task 2 outputs, the porcelain result, the contiguity count and the outcome of
+verification step 5, was in the first commit.
+
+`git log --oneline -3`:
+
+```
+6d4b7d5 docs: amendments 94 and 95, uncommitted since 2026-08-03
+2119968 fix(intake): the folder-intake fallback firm_id, and the constant made load-bearing
+e2c034c fix(logging): one fallback firm_id, FIRM001, from a single constant
+```
+
+`git log -1 --format=%P HEAD`, the parent, which is the brief's expected starting
+commit:
+
+```
+211996801ffd22cf0674a09a1851a897022f51e2
+```
+
+`git show --stat`, file list only:
+
+```
+ 2026-07-25_CONSOLE_DESIGN.md                  |  70 +++++--
+ 2026-08-17_REPORT_claude_code_commit_94_95.md | 258 ++++++++++++++++++++++++++
+ CLAUDE.md                                     |   2 +
+ PROMPT_claude_code_2026-08-17_commit_94_95.md | 133 +++++++++++++
+ 4 files changed, 446 insertions(+), 17 deletions(-)
+```
+
+`git show --name-only --format= HEAD | grep -c '\.py$'` returned `0`. **No `.py`
+file in the commit.**
+
+`git --no-optional-locks status --porcelain`, redirected to a file and byte-counted
+rather than eyeballed, because an empty result is exactly the case where reading the
+output is indistinguishable from not running it:
+
+```
+0 porcelain.txt
+```
+
+**Zero bytes. Nothing modified, nothing untracked.**
+
+`git diff HEAD~1 -- CLAUDE.md`, counted programmatically: **2 added lines, 0 removed
+lines.** They are the two rules the message names, verified by reading them, not only
+by counting: "A claim about a set is not verified by verifying its members. Enumerate
+the set first." and "Ask what a check returned. Never imply what it should return."
+
+Contiguity re-checked against the **committed blob** rather than the working file:
+
+```
+committed blob, amendment record lines 12..167, 95 rows
+== range(1,96): True
+gaps: []
+duplicates: []
+```
+
+The push, dry run first:
+
+```
+To https://github.com/Impact-sys-pk/receipt-capture.git
+   2119968..6d4b7d5  feat/console-phase0 -> feat/console-phase0
+```
+
+**Two dots and no `+` prefix, so a fast-forward.** No `--force`. Then the real push,
+identical output. `git ls-remote origin refs/heads/feat/console-phase0` returns
+`6d4b7d5f5272ae27f05f4a3f969c9b1dc59c6158`, so the remote holds the commit.
+`git status --porcelain -b` reports
+`## feat/console-phase0...origin/feat/console-phase0` with no ahead or behind marker.
 
 ## 8. Confidence
 

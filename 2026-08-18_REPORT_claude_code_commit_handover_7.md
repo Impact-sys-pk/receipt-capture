@@ -277,3 +277,70 @@ untracked file, only omit one.
 everything".** Worth using again, with the untracked prediction labelled as a list of
 known files rather than a measurement. The consultant did label it as a prediction
 rather than a measurement, which is why this cost one question and not an incident.
+
+---
+
+## 7. Post-commit evidence for bf59639
+
+Appended 2026-08-18, after `bf59639` was committed and pushed. Sections 4 and 5 above
+said this evidence could not sit inside the commit it describes, and pointed to the
+session reply. Paul asked for it on disk as well, in a small follow-up commit, which is
+the same shape as `0c27dd0` on 2026-08-03.
+
+**The commit and its parent.**
+
+```
+bf59639  bf596394f0530830c71a4ad760718211da04d727
+parent   89e0603efe8083ba85332830dff3eba5197b8ac2
+```
+
+One commit on top of `89e0603`. Pushed fast-forward, `89e0603..bf59639`, no force.
+
+**`git show --stat --format="" bf59639`.**
+
+```
+ 2026-07-25_CONSOLE_DESIGN.md                       |   2 +-
+ 2026-08-17_HANDOVER_consultant_chat_6.md           | 234 +++++++++++++++++
+ 2026-08-18_HANDOVER_consultant_chat_7.md           | 225 +++++++++++++++++
+ 2026-08-18_INSTRUCTION_coa_authority.md            |  52 ++++
+ 2026-08-18_REPORT_claude_code_commit_handover_7.md | 279 +++++++++++++++++++++
+ PROMPT_claude_code_2026-08-18_commit_handover_7.md | 188 ++++++++++++++
+ 6 files changed, 979 insertions(+), 1 deletion(-)
+```
+
+Six files. No `.py` file, checked by grepping the commit's own file list for `\.py$`,
+which returned nothing.
+
+**Porcelain state, immediately before this section was appended.**
+
+```
+git --no-optional-locks status --porcelain
+```
+
+Returned nothing at all, zero lines. The tree was clean between the two commits.
+
+### The commit message names four of the six files, and was left alone
+
+Verification step 6 compared every filename in `bf59639` against its own message body.
+**Four are named: both consultant handovers, the instruction document and this report.
+Two are not: `2026-07-25_CONSOLE_DESIGN.md` and
+`PROMPT_claude_code_2026-08-18_commit_handover_7.md`.** The design document is described
+throughout the message even though its path never appears, so only the brief file is a
+real gap. It arose because the supplied message body covered the design document and
+the two handovers, while the staging list separately included the brief; the
+implementation session extended the message to cover the instruction document and this
+report and did not notice the brief was still uncovered.
+
+**Not amended, and deliberately so.** `bf59639` is already pushed, so amending it would
+need a force push, which the brief forbade and which is on the Destructive Git
+Operations list in `CLAUDE.md`. Paul's decision was that a message naming four of six
+files is not worth rewriting published history for. It is recorded here instead, which
+is what this section is for.
+
+### One wording change carried forward
+
+Section 2b gave two line-boundary pairs for the amendment record: the section bounds,
+lines 13 to 177, and the numbered rows themselves, **lines 21 to 176**. Paul's
+instruction is to use the row boundaries from now on, because they are the pair that
+states what was actually counted. A reader given only the section bounds cannot tell
+whether the counter found the table at all.

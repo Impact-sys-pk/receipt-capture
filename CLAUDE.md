@@ -418,6 +418,16 @@ Both are easy to break by accident, and one of them would be broken by a change 
 - One or two sentences for a simple update. Do not recap what he has just watched you do.
 - State the date and the verbosity level at the top of every reply.
 
+### Before starting the pipeline
+
+Added 2026-08-21, moved here from the outstanding items list because it is a habit and not a task, so it could never be closed as an item.
+
+**Commit before a run whose `pipeline_version` matters, and expect the startup warning until you do.** `config.check_git_status_on_startup()` at `app.py:1207` reports the state of the working tree at that moment, and `pipeline_version` is the git short hash from `config.py:153`. **So a run started on a dirty tree records a version that does not describe the code that ran**, and every receipt from that run carries it. The warning does not block, and nobody has asked for it to.
+
+**The Windows scheduled task at logon is deliberately not set, and will not be until the system goes live. Do not ask again.** Paul runs the pipeline on demand and closes it. `IntelliBooks.bat`'s header comment says "Normal route: logon scheduled task + bookmark", which describes a route that does not exist; the file itself behaves correctly. **This was raised repeatedly as outstanding item 10 and it is recorded here because a closed item does not stop the next session asking.**
+
+**A leftover `Intellibills\pipeline.lock` is normal and is not a fault. Do not raise it.** Paul starts the pipeline on demand and closes it, so the lock outlives every session and `acquire_lock()` clears it at the next start. **This was raised twice as a defect, as outstanding items 26 and 104**, and the second time it was reasoned about as "either a run has held the lock for twenty hours or the lock is stale for the second time in two days". Neither was right. The answer is written here rather than only in a closed item, because a session that sees the file on disk is not reading the closed items.
+
 ### Four traps that cost hours
 
 - **The permission layer is not `CLAUDE.md`.** Prose cannot suppress a permission prompt. Allow rules in `.claude/settings.json` are ignored unless the workspace is trusted, while `.claude/settings.local.json`'s are not. The working rules live in the local file, which is gitignored; `settings.json` holds the same content so a fresh checkout can recreate it.

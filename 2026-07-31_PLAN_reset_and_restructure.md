@@ -82,7 +82,7 @@ Nine, in the order they bite. Closed rows are kept struck through so the trail s
 
 **Paul's decision, 2026-07-31. Design document amendment 75.**
 
-**The exception.** Until the close condition in 0.5.1 is met, Intellibills continues to write a filed receipt and its sidecar into `Clients\{client name}\Receipts\{tax year}\`, and IntelliBooks Desktop continues to read them from there. This contradicts 18.2b, which says Intellibills never writes into `Clients\` at all. **The contradiction is deliberate, it is dated, and it closes on a check rather than on a judgement.**
+**The exception.** Until the close condition in 0.5.1 is met, Intellibills continues to write a filed receipt and its sidecar into `Clients\{client name}\Receipts\{tax year}\`, and IntelliBooks Desktop continues to read them from there. ~~This contradicts 18.2b, which says Intellibills never writes into `Clients\` at all.~~ **Corrected 2026-08-21 by amendment 134: it does not contradict 18.2b any more, and the sentence it cited has been struck.** Under amendment 122 Intellibills is the writer permanently, so what this interim defers is the **trigger**, being the move from writing on arrival to writing on a successful publish, and the sidecar that goes with the old route. **The contradiction is deliberate, it is dated, and it closes on a check rather than on a judgement.**
 
 **Why an interim rather than the real thing.** Building 18.3's inbox and Desktop's drain inside stage 5 would put a feature build inside a restructure and two variables inside one stage, which is what 17.5a exists to prevent. The interim costs nothing to hold and everything it touches is code that already works and is already tested end to end.
 

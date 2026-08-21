@@ -292,7 +292,87 @@ follows the precedent already in the log, `f74fbca`, "docs: post-commit evidence
 for bf59639", and it is the only way to satisfy both the clean-tree check and
 the request that the evidence live in the repository rather than only in a chat.
 
-Filled in below.
+**The commit.** `8d5c3457b822207f60636e3553b2c3a884f2eafb`, parent
+`5a201500d2b571e7ac19e6c5490dffe9acc1bc1b`, one commit on
+`feat/console-phase0`.
+
+`git show --stat`:
+
+```
+ 2026-07-25_CONSOLE_DESIGN.md                       | 126 ++++++---
+ 2026-07-31_PLAN_reset_and_restructure.md           |   2 +-
+ 2026-08-20_LIST_outstanding_items_and_decisions.md |  51 ++--
+ 2026-08-20_LIST_settings_firm_and_client.md        | 210 +++++++++-----
+ 2026-08-21_REPORT_claude_code_commit_127_to_140.md | 311 +++++++++++++++++++++
+ CLAUDE.md                                          |  10 +
+ PROMPT_claude_code_2026-08-21_commit_127_to_140.md | 259 +++++++++++++++++
+ 7 files changed, 838 insertions(+), 131 deletions(-)
+```
+
+Seven files. **No `.py` file**, counted programmatically over `--name-only`:
+zero paths ending `.py`.
+
+**The push.** Dry run first, then the real one, and both printed the same
+fast-forward range with no `+` prefix:
+
+```
+To https://github.com/Impact-sys-pk/receipt-capture.git
+   5a20150..8d5c345  feat/console-phase0 -> feat/console-phase0
+```
+
+Local and remote now agree on `8d5c3457b822207f60636e3553b2c3a884f2eafb`, and
+`rev-list --count origin/feat/console-phase0..HEAD` is 0.
+
+**The clean tree.** `git --no-optional-locks status --porcelain` printed nothing
+at all, run between markers so the emptiness is visible rather than inferred:
+
+```
+--- porcelain (expect nothing between the markers) ---
+--- end ---
+```
+
+**The structural checks, re-run against the committed files.**
+
+```
+amendment record: section lines 26..293; rows on lines 36..292; count=140
+  duplicates=[]  equals range(1,141)? True
+
+section 16: lines 1614..1881  table rows=38 (lines 1623..1660)  body steps=38 (lines 1664..1876)
+  table=BUILT 18, CANCELLED 1, MOVED 1, OUTSTANDING 18
+  body =BUILT 18, CANCELLED 1, MOVED 1, OUTSTANDING 18
+  only in table=[]  only in body=[]  disagreements={}
+  10d: count=35 lines 1716..1768 duplicates=[] equals range(1,36)? True
+  10f: count=30 lines 1800..1838 duplicates=[] equals range(1,31)? True
+```
+
+### Verification step 6, the message read back against `--stat`
+
+Every committed path tested against the message text programmatically:
+
+```
+files in commit: 7
+not named  2026-07-25_CONSOLE_DESIGN.md
+NAMED      2026-07-31_PLAN_reset_and_restructure.md
+NAMED      2026-08-20_LIST_outstanding_items_and_decisions.md
+NAMED      2026-08-20_LIST_settings_firm_and_client.md
+NAMED      2026-08-21_REPORT_claude_code_commit_127_to_140.md
+NAMED      CLAUDE.md
+NAMED      PROMPT_claude_code_2026-08-21_commit_127_to_140.md
+message lines: 113  chars: 5907
+```
+
+**Six of the seven are named by filename. The seventh, the design document, is
+described and never named**, which satisfies "named or described": the subject
+line is "amendments 127 to 140, step 10f decomposed", the amendment record and
+section 16 both live in that file, and all fourteen numbered paragraphs cite its
+sections. Worth knowing rather than a fault, because a reader searching the
+message for `2026-07-25_CONSOLE_DESIGN.md` will not find it.
+
+**One wording point in the message, and it is correct as written.** Amendment
+137 says step 10f "becomes 29 numbered sub-steps" and the file has 30. That is
+not a miscount: 137 wrote 29 and amendment 140 added 10f.30 the same day, which
+140's own paragraph states. The head table's "30 sub-steps" and this report's 30
+agree with the file.
 
 ## 9. Confidence, and what was not checked
 

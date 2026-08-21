@@ -399,7 +399,7 @@ When corrected, **record the superseded wording alongside the correction** rathe
 
 **The Python system is named Intellibills.** Amendment 72 of the design document. Use Intellibills, or "the pipeline" where the distinction from IntelliBooks is not the point. `Receipt Capture` is the name of the repository and of nothing else. IntelliBooks Desktop is unchanged. The console is still the Flask app not yet built. Never say "the app".
 
-**Note for Paul:** the Claude project instructions for this project still say "the pipeline or Receipt Capture for the Python system". Only you can edit those, and until you do, a new session will be told the old name.
+~~**Note for Paul:** the Claude project instructions for this project still say "the pipeline or Receipt Capture for the Python system". Only you can edit those, and until you do, a new session will be told the old name.~~ **Done, and struck through 2026-08-21.** The project instructions now read "Intellibills, or the pipeline, for the Python system. Receipt Capture is the name of the repository and of nothing else", so a new session is told the right name. Confirmed by reading the instructions given to the consultant session on 2026-08-21.
 
 **Two names that mean different things and are one word apart on screen.** `postTxn()` and the **Post Selected** button sign off a transaction that already exists. `postReceiptToCashbook()` and **Post Selected to Cashbook** create a new transaction from a receipt. And **Attach** means receipt to transaction, while **Link** means transaction to transaction, as for a transfer. Anything written for Paul to follow has to disambiguate both pairs.
 

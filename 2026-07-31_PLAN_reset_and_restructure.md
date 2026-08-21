@@ -27,7 +27,7 @@ Traced today, and each half read from the file:
 
 **So `Clients\{name}\Receipts\{tax year}\` is today the interchange between the two modules, exactly as 18.2c says it is.**
 
-Section 18.2b abolishes both halves of that. Intellibills never writes into `Clients\` at all, and the copy that does go there is image only with no data file. Section 18.3 replaces the interchange with a push into `IntelliBooks\Inbox\`, a folder Desktop owns and drains.
+Section 18.2b abolishes both halves of that. ~~Intellibills never writes into `Clients\` at all, and~~ **Corrected 2026-08-21 by amendment 122: Intellibills does write there, and it is the only writer.** What is abolished is the folder's use as an interchange, not the write. The copy that goes there is image only with no data file, and it happens on a successful publish rather than on arrival. Section 18.3 replaces the interchange with a push into `IntelliBooks\Inbox\`, a folder Desktop owns and drains.
 
 **`IntelliBooks\Inbox\` does not exist, nothing writes to it, and nothing drains it.** It appears in 18.2a's tree and nowhere in either codebase.
 
@@ -117,7 +117,9 @@ Line numbers are today's and they move. The function names do not.
 | IntelliBooks Desktop | `scanFiledReceipts()`, including its `getDir` call and the `ingestReceiptFiles()` handoff | `IntelliBooks-Desktop-v3.html:1276`, `getDir` at `:1281`, call at `:1288` |
 | IntelliBooks Desktop | `parseSidecar()`, which reads that payload | `IntelliBooks-Desktop-v3.html:1173` |
 
-**18.2b's own list of what Intellibills loses is therefore deferred, not cancelled.** `get_client_directory()`, the client folder layout and the tax-year determination all stay until the exception closes.
+~~**18.2b's own list of what Intellibills loses is therefore deferred, not cancelled.** `get_client_directory()`, the client folder layout and the tax-year determination all stay until the exception closes.~~
+
+**Corrected 2026-08-21 by amendment 122 of `2026-07-25_CONSOLE_DESIGN.md`, on Paul's ruling. There is no such list any more.** Intellibills keeps `get_client_directory()`, the client folder layout and the tax-year determination, permanently, because **Intellibills is the writer**: the copy into `Clients\` is its own function, with two triggers set per firm, on successful publish or at Post or never. **So these three are not deferred and not lost.** What still closes when the exception closes is the **trigger**: today the write happens on arrival, and it moves behind a successful publish. Scheduled at step 10f. The freeze in the table above still governs what may change in those functions meanwhile, which is nothing beyond the source of the folder name at sub-step 10d.14.
 
 **Note what the freeze does not cover, because it is the more dangerous half.** `worker/filing.py:103` files statements to `Clients\{client name}\Statements\{tax year}\{platform}\` and is **not** frozen: the `statements` table is empty, no `Statements\` folder exists under any client, and nothing reads it, so it has no interim contract to protect. It is the folder amendment 65 found by checking line numbers against the file. Do not assume the freeze covers everything in `filing.py`.
 
@@ -637,7 +639,7 @@ Clear: `receipts`, `extractions`, `resolution_events`, `processed_attachments`, 
 | `config.py:63-68` | The `mkdir` block at import. It creates `SYSTEM_ROOT` and `BACKUPS_ROOT`, so **importing `config` creates folders in OneDrive.** After the move it would recreate `IntelliBooks\Backups\` even if that is no longer where backups go. |
 | `config.py:98` | `load_firms()` builds its own `SYSTEM_ROOT / "firms.csv"` rather than using `FIRMS_CSV`. A second source of truth for one path. |
 | `worker/storage/store.py:23`, `:37` | The document store layout. **Amendment 77 keeps the shape these two lines already write, so the only change here is where `FILES_DIR` points.** The lines themselves should not change, and a diff that touches them needs explaining. |
-| `worker/filing.py:64-65` | `get_client_directory()`, the single choke point for `Clients\`. 18.2b deletes it. |
+| `worker/filing.py:64-65` | `get_client_directory()`, the single choke point for `Clients\`. ~~18.2b deletes it.~~ **Wrong since 2026-08-18 and corrected 2026-08-21 by amendment 122: 18.2b keeps it.** Intellibills is the writer, so the function stays. Sub-step 10d.14 repoints it to `client_folder_name` and changes nothing else. **Do not delete this function.** |
 | `worker/filing.py:78` | `Receipts\{tax year}\` |
 | `worker/filing.py:103` | `Statements\{tax year}\{platform}\`, the one amendment 65 found and amendment 55 missed |
 | `worker/filing.py:125` | `Review\` |

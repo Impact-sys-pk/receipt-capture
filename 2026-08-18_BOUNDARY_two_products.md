@@ -42,7 +42,9 @@ That asymmetry is why one client registry owned by Intellibills is permitted rat
 
 **Also forbidden: naming.** Nothing in Intellibills may be named after IntelliBooks. No constant, no adapter, no field. An adapter is named for what it does; the address it writes to is configuration. **Intellibills publishes to the destination configured for that client and does not know what is at the other end.**
 
-## 5. Three breaches found on 2026-08-18, and how they arose
+## 5. Four breaches, and how they arose
+
+~~Three breaches found on 2026-08-18.~~ **Three were found on 2026-08-18 and a fourth on 2026-08-20.** The heading was corrected rather than left to contradict its own table.
 
 None of these was a decision to put an Intellibills function inside IntelliBooks. **Each was a reasonable decision about something else, whose side effect was a breach.** That is the pattern to watch for, and it is why the rule has to be applied deliberately rather than relied on to be obvious.
 
@@ -51,6 +53,13 @@ None of these was a decision to put an Intellibills function inside IntelliBooks
 | **Add Receipts.** Getting a document into the capture stream is Intellibills' work, and the only way to do it by hand is a button inside `IntelliBooks-Desktop-v3.html`. | IntelliBooks had a screen and Intellibills did not. |
 | **The Review queue.** Clearing an exception is Intellibills' work, and the only screen that can do it belongs to IntelliBooks. | The same reason. |
 | **The copy into `Clients\`.** Filing a document into the firm's client folder is a document function, and it could only happen at Post, which is a bookkeeping event. | A good decision about **when**, whose moment happened to exist only in one product. See section 6. |
+| **Creating and editing a client.** Added 2026-08-20. Registering a client is Intellibills' work, and the only way to do it is **+ New Client** and the **Edit** row on IntelliBooks' **Clients** tab. | The same reason as the first two: IntelliBooks had a screen and Intellibills did not. **It was missed on 2026-08-18 because that day's inspection went through the Receipts tab and this control is on the Clients tab.** |
+
+**A fourth breach, found 2026-08-20 while settling the field list for the one registry, and it is the same class as the first two rather than a new kind.** Take IntelliBooks away and standalone Intellibills has no way to register a client except editing a file by hand, which is not a function of a product being sold.
+
+**Paul's resolution, 2026-08-20, and it costs nothing new: standalone Intellibills' own shell carries an Add Client item on its menu.** Section 7 already says that shell has to exist and is not designed, so this becomes one more item on it rather than separate work. **Recorded rather than solved for now**, which is deliberate: the shell is not being designed yet and a client can be registered today.
+
+**Amendment 105 sharpens it and does not close it.** After the one-registry change, IntelliBooks' New Client dialog writes into Intellibills' own store. Section 7 condition 2 permits that, since the shared client registry is named there explicitly, so it is not a new breach. What stays broken is that **the function still lives only on IntelliBooks' screen.**
 
 ## 6. The worked example: filing into the firm's client folder
 
@@ -81,6 +90,8 @@ None of these was a decision to put an Intellibills function inside IntelliBooks
 **And it may act on Intellibills' own files directly.** Intellibills locally is two parts, a Python worker and a front end, and both are Intellibills. The front end deleting a file the worker wrote is Intellibills managing its own store, not a boundary crossing. No message is needed and there is no delay.
 
 **Two honest caveats.** The browser's folder permission is a single grant covering everything, so the separation is held by discipline and not enforced by the platform. And **standalone Intellibills will need its own shell** to host this front end: locally, either a second HTML file or the same file with the books parts switched off. That is work the boundary implies rather than a new cost.
+
+**What that shell has to carry, added 2026-08-20 and kept here so it accumulates in one place rather than being rediscovered.** The Receipts tab itself, per this section. **Add Client and Edit Client**, per the fourth breach in section 5, which is Paul's resolution of it. **Firm Settings and Client Settings**, because `2026-08-20_LIST_settings_firm_and_client.md` establishes that all 18 firm settings belong to Intellibills and none to IntelliBooks, so a standalone product with no settings screen would have nothing a customer could configure. **The list is not the design**, and the shell is still not designed.
 
 ### The five things on that tab that depend on the books
 
@@ -146,8 +157,10 @@ A breach you argue for is one you can weigh. A breach that arrives as a side eff
 
 ## Still open
 
-- **Where Client Settings live in the menu.** Deferred until the settings list exists.
-- **The settings list itself**: every firm and client setting, which product owns it, whether it exists or is proposed, where it is stored, where it is entered, and where it should appear.
-- **Standalone Intellibills' own shell.** Named in section 7 and not designed.
+- ~~**Where Client Settings live in the menu.** Deferred until the settings list exists.~~ **Proposed 2026-08-20: a Client Settings item in the centre menu group, beside Client Data.** Not yet decided, and it comes after the one registry rather than before it, per amendment 110.
+- ~~**The settings list itself**: every firm and client setting, which product owns it, whether it exists or is proposed, where it is stored, where it is entered, and where it should appear.~~ **Done 2026-08-20: `2026-08-20_LIST_settings_firm_and_client.md`, 38 rows, 30 existing and 8 proposed.** Its finding for this document is that **all 18 firm settings belong to Intellibills and none to IntelliBooks**, so the Firm Settings page's IntelliBooks Settings heading is correctly empty rather than incomplete.
+- **Standalone Intellibills' own shell.** Named in section 7 and not designed. What it has to carry is now listed there.
 
-**Confidence.** High on every decision recorded here: all were taken by Paul on 2026-08-18 in one working session, and nothing in this document is inferred. High on the three breaches in section 5, each established by reading the code rather than the design document. Section 11's allocation is the consultant session's judgement and is flagged as such.
+**Confidence.** High on every decision recorded here: those in sections 1 to 12 were taken by Paul on 2026-08-18 in one working session, and the 2026-08-20 additions in sections 5, 7 and Still open were taken by him on 2026-08-20. Nothing in this document is inferred. High on all **four** breaches in section 5, each established by reading the code rather than the design document; the fourth was found on 2026-08-20 by reading the Clients tab markup, which the 2026-08-18 pass did not cover because it went through the Receipts tab. Section 11's allocation is the consultant session's judgement and is flagged as such.
+
+**Dates in this document.** It was written on 2026-08-20 and its filename says 2026-08-18. **That is deliberate and it is not renamed**, per amendment 109 of `2026-07-25_CONSOLE_DESIGN.md`: renaming it would break every reference to it while leaving the same mistake in the commit that introduced it. The decisions it records were taken between 2026-08-18 and 2026-08-20 and cannot now be dated individually.

@@ -118,7 +118,7 @@ Its function belongs to Intellibills. Its control sits on IntelliBooks' screen. 
 
 ## 9. One client registry
 
-**One client registry, owned by Intellibills.** IntelliBooks does not hold its own client list. Book-only attributes — entity type, partners, year end, MTD flags, VAT scheme — are added to the Intellibills client record rather than held separately.
+**One client registry, owned by Intellibills.** IntelliBooks does not hold its own client list. Book-only attributes, being entity type, partners, year end and the MTD flags, are added to the Intellibills client record rather than held separately. ~~and VAT scheme~~ **VAT scheme struck 2026-08-21 by amendment 142: the field is deleted at step 10e because nothing read it, and Paul will ask for it when he wants it.**
 
 **Why Intellibills owns it:** it is the product that exists in every configuration. In the combined product the books are added to an Intellibills client, never the reverse.
 

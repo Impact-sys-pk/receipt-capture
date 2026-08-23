@@ -40,9 +40,11 @@ somebody to change.
 
 | | Firm | Client | Total |
 |---|---|---|---|
-| **Exists today** | 13 | 17 | **30** |
+| **Exists today** | 13 | ~~17~~ **16** | ~~30~~ **29** |
 | **Proposed, not built** | ~~5~~ **4** | 3 | ~~8~~ **7** |
-| **Total** | ~~18~~ **17** | **20** | ~~38~~ **37** |
+| **Total** | ~~18~~ **17** | ~~20~~ **19** | ~~38~~ **36** |
+
+**Two rows struck, numbers not reused: F18 by amendment 138 and C11 by amendment 142.**
 
 **Plus 11 system settings, S1 to S11, in section 4.** They are not firm or client
 settings and are not counted above.
@@ -119,10 +121,10 @@ Clients tab is an action, not a setting.
 | C1 | **The client's email address**, which decides whose receipt an incoming email is. One client may have two rows differing only in this column, which works by design | `clients.csv` column `email`. Indexed by `config.py:126`, consumed by `resolve_client_info()` at `worker/database/repository.py:57` | Hand-edit `Intellibills\clients.csv` | Client Settings, Intellibills Settings | **Yes, and by accident.** Two rows differing only in this column give one client two addresses. Sub-step 10d.1 replaces it with an `emails` array, which makes it deliberate | No | setting |
 | C2 | **The client's trade.** Keys firm-level vendor mappings. Renamed `trade` by amendment 105 | `clients.csv` column `business_type` | Hand-edit `Intellibills\clients.csv` | Client Settings, Intellibills Settings | One per client | No | setting |
 | C3 | **Which firm the client belongs to.** Every row currently reads `FIRM001` | `clients.csv` column `firm_id`, with the fallback at `config.py:105` | Hand-edit `Intellibills\clients.csv` | Client Settings, Intellibills Settings | One per client | No | **identity.** It names the firm rather than expressing a preference |
-| C4 | **Confirm mode:** ask the client for the details before sending. Three stores, and the client can change it themselves. See section 7 | `IntelliBooks-Practice.json` client `mode`, read only at `IntelliBooks-Desktop-v3.html:934` to build the link as `&mode=confirm`; the phone holds it as `localStorage["ib_client"].confirmDefault` | IntelliBooks client **Edit** window, **and the client's own phone**, capture app settings screen, `set-confirm` | Client Settings, Intellibills Settings | One per client | **Yes, and the external copy wins.** The phone's value decides what the phone does and nothing reports a divergence | setting |
-| C5 | **Which PHV platforms the client drives for.** Drives the statements checklist. Same three stores | `IntelliBooks-Practice.json` client `phv[]`, link `&phv=`, phone `ib_client.phv` | IntelliBooks client **Edit** window, **and the client's own phone**, `set-phv-wrap` | Client Settings, Intellibills Settings | One list per client | **Yes, and the external copy wins** | setting |
-| C6 | **The statement week ending day.** Held on the client's phone and nowhere else. See section 7 | Phone only: `localStorage["ib_client"].weekEnd`, set at capture app `index.html:244` | The client's own phone only, capture app settings screen, `set-weekend` | Client Settings, Intellibills Settings | One per client | **Yes, and only externally.** The firm cannot read it, restore it or know it changed, and clearing a browser loses it | setting |
-| C7 | **Show the VAT field on the capture screen.** The same stored field as C10 | `IntelliBooks-Practice.json` client `vat`, read at `:933` to add `&vat=1`; phone `ib_client.vat` | IntelliBooks client **Edit** window | Client Settings, Intellibills Settings | One per client | **Half.** The phone keeps its own copy | setting |
+| C4 | **Confirm mode:** ask the client for the details before sending. Three stores, and the client can change it themselves. See section 7 **Owner settled 2026-08-21 by amendment 152: the client's alone, off by default.** It comes off the firm's side entirely, out of the client **Edit** window, out of the setup link, and off Client Settings. | `IntelliBooks-Practice.json` client `mode`, read only at `IntelliBooks-Desktop-v3.html:934` to build the link as `&mode=confirm`; the phone holds it as `localStorage["ib_client"].confirmDefault` | IntelliBooks client **Edit** window, **and the client's own phone**, capture app settings screen, `set-confirm` | Client Settings, Intellibills Settings | One per client | **Yes, and the external copy wins.** The phone's value decides what the phone does and nothing reports a divergence | setting |
+| C5 | **Which PHV platforms the client drives for.** Drives the statements checklist. Same three stores **Owner settled 2026-08-21 by amendment 152: the firm's alone. The client cannot change it**, and it is shown read-only on the phone. Appears only for a PHV driver. | `IntelliBooks-Practice.json` client `phv[]`, link `&phv=`, phone `ib_client.phv` | IntelliBooks client **Edit** window, **and the client's own phone**, `set-phv-wrap` | Client Settings, Intellibills Settings | One list per client | **Yes, and the external copy wins** | setting |
+| C6 | **The statement week ending day.** Held on the client's phone and nowhere else. See section 7 **Owner settled 2026-08-21 by amendment 152: the firm's alone**, read-only on the phone, which closes the fault that it existed nowhere but the phone. Appears only for a PHV driver. | Phone only: `localStorage["ib_client"].weekEnd`, set at capture app `index.html:244` | The client's own phone only, capture app settings screen, `set-weekend` | Client Settings, Intellibills Settings | One per client | **Yes, and only externally.** The firm cannot read it, restore it or know it changed, and clearing a browser loses it | setting |
+| C7 | **Show the VAT field on the capture screen.** The same stored field as C10 **Amendment 152: `vat` reaches the phone the same way as C4 and C5, at `index.html:200`, so item 28's two settings were three.** Firm-owned, and the setup link can now turn it off as well as on. | `IntelliBooks-Practice.json` client `vat`, read at `:933` to add `&vat=1`; phone `ib_client.vat` | IntelliBooks client **Edit** window | Client Settings, Intellibills Settings | One per client | **Half.** The phone keeps its own copy | setting |
 | C8 | **The client's upload credential.** Today there is no per-client credential: the shared key at F11 is copied into every link and stored on every phone as `ib_client.key` | Phone `localStorage["ib_client"].key`, from the link's `&k=` | Nowhere per client. It comes from F11 | Replaced by C18 | **No, and that is the fault.** One value for every client | **Yes.** On every phone | setting |
 
 ### 3.2 IntelliBooks, exists today
@@ -131,7 +133,7 @@ Clients tab is an action, not a setting.
 |---|---|---|---|---|---|---|---|
 | C9 | **Entity type:** sole trader, partnership or company. Drives `chartFor()`, so it decides which of the master's 122 accounts a client receives. Renamed `entity_type` by amendment 105 | `IntelliBooks-Practice.json` client `clientType` | IntelliBooks client **Edit** window, **Client type**. The window refuses to save without it | Client Settings, IntelliBooks Settings | One per client | No | setting |
 | C10 | **VAT registered.** Same stored field as C7, doing two jobs in two products | `IntelliBooks-Practice.json` client `vat`. Read at `:823`, `:1302`, `:1714` and `:2257` | IntelliBooks client **Edit** window, **VAT registered** | Client Settings, IntelliBooks Settings | One per client | No | setting |
-| C11 | **VAT scheme note.** Free text, stored and read by nothing. See section 7 | `IntelliBooks-Practice.json` client `vatScheme`. Written at `:884`, read back only into the same window at `:861` | IntelliBooks client **Edit** window, the box beside **VAT registered** | Client Settings, IntelliBooks Settings | One per client | No | setting |
+| ~~C11~~ | ~~**VAT scheme note.** Free text, stored and read by nothing.~~ **Deleted 2026-08-21 by amendment 142, on Paul's decision, and scheduled at step 10e.** The field goes from `IntelliBooks-Practice.json` and the box goes from the client **Edit** window: five places in `IntelliBooks-Desktop-v3.html`, being `:348`, `:850`, `:861`, `:884` and the shape comment at `:572`. **All six clients held an empty string, so nothing is lost.** **The reason is accounting, not tidiness:** the box looked like the system knew the scheme, and a client on flat rate generally cannot recover input VAT on purchases while their receipts are given VAT the standard way. **Paul will ask for it when he wants it, and it will need fixed values rather than free text** | ~~`IntelliBooks-Practice.json` client `vatScheme`~~ | ~~the box beside **VAT registered**~~ | **Nowhere** | n/a | n/a | n/a |
 | C12 | **The partner list.** Generates one capital introduced and one drawings account per partner, in the reserved blocks `3200-3209` and `3210-3219` | `IntelliBooks-Practice.json` client `partners[]` | IntelliBooks client **Edit** window, **Partners**, shown only for a partnership | Client Settings, IntelliBooks Settings | **Yes.** A list per client, and the reserved blocks hold ten each | No | setting |
 | C13 | **The accounting year end** | `IntelliBooks-Practice.json` client `yearEnd`, read at `:2279` | IntelliBooks client **Edit** window, **Year end (dd/mm)** | Client Settings, IntelliBooks Settings | One per client | No | setting |
 | C14 | **MTD client** | `IntelliBooks-Practice.json` client `mtd`, read at `:2285` | IntelliBooks client **Edit** window, **MTD client** | Client Settings, IntelliBooks Settings | One per client | No | setting |
@@ -279,12 +281,13 @@ lines below it, hardcodes `Lasting Impact` and tells the sender to contact
 `support@lastingimpact.co.uk`. A client of Intellitax who emails a receipt from an
 address not in `clients.csv` gets that message. Same file, two alerts, two behaviours.
 
-**Eight. Two stored fields are inert.** C11 `vatScheme` is written into
-`IntelliBooks-Practice.json` and read back only into the window that set it. C17
-`currency` is written as the literal `"GBP"` in four places in
-`IntelliBooks-Desktop-v3.html` and read nowhere. Neither is a defect today. Both are
-places not to build on, in the same class as `frs102_1a_line` and `mtd_itsa_category`
-in the master.
+**Eight. ~~Two stored fields are inert.~~ One, since 2026-08-21.** ~~C11 `vatScheme` is
+written into `IntelliBooks-Practice.json` and read back only into the window that set
+it.~~ **C11 is deleted at step 10e by amendment 142 rather than left as a place not to
+build on**, because a box that looks like the system knows the VAT scheme is worse than
+no box. **C17 `currency` remains**, written as the literal `"GBP"` in four places in
+`IntelliBooks-Desktop-v3.html` and read nowhere. Not a defect today, and a place not to
+build on, in the same class as `frs102_1a_line` and `mtd_itsa_category` in the master.
 
 ---
 

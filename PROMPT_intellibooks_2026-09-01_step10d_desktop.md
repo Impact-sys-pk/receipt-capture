@@ -29,7 +29,7 @@
 | `phv` | Array |
 | `vat`, `year_end`, `mtd`, `mtd_basis`, `balance_sheet` | The remaining book attributes, snake_case |
 
-**There is no `client_code`. Not in the file, not on any table, not in any payload.**
+**There is no `client_code`. Not in the file, not on any table, not in any payload.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
 
 **The five clients, and nothing is carried across.** Sub-step 10d.2, on Paul's decision of 2026-08-21, amendment 139. Created fresh:
 
@@ -184,7 +184,25 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 ---
 
-## I. Verify, and quote every output
+## I. Task 7. The HMRC summary output stops carrying the client code
+
+**Sub-steps 10d.57 and 10d.58. Added 2026-09-02 by amendment 169, Paul's instruction.**
+
+**Both files were read off disk on 2026-09-02**, in `Clients\Test Sole Trader\HMRC Summaries\`, and neither was in this plan's first version.
+
+**10d.57. The filenames.** They are `testst-hmrc-2025-04-06-to-2026-04-05.csv` at 1,229 bytes and `testst-archive-2025-04-06-to-2026-04-05.json` at 1,974 bytes. **The prefix is the client code in lower case.** `client_id` replaces it, so `client_004-hmrc-...` in whatever case the rest of the naming settles on. The writer is reached through `getDir(["Clients",safeName(c.name),"HMRC Summaries"])` at lines 1165 and 1181.
+
+**10d.58. The archive JSON's `code` field.** The file carries `"client": "Test Sole Trader"` and `"code": "TESTST"`. **`client_id` replaces `code`. `client` stays, as the display name.**
+
+**Three keys in that file are untouched and you should not tidy them.** `"chartSource": "SALE_OF_SERVICES.csv"` and `"chartPublished": "2026-09-01 11:11 BST"` are the provenance stamp that makes the archive a point-in-time record rather than a report: re-running the summary under a republished chart does not reproduce it, and that is the point of the two keys. `"version": 1` is the file's own schema version and is not this change.
+
+**The example on disk is empty.** Every box 15 to 30 reads 0.00, `accounts` is `[]`, and the reconciliation agrees at zero. **So a test that only checks the file is written proves nothing here. Post a transaction first.**
+
+**These two would have been caught anyway**, by the `grep` for surviving `.code` references in the verification list, **but they would have been caught as a surprise mid-task rather than as a sub-step.**
+
+---
+
+## J. Verify, and quote every output
 
 1. **The diff, whole.** Every hunk named and attributed to a task above.
 2. **`node --check` on the extracted script block.** Quote the result.
@@ -197,7 +215,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 ---
 
-## J. Stop and ask about
+## K. Stop and ask about
 
 - **Anything that deletes a books file.** Rename only.
 - **Anything that would need a second firm file.** Amendment 164 settled that there is one, `firms.json`, and `firm-settings.json` was rejected.
@@ -207,7 +225,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 ---
 
-## K. Not in this task
+## L. Not in this task
 
 **10d.1, 10d.4, 10d.11, 10d.13, 10d.14, 10d.16 to 10d.42 except 10d.38** are the pipeline brief. **10d.5 to 10d.10** are the phone app brief. Do not edit anything under `C:\LastingImpact\receipt_capture` or `Intellibills\PhoneApp\`.
 
@@ -217,7 +235,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 ---
 
-## L. Report
+## M. Report
 
 **An item in `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\App\Docs\IntelliBooks-Change-Log.md`**, per the standing convention, **and** a report at `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\App\Docs\2026-09-01_REPORT_desktop_step10d.md`.
 

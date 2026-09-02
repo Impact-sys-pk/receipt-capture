@@ -8,7 +8,7 @@ Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unch
 
 **Position.** HEAD is `10fd03feb9e4c2f8e4e14051c639aca23fe1b688` on `feat/console-phase0`, unless the commit brief `PROMPT_claude_code_2026-09-01_commit_163.md` has run first, in which case HEAD is its commit. **Check and report which.** Amendments 1 to 163 are in the design document.
 
-**Authority.** Section 16 step 10d of `2026-07-25_CONSOLE_DESIGN.md`, sub-steps 10d.1, 10d.4, 10d.11, 10d.13, 10d.14, 10d.16 to 10d.42 inclusive except 10d.38, and 10d.51. Amendments 105 and 111 carry the field list and its reasoning; 110 to 117 and 120 carry the decisions; 18.2a carries the layout; 18.2b carries the product boundary and the freeze. **Read 10d in the design document before you start.** This brief does not repeat its reasoning.
+**Authority.** Section 16 step 10d of `2026-07-25_CONSOLE_DESIGN.md`, sub-steps 10d.1, 10d.4, 10d.11, 10d.13, 10d.14, 10d.16 to 10d.42 inclusive except 10d.38, 10d.51, and 10d.53 to 10d.56. Amendments 105 and 111 carry the field list and its reasoning; 110 to 117 and 120 carry the decisions; 18.2a carries the layout; 18.2b carries the product boundary and the freeze. **Read 10d in the design document before you start.** This brief does not repeat its reasoning.
 
 ---
 
@@ -29,7 +29,7 @@ Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unch
 | `phv` | Array |
 | `vat`, `year_end`, `mtd`, `mtd_basis`, `balance_sheet` | The remaining book attributes, snake_case |
 
-**There is no `client_code`. Not in the file, not on any table, not in any payload.**
+**There is no `client_code`. Not in the file, not on any table, not in any payload.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
 
 **The five clients, and nothing is carried across.** Sub-step 10d.2, on Paul's decision of 2026-08-21, amendment 139. Created fresh:
 
@@ -186,6 +186,40 @@ Then, all in `schema.py`:
 - The phone app writes `phone`, **Add Receipts** writes `desktop`, the email path writes `email`, and a file with no sidecar gets `other`.
 - **No migration.** Task 4 rebuilds `receipts`.
 
+**10d.53. `Intellibills\Documents\` is keyed on `client_id` rather than the client code.** Added 2026-09-02 by amendment 169.
+
+`worker/storage/store.py` builds `config.FILES_DIR / client_code / year / month` at **lines 23 and 37**, in `save_file()` and `save_inbox_file()`. Both take `client_code` as their second parameter. **Three callers, all in `app.py`: `:733` for an image embedded in an email, `:918` for the folder intake, `:1097` for an email attachment.** All five lines verified by reading them on 2026-09-02.
+
+**The year and month stay, and this is the reason, because the file has no docstring giving it.** The save happens **before** extraction: `app.py:918` writes the file, `:949` runs the extractor, `:952` files it. At the moment of the write nothing has read the receipt, so there is no invoice date to file by, and `app.py:367` takes the invoice date out of the extraction record, which does not exist yet. Arrival also never needs correcting where an invoice date does, so no file ever has to move. **Do not change the year and month to a tax year.**
+
+**The folders on disk are `PKPH` and `TESTST`, five files between them.** Neither client survives 10d.2. **Leave them exactly where they are, name them and their file count in your report, and Paul removes them.** Do not delete, move or rename anything under `Intellibills\Documents\`.
+
+**10d.54. `Intellibills\Review\` is keyed on `client_id` rather than the client code.** Added 2026-09-02 by amendment 169.
+
+`_review_dir_for_client_code()` at `worker/filing.py:155` becomes `_review_dir_for_client_id()`, and **`file_review()`'s `client_code` parameter at `worker/filing.py:118` changes with it.** Both verified.
+
+**Its docstring survives intact and you should read it before changing the function.** It explains that the folder left the client folder because a receipt awaiting a human is work in progress rather than a document the client is entitled to see, and that it is keyed on the code rather than the name because the name could drift. **A `client_id` cannot drift either, so the reasoning holds word for word and only the field changes.**
+
+**`_scan_other_clients_for_receipt()` at `worker/filing.py:303` needs no change.** It iterates `config.REVIEW_ROOT` and every subfolder is still one client's. **Confirm that rather than assuming it.**
+
+**10d.55. A statement gets a copy in `Intellibills\Documents\` before it is filed.** Added 2026-09-02 by amendment 169, Paul's decision.
+
+The statement branch at **`app.py:858` to `:902`** calls `save_inbox_file()` first, the way the receipt branch does at `app.py:918`, and passes that path to `file_statement()` at `app.py:876`.
+
+**Today that branch never calls into `worker/storage/store.py` at all.** `worker/filing.py:111` copies the statement from the inbox straight into `Clients\<name>\Statements\<tax year>\<platform>\`, so **that is the only copy and a statement cannot be reconstructed where a receipt can.** Searched for `save_file` and `save_inbox_file` in that branch and found neither.
+
+**The `statements` table has 0 rows**, so nothing on disk is affected and there is nothing to migrate.
+
+**10d.56. `statements` gains `filed_path`, and `file_path` means the same thing on both tables.** Added 2026-09-02 by amendment 169, Paul's decision.
+
+`receipts` has both, verified in `worker/database/schema.py`: **`file_path` at `:87`** for the copy in `Intellibills\Documents\` and **`filed_path` at `:89`** for the copy in the client folder. **`statements` has only `file_path`, at `:102`**, and `app.py:898` writes the client folder path into it.
+
+**So one column name means the original on one table and the copy on the other.** After this, `file_path` is the document store's copy on both and `filed_path` is the client folder's copy on both.
+
+**`save_statement()` in `worker/database/repository.py` changes with it**, and `app.py:890` to `:899` with that.
+
+**`app.py:361` is the line that shows why it matters:** it takes `receipt["file_path"]` as the file to copy from when filing, and `app.py:362` skips the receipt if that file is missing. The same code written against a statement would copy the filed copy onto itself.
+
 **10d.51. `Intellibills\firms.csv` becomes `Intellibills\firms.json`, and it takes the phone app address.** Added 2026-09-01 by amendment 164, Paul's decision.
 
 `load_firms()` at `config.py:132` reads JSON. **snake_case throughout, matching `clients.json`.** The record gains the phone app address, which is row F10 of `2026-08-20_LIST_settings_firm_and_client.md` and lives in `IntelliBooks-Practice.json` as `settings.captureUrl` today.
@@ -231,6 +265,8 @@ Then, all in `schema.py`:
 3. `grep -rn "CLIENTS_BY_CODE" .` returns nothing outside `.git` and your own report.
 4. `grep -rn "client_code" --include=*.py .` — report every survivor with a one-line reason. Some are legitimate: the phone app's own payload is not yours, and a test fixture may keep one deliberately.
 5. `grep -rn "normalise_client_name" .` returns nothing.
+5a. **`grep -rn "client_code" worker/storage/store.py worker/filing.py` returns nothing**, which is 10d.53 and 10d.54.
+5b. **`python -c "import worker.database.schema as s; print([l for l in s.__doc__ or [] ])"` is not the check. Instead: create a fresh database with `init_db()` and print the columns of `receipts` and `statements` with `PRAGMA table_info`.** Both must have `file_path` and `filed_path`, and neither must have `client_code`. That is 10d.23, 10d.29 and 10d.56 in one output.
 6. `python -m py_compile` every file you touched.
 7. `git --no-optional-locks status --porcelain` and confirm the only untracked files are your report, `_step10d_clients.json`, `_step10d_firms.json` and `_step10d_rebuild.py`.
 8. **Confirm you have not written outside the repository**, and quote the check you used.
@@ -253,7 +289,7 @@ Everything on `CLAUDE.md`'s list, unchanged. In particular, and repeated because
 
 ## J. Not in this task
 
-**10d.2, 10d.3, 10d.12, 10d.15 and 10d.38** are the IntelliBooks brief. **10d.5 to 10d.10 and 10d.43 to 10d.50** are the phone app brief. Do not touch `IntelliBooks-Desktop-v3.html` or anything under `Intellibills\PhoneApp\`.
+**10d.2, 10d.3, 10d.12, 10d.15, 10d.38, 10d.57 and 10d.58** are the IntelliBooks brief. **10d.5 to 10d.10 and 10d.43 to 10d.50** are the phone app brief. Do not touch `IntelliBooks-Desktop-v3.html` or anything under `Intellibills\PhoneApp\`.
 
 **Nothing in step 10f is in this task.** The copy into `Clients\` still happens on arrival. 18.2b's freeze on that trigger holds until 18.3's handoff passes its acceptance test, and this brief changes only where the folder name comes from.
 
@@ -272,6 +308,8 @@ Include every output from tasks 1 and H, the enumerated list of `CLIENTS_BY_CODE
 **And four things I want back.**
 
 **Were my five corrections right?** `folder_reader.py:100` not `:102`, eleven migrations not nine, `parse_ambiguous_date()` not `_parse_numeric_date()`, and the two counts I did not correct but did verify, the twelve `"GBP"` literals and the five `categorise()` call sites. Tell me any I got wrong.
+
+**Did 10d.53 and 10d.54 exist when you read this brief's first version?** They did not. **The first version of this brief deleted `client_code` and did not mention `worker/storage/store.py` or `_review_dir_for_client_code()` once**, so two folder layouts would have lost their key mid-task. Paul found it by asking whether the client code was going. **Tell me whether the two sub-steps as now written are enough to do the work without stopping.**
 
 **Did I get the `CLIENTS_BY_CODE` count right?** 60 occurrences, 13 outside `tests\`, eleven of them real readers, 47 across 17 test files. I enumerated rather than estimated, but I enumerated with grep and grep is a filter. **If a reader reaches that dictionary by another route, name it.**
 

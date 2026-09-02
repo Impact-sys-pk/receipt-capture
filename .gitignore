@@ -9,3 +9,4 @@ venv/
 .history/
 logs/
 .claude/settings.local.json
+Backups/

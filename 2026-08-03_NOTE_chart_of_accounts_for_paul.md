@@ -1,8 +1,8 @@
 # Chart of accounts, draft 2, for Paul to mark up
 
-**Written 2026-08-03 by the consultant session.** Companion to `C:\LastingImpact\receipt_capture\chart_of_accounts_DRAFT2_2026-08-03.csv`.
+**Written 2026-08-03 by the consultant session.** ~~Companion to `C:\LastingImpact\receipt_capture\chart_of_accounts_DRAFT2_2026-08-03.csv`.~~ **That CSV was deleted from disk by Paul on 2026-09-01. Struck 2026-09-02 by amendment 167 of `2026-07-25_CONSOLE_DESIGN.md`. It survives in git as blob `0dd8a06d012416f3d7273313d81fd40c27f0a586`, 8,583 bytes.**
 
-`C:\LastingImpact\receipt_capture\chart_of_accounts_DRAFT.csv` is untouched and stays as the record of what the vendor mappings produced.
+~~`C:\LastingImpact\receipt_capture\chart_of_accounts_DRAFT.csv` is untouched and stays as the record of what the vendor mappings produced.~~ **Deleted from disk by Paul on 2026-09-01. Struck 2026-09-02 by amendment 167 of `2026-07-25_CONSOLE_DESIGN.md`. It survives in git as blob `46c04a03d11c3dd718243c83592614e5f749e38d`, 1,504 bytes.** **This file stays in the repository root under step 10h and neither CSV does, so the two sentences above are struck rather than deleted.**
 
 **Mark up the CSV, not this file.** This file exists for the four things that do not fit in a CSV cell.
 
@@ -96,7 +96,7 @@ I have inferred the 600s to be FreeAgent's capital asset range from a sub-accoun
 
 ## 4. One code carries two different name strings today
 
-`chart_of_accounts_DRAFT.csv` spells code 386 `Motor Expenses - Car Tax - Private Use` with hyphens. `categorisations_client_vendors_cleaned.csv` spells the same code `Motor Expenses — Car Tax — Private Use` with em dashes. One code, two strings, and Desktop keys on the string.
+`chart_of_accounts_DRAFT.csv`, now in git only, spells code 386 `Motor Expenses - Car Tax - Private Use` with hyphens. `categorisations_client_vendors_cleaned.csv` spells the same code `Motor Expenses — Car Tax — Private Use` with em dashes. One code, two strings, and Desktop keys on the string.
 
 ---
 

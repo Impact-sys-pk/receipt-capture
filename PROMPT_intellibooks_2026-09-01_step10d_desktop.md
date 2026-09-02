@@ -4,17 +4,19 @@
 
 **This is not pasted into another session.** It is the third of three step 10d documents and it is a work plan rather than a brief, because the session that wrote it is the session that carries it out. The other two are briefs and are pasted: `PROMPT_claude_code_2026-09-01_step10d_pipeline.md` goes to Claude Code, `PROMPT_phoneapp_2026-09-01_step10d.md` goes to whoever works the phone app.
 
-**All three are written against the same field list, which is section A below, and section A is byte-identical in all three**, checked by hash on 2026-09-01. **If it ever differs, stop: the three have drifted and the flip will not work.**
+**All three are written against the same field list, which is section A below, and section A is byte-identical in all three.** **If it ever differs, stop: the three have drifted and the flip will not work.** **Measured by the rule at the head of section A it is 4,911 bytes, md5 `1e1b6949021b9e8db8b981e74c052bb5`, checked in all three on 2026-09-02.** ~~4,305 bytes, md5 `4674c1761d8b658b8f7c4a8b18552956`~~ **Superseded 2026-09-02 by amendment 179, which added `statement_week_ending_day`.** ~~3,513 bytes, md5 `8985b618449a110ff5d14286dd1712e6`~~ **Superseded 2026-09-02 by amendment 178, which added `archived` and `created` to the field list.** ~~Checked by hash on 2026-09-01.~~
 
-**The file.** `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\App\IntelliBooks-Desktop-v3.html`. One file, 199,451 bytes, 3,307 lines as at 2026-09-01. No test suite.
+**The file.** `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\App\IntelliBooks-Desktop-v3.html`. One file, 200,847 bytes, 3,320 lines as at 2026-09-02, read from the file. ~~199,451 bytes, 3,307 lines as at 2026-09-01.~~ **Corrected 2026-09-02: change log items 50 and 51 grew it, which the line-number note below already said and this line did not.** No test suite.
 
 **Authority.** Section 16 step 10d of `2026-07-25_CONSOLE_DESIGN.md`, sub-steps 10d.2, 10d.3, 10d.12, 10d.15, 10d.38, and the Desktop side of 10d.43 to 10d.50. Amendments 105 and 111 carry the field list. **Read 10d in the design document before you start.**
 
 ---
 
-**Line numbers refreshed 2026-09-02, 16:30 BST, after step 10a.** `IntelliBooks-Desktop-v3.html` was saved twice that afternoon, as change log items 50 and 51, and grew from 3,307 lines to 3,320. **Refreshed twice, at 16:30 and 16:55 BST, and the second pass is the one to trust.** The first moved fifteen numbers and left their neighbours, so four sentences held one refreshed number beside stale ones: a `getDir` at 1704 inside a copy region still given as 1702 to 1706, a key read beside a refusal, the category strings outside their own array, and `instance` beside its three uses. **Found by Claude Code, which could not say which half of each pair was stale because `IntelliBooks-Desktop-v3.html` is under the practice root and it cannot read there.** **The second pass enumerated every three and four digit number in this brief rather than patching the four reported**, took each line out of the pre-10a.2 copy `IntelliBooks\App\IntelliBooks-Desktop-v3.html.bak-before-intellibooks-parent`, and found that exact line in the saved file. The shift is not uniform: nothing above the header comment moved, the region between it and `safeName()` moved by five, and everything below the new `clientFolderPath()` helper moved by thirteen. **One number was wrongly changed by the first pass and is put back: the `2606` in section M is what sub-step 10d.38 of the design document cites, not a line in the current file.** **`index.html` line numbers are the phone app's and did not move.** **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
+**Line numbers refreshed 2026-09-02, twice, at 16:30 and 16:55 BST, after step 10a.** ~~refreshed 2026-09-02, 16:30 BST~~ `IntelliBooks-Desktop-v3.html` was saved twice that afternoon, as change log items 50 and 51, and grew from 3,307 lines to 3,320. **The second pass is the one to trust.** The first moved fifteen numbers and left their neighbours, so four sentences held one refreshed number beside stale ones: a `getDir` at 1704 inside a copy region still given as 1702 to 1706, a key read beside a refusal, the category strings outside their own array, and `instance` beside its three uses. **Found by Claude Code, which could not say which half of each pair was stale because `IntelliBooks-Desktop-v3.html` is under the practice root and it cannot read there.** **The second pass enumerated every three and four digit number in this brief rather than patching the four reported**, took each line out of the pre-10a.2 copy `IntelliBooks\App\IntelliBooks-Desktop-v3.html.bak-before-intellibooks-parent`, and found that exact line in the saved file. The shift is not uniform: nothing above the header comment moved, the region between it and `safeName()` moved by five, and everything below the new `clientFolderPath()` helper moved by thirteen. **One number was wrongly changed by the first pass and is put back: the `2606` in section M is what sub-step 10d.38 of the design document cites, not a line in the current file.** **`index.html` line numbers are the phone app's and did not move.** **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
 
 ## A. The field list. Identical in all three briefs
+
+**The boundary of this section, because a hash needs one.** Section A runs from the `## A.` line inclusive to the line immediately before the next `## B.` line, joined with a single newline character, with no trailing newline, UTF-8. **Hash it that way or the figure will not match.** The byte count and the md5 are stated in this document's preamble above and deliberately not in here, because a figure stated inside the thing it measures cannot be true.
 
 **One client file. `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\clients.json`.** Owned by Intellibills, read and written by both products. JSON, not CSV. **snake_case throughout.**
 
@@ -30,8 +32,11 @@
 | `partners` | Array |
 | `phv` | Array |
 | `vat`, `year_end`, `mtd`, `mtd_basis`, `balance_sheet` | The remaining book attributes, snake_case |
+| `archived` | Boolean. **Absent means active.** IntelliBooks sets it from **Archive** on the **Clients** tab. **Intellibills reads it: a receipt for an archived client is a Review item and is not filed, because an archived client's books are closed.** Added 2026-09-02 by amendment 178 |
+| `created` | The date the client record was created, `YYYY-MM-DD`. Display only, written by IntelliBooks, read by nothing else. Added 2026-09-02 by amendment 178 |
+| `statement_week_ending_day` | The day a weekly statement period ends. **The firm's, and the client cannot change it.** Shown read-only on the phone and carried in the setup link as `&wke=`. Row C6, sub-step 10d.49. **It exists only on the phone today**, at `index.html:244`, where the firm can neither read it, restore it nor know it changed. Added 2026-09-02 by amendment 179 |
 
-**There is no `client_code`. Not in the file, not on any table, not in any payload.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
+**There is no `client_code`. Not in the file, not on any table, not in any payload.** **Paul's ruling of 2026-09-02, in his words: it must go completely and is not to be seen anywhere.** **And there is no `status` on a client either. Added 2026-09-02 by amendment 178: `status` on this project means a chart account or a transaction and never a client, so a `status` written onto a client record would be read by nothing.** **And no `mode`. Added 2026-09-02 by amendment 179: confirm mode is the client's alone and off by default, sub-step 10d.48, and the client turns it on in the phone's own settings, so the firm neither holds it nor sends it.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
 
 **The five clients, and nothing is carried across.** Sub-step 10d.2, on Paul's decision of 2026-08-21, amendment 139. Created fresh:
 
@@ -72,7 +77,7 @@
 
 Today the list is `practice.clients` in `IntelliBooks\IntelliBooks-Practice.json`, five records with `id`, `name`, `code`, `created`, `clientType`, `partners`, `vat`, `mode`, `phv`, `yearEnd`, `mtd`, `mtdBasis` and, on one, `balanceSheet`.
 
-After this change the list comes from `Intellibills\clients.json` and IntelliBooks writes back to the same file. **It is read and written from both sides**, which is one of the two reasons amendment 111 chose JSON over CSV: IntelliBooks has a correct CSV reader at `parseCSV()`, line 996, and no CSV writer.
+After this change the list comes from `Intellibills\clients.json` and IntelliBooks writes back to the same file. **It is read and written from both sides**, which is one of the two reasons amendment 111 chose JSON over CSV: IntelliBooks has a correct CSV reader at `parseCSV()`, **line 1298**, and no CSV writer. ~~line 996~~ **Corrected 2026-09-02: line 996 is `const chart=PENDING_CHART;`. `parseCSV()` is defined at 1298 and called at 538 and 1336.**
 
 **Write with temp-name-and-rename**, the same rule amendment 104 sets for the inbox JSON and 10d.35 sets for the pipeline's reader. The pipeline re-reads this file whenever its modification time moves, so a half-written file would be read.
 
@@ -204,6 +209,32 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 ---
 
+## I2. Task 8. The client code's remaining carriers. Added 2026-09-02
+
+**None of these was in this plan's first two versions.** All were found by enumerating every `.code` occurrence in the file and tagging each with its enclosing function, because **`.code` is used for two different things here: 65 of the 100 occurrences are four-digit chart account codes and must not be touched, and 35 are client codes.** Recorded in `IntelliBooks\App\Docs\2026-09-02_REPORT_desktop_step10d_survey.md`.
+
+**8a. `scanReview()` at line 2404 reads the Review folder by client code, and the pipeline is about to stop naming it that way. Sub-step 10d.59.** The line is `try{dir=await getDir([PIPE_DIR,"Review",c.code],false);}`. **Sub-step 10d.54 rekeys `Intellibills\Review\` to `client_id` on the pipeline side.** It takes `client_id`. **This is the one that would repeat the 2026-09-01 failure**: the pipeline writing `Review\Client_004\` while this file looks in `Review\TESTST\`, and nothing on screen saying so.
+
+**8b. The resolution note stops carrying `client_code`. Sub-step 10d.60.** Two writers: `fileReviewReceipt()` at line 2519, `client_code:c.code,`, and `discardReviewReceipt()` at line 2562, `client_code:(c&&c.code)||r.clientCode||"",`. **Both take `client_id`, and the key is renamed with the value.** The pipeline brief deletes `client_code` from every payload and a resolution note is a payload. **Section 12 of `2026-07-25_CONSOLE_DESIGN.md` is this contract, and it is the one that was built in halves with five points disagreeing.** ~~Task 2 named only `filed_path` at 2532 and said the old `filed_path` used to be at 2519, which reads as though 2519 were dealt with. It is a different field.~~
+
+**8c. The filed sidecar's client block. Sub-step 10d.61.** Line 2501 writes `client:{code:c.code,name:c.name}` into the JSON beside the filed receipt. **It becomes `client_id` plus the display name**, agreed with the pipeline brief's field list the same way the inbox sidecar is at task 4.
+
+**8d. The books file's own `code` field and the cache key built from it. Sub-step 10d.62.** `emptyBooks()` at line 590 writes `code:client.code` into every books file, and `saveBooks()` at line 706 uses it as the IndexedDB cache key, `idbSet("cache:"+books.code,books)`. **Both take `client_id`.** 10d.2 changed the books filename and said nothing about the field inside the file.
+
+**8e. The practice backup. Sub-step 10d.63.** `exportPracticeBackup()` keys the backup on the code at lines 3121 and 3122, and builds `const codes=new Set(practice.clients.map(c=>String(c.code).toUpperCase()));` at 3129. **All three take `client_id`.**
+
+**8f. Three download filenames. Sub-step 10d.64.** The handover pack prefix at line 2003, `const pre=(c.code||"client").toLowerCase()+"-";`; the transactions CSV at 2850; and the client backup at 3074. **Same shape as the HMRC filenames at 10d.57, which got a sub-step, so these get one too.**
+
+**8g. Two remembered-year keys. Sub-step 10d.65.** `localStorage` keys `ib3_lastYear_`+`c.code` at lines 1816 and 1823. **Per-browser and harmless, and they take `client_id` with the rest.** The one visible effect is that the remembered tax year is forgotten once, on the first run after the change.
+
+**8h. The Edit Client window loses its Code field. Sub-step 10d.67, on Paul's ruling of 2026-09-02 that `client_code` goes completely and appears nowhere.** The field is at line 959, `$("mc-code").value=c.code;`, and its duplicate check at 975. **Both come off, and the `mc-code` input goes from the markup with them.** **Sub-step 10e.4 is BUILT with that field on the window and its wording is corrected by amendment 177 rather than step 10d being narrowed.**
+
+**8i. The delete confirmation asks for the client's business name. Sub-step 10d.66, Paul's ruling of 2026-09-02.** `deleteClient()` at line 1062 currently reads `if(typed.trim().toUpperCase()!==String(c.code).toUpperCase())`. **It matches on `client_name`, not on `client_id`.** The prompt text at line 1060 changes with it, and so does the refusal message, which says "Not deleted. The code did not match."
+
+**Nothing in task 8 is now waiting on a ruling.** ~~What is NOT in task 8, and both are in "Stop and ask" below: the delete confirmation at line 1062 and the Edit Client window's Code field at 959 with its duplicate check at 975.~~
+
+---
+
 ## J. Verify, and quote every output
 
 1. **The diff, whole.** Every hunk named and attributed to a task above.
@@ -213,7 +244,9 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 5. **`grep` for `-books.json` and confirm every filename builder takes `client_id`.**
 6. **Run these four functions in node against a real books file**, per rule 4: `listReceiptYears()`, `scanFiledReceipts()`, `importToInbox()`'s path builder, and `loadSampleData()`'s receipt loop. Quote the output of each.
 7. **Open the app and check on screen**, naming what you clicked: select **Test Sole Trader**, open the **Receipts** tab, and confirm the year dropdown offers **2025-26** and **2026-27** and that **2025-26 shows 2 receipts and 2026-27 shows 2 receipts**. Those four are on disk today under `Clients\Test Sole Trader\Receipts\`. **If you see 4 in one year or 0 in either, stop and report it.**
-8. **Change log item written**, with the backup names, what was checked and how, and everything flagged and not fixed.
+8. **Task 8's own check, and it is the one that cannot be done by grep.** `grep` for `PIPE_DIR,"Review"` and for `client_code` and confirm each takes `client_id`. **Then check the two halves agree by reading them, not by trusting them:** the folder `_review_dir_for_client_id()` builds on the pipeline side after 10d.54, against what line 2404 opens here. **A mismatch here shows as an empty Review list and no error**, so a passing grep on this side proves nothing on its own.
+9. **`grep` for `.code` and account for all 100 occurrences.** 65 are chart account codes and stay. **If your count of the ones that stay is not 65, stop: one of us is wrong about which is which**, and getting it wrong the other way corrupts the chart of accounts.
+10. **Change log item written**, with the backup names, what was checked and how, and everything flagged and not fixed.
 
 ---
 
@@ -224,6 +257,8 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 - **Any place this brief and the design document disagree** that I have not already marked as a correction.
 - **Anything you would change beyond what the tasks above describe**, including an obvious improvement. Flag, do not fix.
 - **The silent `catch(e){return;}` at line 1833.** Named in task 2 as a flag, not a change.
+- ~~**The delete confirmation at line 1062, and it is Paul's.** The candidates are the client's name or `client_id`. Do not choose. Ask.~~ **Answered 2026-09-02: the client's business name. It is task 8i.**
+- ~~**The Edit Client window's Code field at line 959 and its duplicate check at 975.** Sub-step 10e.4 is BUILT and says that window holds the client code, and section A says no `client_code` exists anywhere. One of the two is wrong and Paul settles which.~~ **Answered 2026-09-02: `client_code` goes completely and appears nowhere, so the field comes off and 10e.4's wording is corrected. It is task 8h.**
 
 ---
 

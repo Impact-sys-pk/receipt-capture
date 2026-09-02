@@ -1,12 +1,12 @@
 # AUTOMATIC task: step 10d, the pipeline half. One client registry, the credential, and the database rebuilt
 
-**Written 2026-09-01 by the consultant session, for Claude Code. Paste this whole file in.**
+**Written 2026-09-01 by the consultant session, for Claude Code.** ~~Paste this whole file in.~~ **Corrected 2026-09-02: read this file from disk rather than being given it in a message.** It sits on the same machine Claude Code runs on, and it was changed four times on 2026-09-02, so reading it is the only way to be sure the version acted on is the version on disk. **Confirm its byte count and section A's md5 in your report before task 1**, both stated below.
 
 Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unchanged and outranks this file.** Two of its rules bite hard here and this brief is shaped around them rather than against them. See "What you do not do" below.
 
-**This is one of three briefs for step 10d.** The other two are `PROMPT_intellibooks_2026-09-01_step10d_desktop.md` and `PROMPT_phoneapp_2026-09-01_step10d.md`. **All three are written against the same field list, which is section A below, and section A is identical in all three.** If your copy of section A differs from either of theirs, stop: the three have drifted and the flip will not work.
+**This is one of three briefs for step 10d.** The other two are `PROMPT_intellibooks_2026-09-01_step10d_desktop.md` and `PROMPT_phoneapp_2026-09-01_step10d.md`. **All three are written against the same field list, which is section A below, and section A is identical in all three.** If your copy of section A differs from either of theirs, stop: the three have drifted and the flip will not work. **Measured by the rule at the head of section A it is 4,911 bytes, md5 `1e1b6949021b9e8db8b981e74c052bb5`, checked in all three on 2026-09-02.** ~~4,305 bytes, md5 `4674c1761d8b658b8f7c4a8b18552956`~~ **Superseded 2026-09-02 by amendment 179, which added `statement_week_ending_day`.** ~~3,513 bytes, md5 `8985b618449a110ff5d14286dd1712e6`~~ **Superseded 2026-09-02 by amendment 178, which added `archived` and `created` to the field list.**
 
-**Position.** HEAD is `10fd03feb9e4c2f8e4e14051c639aca23fe1b688` on `feat/console-phase0`, unless the commit brief `PROMPT_claude_code_2026-09-01_commit_163.md` has run first, in which case HEAD is its commit. **Check and report which.** Amendments 1 to 163 are in the design document.
+**Position.** HEAD is `2bfe47d5e147234f651eb6c165b27dfd015b3a0f` on `feat/console-phase0`, read from `git log` on 2026-09-02. Amendments 1 to 174 are in the design document. ~~HEAD is `10fd03feb9e4c2f8e4e14051c639aca23fe1b688`, unless the commit brief `PROMPT_claude_code_2026-09-01_commit_163.md` has run first, in which case HEAD is its commit. Amendments 1 to 163.~~ **Corrected 2026-09-02: that brief and five commits after it have run.** **Check HEAD and report it**, because this brief is not committed with the work it describes.
 
 **Authority.** Section 16 step 10d of `2026-07-25_CONSOLE_DESIGN.md`, sub-steps 10d.1, 10d.4, 10d.11, 10d.13, 10d.14, 10d.16 to 10d.42 inclusive except 10d.38, 10d.51, and 10d.53 to 10d.56. Amendments 105 and 111 carry the field list and its reasoning; 110 to 117 and 120 carry the decisions; 18.2a carries the layout; 18.2b carries the product boundary and the freeze. **Read 10d in the design document before you start.** This brief does not repeat its reasoning.
 
@@ -15,6 +15,8 @@ Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unch
 **Line numbers refreshed 2026-09-02, twice, at 16:30 and 16:55 BST, after step 10a.** Sub-steps 10a.1 and 10a.2 added three constants and their comments to `config.py`, so every `config.py` line this brief cites moved by eighteen. **There are seven, not six.** ~~All six~~ **The first pass found six with a grep for `config.py:N` and missed the seventh, which is written as a bare `:95` after the filename earlier in the sentence; it is the `mkdir` at sub-step 10d.37 and it is now `:113`. Found by Claude Code, and it is this project's own filter-is-not-a-reader failure: the pattern that enumerated the set could not match one of its members, and the sentence then claimed the set was complete.** All seven were re-derived by reading the current file, not by adding a constant, and each now lands on the construct it names. `worker/filing.py` was edited in place and its line numbers did not move; `app.py`, `worker/database/repository.py`, `worker/intake/folder_reader.py`, `worker/extraction/postprocess.py` and everything under `tests\` were untouched by step 10a. **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
 
 ## A. The field list. Identical in all three briefs
+
+**The boundary of this section, because a hash needs one.** Section A runs from the `## A.` line inclusive to the line immediately before the next `## B.` line, joined with a single newline character, with no trailing newline, UTF-8. **Hash it that way or the figure will not match.** The byte count and the md5 are stated in this document's preamble above and deliberately not in here, because a figure stated inside the thing it measures cannot be true.
 
 **One client file. `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\clients.json`.** Owned by Intellibills, read and written by both products. JSON, not CSV. **snake_case throughout.**
 
@@ -30,8 +32,11 @@ Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unch
 | `partners` | Array |
 | `phv` | Array |
 | `vat`, `year_end`, `mtd`, `mtd_basis`, `balance_sheet` | The remaining book attributes, snake_case |
+| `archived` | Boolean. **Absent means active.** IntelliBooks sets it from **Archive** on the **Clients** tab. **Intellibills reads it: a receipt for an archived client is a Review item and is not filed, because an archived client's books are closed.** Added 2026-09-02 by amendment 178 |
+| `created` | The date the client record was created, `YYYY-MM-DD`. Display only, written by IntelliBooks, read by nothing else. Added 2026-09-02 by amendment 178 |
+| `statement_week_ending_day` | The day a weekly statement period ends. **The firm's, and the client cannot change it.** Shown read-only on the phone and carried in the setup link as `&wke=`. Row C6, sub-step 10d.49. **It exists only on the phone today**, at `index.html:244`, where the firm can neither read it, restore it nor know it changed. Added 2026-09-02 by amendment 179 |
 
-**There is no `client_code`. Not in the file, not on any table, not in any payload.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
+**There is no `client_code`. Not in the file, not on any table, not in any payload.** **Paul's ruling of 2026-09-02, in his words: it must go completely and is not to be seen anywhere.** **And there is no `status` on a client either. Added 2026-09-02 by amendment 178: `status` on this project means a chart account or a transaction and never a client, so a `status` written onto a client record would be read by nothing.** **And no `mode`. Added 2026-09-02 by amendment 179: confirm mode is the client's alone and off by default, sub-step 10d.48, and the client turns it on in the phone's own settings, so the firm neither holds it nor sends it.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
 
 **The five clients, and nothing is carried across.** Sub-step 10d.2, on Paul's decision of 2026-08-21, amendment 139. Created fresh:
 
@@ -77,7 +82,75 @@ Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unch
 git --no-optional-locks status --short
 ```
 
-Report it whole. **Expect a clean tree** if the commit brief has run, or the three modified and four untracked files it names if it has not. **Any modified `.py` file that you did not modify means you stop.**
+Report it whole. **Expect exactly this, enumerated on 2026-09-02 by listing the root against `git ls-files` rather than predicted:** three modified files, being this brief, `PROMPT_intellibooks_2026-09-01_step10d_desktop.md` and `PROMPT_phoneapp_2026-09-01_step10d.md`; two untracked files, `2026-09-02_HANDOVER_consultant_chat_13.md` and `2026-09-02_REPORT_claude_code_commit_175.md`; and nothing else. `.pytest_cache\` carries its own `.gitignore` holding `*`, so it does not appear. ~~Expect a clean tree if the commit brief has run, or the three modified and four untracked files it names if it has not.~~ **Corrected 2026-09-02: no commit brief is coming, because task 1b below commits that documentation itself.**
+
+**Stop if any `.py` file is modified, if any path under the practice root appears, or if any file you did not expect appears. Nothing else is a reason to stop.** ~~Any modified `.py` file that you did not modify means you stop.~~ **Widened 2026-09-02, and the reason is Paul's session credit:** the narrow form meant that while one brief was out no other tracked file could be touched, so every unrelated change became its own commit and its own round trip through him.
+
+**Task 1b. Commit that documentation before you touch any code.** Step 10d ends by starting the pipeline, and `pipeline_version` is the git short hash, so a run started on a dirty tree records a version that does not describe the code that ran.
+
+```
+git add 2026-07-25_CONSOLE_DESIGN.md PROMPT_claude_code_2026-09-01_step10d_pipeline.md PROMPT_intellibooks_2026-09-01_step10d_desktop.md PROMPT_phoneapp_2026-09-01_step10d.md 2026-09-02_HANDOVER_consultant_chat_13.md 2026-09-02_REPORT_claude_code_commit_175.md
+```
+
+**Use this message verbatim, and add your usual `Co-Authored-By` trailer as on `7e037c3`.** Its figures were enumerated and read back from disk before it was written, which is amendment 174's rule: this message is the one artefact on this project that cannot be amended. **Rewritten 2026-09-02 after amendments 176 to 179 landed, because the first version named only amendment 175 and a section A hash that had since moved twice.**
+
+```
+docs: amendments 175 to 179, and step 10d gains nine sub-steps
+
+Section A of the three step 10d briefs gains the rule that defines its own
+boundary, identically in all three, so that a hash of it can be compared at
+all. The first attempt at that hash gave 3,057 bytes against 3,056 because
+the rule was nowhere written down. Amendment 175.
+
+Measured by that rule section A is 4,911 bytes, md5
+1e1b6949021b9e8db8b981e74c052bb5, identical in all three, read back from disk
+after writing and enumerated before this message was written. The figures
+sit in each brief's preamble and not inside section A, because a figure
+stated inside the thing it measures cannot be true.
+
+Amendment 176 adds sub-steps 10d.59 to 10d.67, taking step 10d from 58 to
+67. All nine are client-code carriers in IntelliBooks-Desktop-v3.html that
+no earlier sub-step and no version of the Desktop work plan named. Two would
+have broken the flip: the Review folder read, which is the Desktop half of
+10d.54 and was missing, and the resolution note's client_code, which is
+section 12's contract. They were found by enumerating every .code
+occurrence and tagging each with its enclosing function, because the file
+uses .code for both a client and a four-digit chart account: 65 of the 100
+are chart accounts and must not move.
+
+Amendment 177 records Paul's two rulings of 2026-09-02. client_code goes
+completely and appears nowhere, so the Code field comes off the Edit Client
+window and 10e.4's wording is corrected rather than step 10d narrowed.
+deleteClient() asks the operator to type the business name.
+
+Amendments 178 and 179 close four field-list gaps found by building against
+section A rather than reading it: archived, created and
+statement_week_ending_day are added, and section A now states that a client
+has neither a status nor a mode.
+
+Four stale facts corrected, each struck rather than replaced. The pipeline
+brief gave HEAD as 10fd03fe and amendments 1 to 163; it is 2bfe47d and 1 to
+174. The Desktop brief gave its own file as 199,451 bytes and 3,307 lines;
+it was 200,847 and 3,320. The Desktop brief's line-number note opened by
+saying the numbers were refreshed once and contradicted itself two
+sentences later. And parseCSV() was cited at line 996, which is
+const chart=PENDING_CHART; the function is at 1298.
+
+Task 1 of the pipeline brief now names the starting state it will meet,
+enumerated by listing the root against git ls-files, and its stop rule is
+widened from any modified file to a modified .py, anything under the
+practice root, or anything unexpected. Task 1b is new and commits this
+documentation, so no separate commit brief is written for it.
+
+Files: 2026-07-25_CONSOLE_DESIGN.md,
+PROMPT_claude_code_2026-09-01_step10d_pipeline.md,
+PROMPT_intellibooks_2026-09-01_step10d_desktop.md,
+PROMPT_phoneapp_2026-09-01_step10d.md,
+2026-09-02_HANDOVER_consultant_chat_13.md,
+2026-09-02_REPORT_claude_code_commit_175.md
+```
+
+**Report the commit hash, then carry straight on to task 2 in the same sitting.** Do not stop to have this commit reviewed.
 
 Then confirm, and quote each:
 

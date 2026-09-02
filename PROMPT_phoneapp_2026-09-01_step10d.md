@@ -2,7 +2,7 @@
 
 **Written 2026-09-01 by the consultant session. Paste this whole file in.**
 
-**This is one of three briefs for step 10d.** The other two are `PROMPT_claude_code_2026-09-01_step10d_pipeline.md` and `PROMPT_intellibooks_2026-09-01_step10d_desktop.md`. **All three are written against the same field list, which is section A below, and section A is identical in all three.** If your copy of section A differs from either of theirs, stop: the three have drifted and the flip will not work.
+**This is one of three briefs for step 10d.** The other two are `PROMPT_claude_code_2026-09-01_step10d_pipeline.md` and `PROMPT_intellibooks_2026-09-01_step10d_desktop.md`. **All three are written against the same field list, which is section A below, and section A is identical in all three.** If your copy of section A differs from either of theirs, stop: the three have drifted and the flip will not work. **Measured by the rule at the head of section A it is 4,911 bytes, md5 `1e1b6949021b9e8db8b981e74c052bb5`, checked in all three on 2026-09-02.** ~~4,305 bytes, md5 `4674c1761d8b658b8f7c4a8b18552956`~~ **Superseded 2026-09-02 by amendment 179, which added `statement_week_ending_day`.** ~~3,513 bytes, md5 `8985b618449a110ff5d14286dd1712e6`~~ **Superseded 2026-09-02 by amendment 178, which added `archived` and `created` to the field list.**
 
 **The files.** Two, both under `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\PhoneApp\`:
 
@@ -19,6 +19,8 @@
 
 ## A. The field list. Identical in all three briefs
 
+**The boundary of this section, because a hash needs one.** Section A runs from the `## A.` line inclusive to the line immediately before the next `## B.` line, joined with a single newline character, with no trailing newline, UTF-8. **Hash it that way or the figure will not match.** The byte count and the md5 are stated in this document's preamble above and deliberately not in here, because a figure stated inside the thing it measures cannot be true.
+
 **One client file. `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\clients.json`.** Owned by Intellibills, read and written by both products. JSON, not CSV. **snake_case throughout.**
 
 | Field | Rule |
@@ -33,8 +35,11 @@
 | `partners` | Array |
 | `phv` | Array |
 | `vat`, `year_end`, `mtd`, `mtd_basis`, `balance_sheet` | The remaining book attributes, snake_case |
+| `archived` | Boolean. **Absent means active.** IntelliBooks sets it from **Archive** on the **Clients** tab. **Intellibills reads it: a receipt for an archived client is a Review item and is not filed, because an archived client's books are closed.** Added 2026-09-02 by amendment 178 |
+| `created` | The date the client record was created, `YYYY-MM-DD`. Display only, written by IntelliBooks, read by nothing else. Added 2026-09-02 by amendment 178 |
+| `statement_week_ending_day` | The day a weekly statement period ends. **The firm's, and the client cannot change it.** Shown read-only on the phone and carried in the setup link as `&wke=`. Row C6, sub-step 10d.49. **It exists only on the phone today**, at `index.html:244`, where the firm can neither read it, restore it nor know it changed. Added 2026-09-02 by amendment 179 |
 
-**There is no `client_code`. Not in the file, not on any table, not in any payload.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
+**There is no `client_code`. Not in the file, not on any table, not in any payload.** **Paul's ruling of 2026-09-02, in his words: it must go completely and is not to be seen anywhere.** **And there is no `status` on a client either. Added 2026-09-02 by amendment 178: `status` on this project means a chart account or a transaction and never a client, so a `status` written onto a client record would be read by nothing.** **And no `mode`. Added 2026-09-02 by amendment 179: confirm mode is the client's alone and off by default, sub-step 10d.48, and the client turns it on in the phone's own settings, so the firm neither holds it nor sends it.** **That covers folder names, filenames and the contents of files any of the three products writes, not only database columns and payload keys. Each brief names its own instances.**
 
 **The five clients, and nothing is carried across.** Sub-step 10d.2, on Paul's decision of 2026-08-21, amendment 139. Created fresh:
 
@@ -240,6 +245,6 @@ Write a report at `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intell
 
 **Were my line numbers right?** Section C's four, and the eight occurrences of the three controls in task 2. I read every one of them, but the files may have moved since 2026-09-01.
 
-**What is `RECEIPTS_ROOT` set to?** The default in `upload.js` line 56 is `"IntelliBooks/Receipt Inbox"` and the pipeline reads `Intellibills\Receipt Inbox`. **Receipts have been arriving, so the deployment must be overriding it, and nothing on file records what to.**
+**What is `RECEIPTS_ROOT` set to?** The default in `upload.js` line 56 is `"IntelliBooks/Receipt Inbox"` and the pipeline reads `Intellibills\Receipt Inbox`. **Receipts have been arriving, so the deployment must be overriding it, and nothing on file records what to.** **Answered by Paul, 2026-09-02: `IntelliBills/Receipt Inbox`.** ~~nothing on file records what to~~ **Recorded as he wrote it, and one thing flagged rather than corrected: he capitalised the B and the folder on disk is `Intellibills`.** OneDrive resolves a path case-insensitively so it works either way, and the live environment variable is not changed here on the strength of a chat message. **Read the value off Netlify and quote it before relying on it.**
 
 **And the token in the URL.** The setup link carries the credential as a query parameter, so it sits in browser history, in whatever the client pastes it into, and in any log that records URLs. **That is true of the shared key today, so it is not made worse by this change, but it is now a per-client credential and worth Paul seeing stated once.** I have not designed a way round it and am not proposing one here.

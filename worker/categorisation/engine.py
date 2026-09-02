@@ -416,11 +416,23 @@ Return the best matching GL code and name."""
         # Update firm lookup (only if no conflict)
         existing_firm = self.repo.get_firm_vendor(business_type, vendor_key)
         if existing_firm is None:
-            # First time for this vendor in this business type
+            # First time for this vendor in this business type.
+            #
+            # 10d.39. The firm is resolved from the client_id this method already
+            # receives, rather than added as a parameter, which is what keeps
+            # categorise()'s five production call sites untouched. It is written
+            # and never read: the unique key does not change and the learned pool
+            # stays shared.
+            #
+            # It reads config.CLIENTS_BY_ID rather than being told, because after
+            # 10d.19 the client loader refuses a record with no firm, so a client
+            # that resolves at all has a firm. None where it does not resolve,
+            # and a null provenance is honest where an invented one is not.
+            firm_id = (config.CLIENTS_BY_ID.get(client_id) or {}).get("firm_id")
             self.repo.upsert_firm_vendor(
-                business_type=business_type, vendor_key=vendor_key,
+                business_type=business_type, vendor_code=vendor_key,
                 nominal_code=nominal_code, account_name=account_name,
-                last_updated=now
+                last_updated=now, firm_id=firm_id
             )
         elif existing_firm["nominal_code"] == nominal_code:
             # Consistent correction, increment counter

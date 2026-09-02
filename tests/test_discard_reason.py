@@ -57,34 +57,10 @@ class DiscardReasonTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_the_column_exists_on_an_older_database(self):
-        # The PRAGMA table_info guard pattern, exercised: build the table without
-        # the column, then let init_db() add it.
-        with TempEnvironment() as env:
-            import sqlite3
-            conn = sqlite3.connect(config.DB_PATH)
-            conn.executescript("""
-                CREATE TABLE receipts (receipt_id TEXT PRIMARY KEY, firm_id TEXT,
-                    client_id TEXT, message_id TEXT, filename TEXT, file_path TEXT,
-                    file_hash TEXT, status TEXT, created_at TEXT);
-                CREATE TABLE resolution_events (
-                    event_id TEXT PRIMARY KEY, receipt_id TEXT NOT NULL,
-                    extraction_id TEXT, actor TEXT NOT NULL, source TEXT NOT NULL,
-                    action TEXT NOT NULL, corrections_json TEXT, gl_override_code TEXT,
-                    outcome TEXT NOT NULL, created_at TEXT NOT NULL);
-            """)
-            conn.commit()
-            conn.close()
-
-            repo = Repository()  # runs init_db()
-            try:
-                cols = [
-                    r[1] for r in
-                    repo._conn.execute("PRAGMA table_info(resolution_events)").fetchall()
-                ]
-                self.assertIn("reason", cols)
-            finally:
-                repo.close()
+    # test_the_column_exists_on_an_older_database() was deleted at sub-step
+    # 10d.34, with the eleven ALTER TABLE ADD COLUMN migrations it exercised. It
+    # built resolution_events without `reason` and proved init_db() added it.
+    # The column is now in the CREATE TABLE, which is the only definition.
 
 
 if __name__ == "__main__":

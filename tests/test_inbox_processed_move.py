@@ -62,7 +62,13 @@ class InboxProcessedMoveTest(unittest.TestCase):
             repo.close()
 
     def _drop_receipt(self, env, name="TEST_receipt.png", sidecar_text=None):
-        inbox = env.inbox_dir("ABC")
+        # 10d.11: the client comes out of the sidecar, so a file dropped with no
+        # sidecar has no client and is a Review item whatever the extraction
+        # says. Every case here except the explicit no-sidecar one gets a
+        # sidecar naming the fixture's client.
+        if sidecar_text is None:
+            sidecar_text = '{"client_id": "CLIENT001", "source": "phone"}'
+        inbox = env.inbox_dir("CLIENT001")
         original = inbox / name
         original.write_text("dummy image bytes", encoding="utf-8")
         sidecar = None
@@ -145,7 +151,7 @@ class InboxProcessedMoveTest(unittest.TestCase):
             inbox, original, sidecar = self._drop_receipt(
                 env,
                 name="TEST_with_sidecar.png",
-                sidecar_text='{"supplier_name": "Apcoa Parking"}',
+                sidecar_text='{"client_id": "CLIENT001", "source": "phone", "supplier_name": "Apcoa Parking"}',
             )
             self.assertTrue(sidecar.exists())
 

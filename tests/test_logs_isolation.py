@@ -95,6 +95,13 @@ PROCESS_ONCE_WRITES = (
     "PIPELINE_STATUS_PATH",
     "BACKUPS_ROOT",
     "RESOLUTIONS_DIR",
+    # Not a write. Added at sub-step 10d.35, which makes process_once() re-read
+    # clients.json whenever its modification time moves: a module that does not
+    # pin CLIENTS_JSON runs against the live registry, and against whatever
+    # IntelliBooks Desktop happened to save while the suite was running. Pinning
+    # it means setting config._CLIENTS_MTIME to match, which every environment
+    # here does on the next line.
+    "CLIENTS_JSON",
 )
 
 

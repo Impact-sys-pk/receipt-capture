@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "firms": [
+    {
+      "firm_id": "FIRM001",
+      "name": "Intellitax",
+      "email": "bills@intellitax.co.uk",
+      "phone_app_url": "https://intellitax-receipts.netlify.app"
+    }
+  ]
+}

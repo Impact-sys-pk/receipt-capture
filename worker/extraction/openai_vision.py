@@ -8,7 +8,7 @@ from openai import OpenAI
 
 import config
 from .base import BaseExtractor, ExtractionResult
-from .postprocess import apply_vat_inclusive_swap, resolve_invoice_date
+from .postprocess import establish_gross_from_vat, resolve_invoice_date
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,10 @@ class OpenAIVisionExtractor(BaseExtractor):
         # Post-processing is provider-independent and lives in postprocess.py, so
         # a second provider inherits it rather than silently losing it.
         # config.PREFER_DAYFIRST is read here, at call time, as it was before.
-        net, vat, gross, details = apply_vat_inclusive_swap(net, vat, gross, details)
+        net, vat, gross, details = establish_gross_from_vat(
+            net, vat, gross, details,
+            config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE,
+        )
         invoice_date, details = resolve_invoice_date(
             invoice_date, invoice_date_raw, details, config.PREFER_DAYFIRST
         )
@@ -121,7 +124,7 @@ class OpenAIVisionExtractor(BaseExtractor):
             vat_amount=vat,
             gross_amount=gross,
             details=details,
-            currency=parsed.get("currency", "GBP"),
+            currency=parsed.get("currency", config.DEFAULT_CURRENCY),
             raw_response=raw,
             engine="openai_vision",
             receipt_ref_number=parsed.get("receipt_ref_number"),

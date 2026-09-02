@@ -39,7 +39,6 @@ class SaveExtractionUpdateStatusTest(unittest.TestCase):
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
             client_id="CLIENT001",
-            client_code="ABC",
             source="email",
         )
         repo.update_receipt_status(receipt_id, status)

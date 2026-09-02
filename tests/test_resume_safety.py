@@ -33,7 +33,7 @@ class ResumeSafetyTest(unittest.TestCase):
 
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
             original_logs_dir = config.LOGS_DIR
             original_runs_log = config.RUNS_LOG
 
@@ -45,7 +45,18 @@ class ResumeSafetyTest(unittest.TestCase):
             config.LOGS_DIR = temp_path / "logs"
             config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-            config.CLIENTS_BY_CODE = {}
+            # 10d.13 and 10d.18. The recovery pass needs a real registry entry
+            # now: the folder under Clients comes off client_folder_name, and an
+            # unresolved client files nothing rather than getting a folder named
+            # from a lookup miss. test_an_unresolved_client_is_not_filed below is
+            # the other half of that.
+            config.CLIENTS_BY_ID = {
+                "CLIENT001": {
+                    "client_id": "CLIENT001", "client_name": "Test Client",
+                    "client_folder_name": "Test Client", "firm_id": "INTELLITAX",
+                    "trade": "UNSPECIFIED",
+                }
+            }
 
             try:
                 repo = Repository()
@@ -64,7 +75,6 @@ class ResumeSafetyTest(unittest.TestCase):
                     file_hash="hash1",
                     firm_id="INTELLITAX",
                     client_id="CLIENT001",
-                    client_code="UNKNOWN",
                     source="email",
                 )
 
@@ -104,7 +114,7 @@ class ResumeSafetyTest(unittest.TestCase):
                     repo.close()
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
                 config.LOGS_DIR = original_logs_dir
                 config.RUNS_LOG = original_runs_log
 

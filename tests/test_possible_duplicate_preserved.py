@@ -32,7 +32,11 @@ class PreservePossibleDuplicateTest(unittest.TestCase):
     """4.3 step 6 as amended."""
 
     def _retry_candidates(self, repo):
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=60)
+        # 10d.28. locked_at is TEXT, so the stale-lock cutoff is an ISO string,
+        # which is what app.py:628 passes. A datetime here compared against a
+        # TEXT column through the deprecated sqlite3 adapter, in a different
+        # format from the one acquire_receipt_lock() writes.
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
         return [r["receipt_id"] for r in repo.find_failed_by_version(VERSION, cutoff)]
 
     def test_possible_duplicate_survives_a_still_invalid_correction(self):

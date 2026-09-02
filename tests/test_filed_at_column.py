@@ -113,44 +113,11 @@ class FiledAtColumnTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_existing_rows_are_not_back_filled(self):
-        # The migration path the live database will take: a receipt filed before
-        # the column existed keeps NULL rather than acquiring a plausible wrong
-        # date from a file mtime.
-        with TempEnvironment() as env:
-            repo = Repository()
-            try:
-                env.seed(repo, status="ok")
-            finally:
-                repo.close()
-
-            conn = sqlite3.connect(config.DB_PATH)
-            try:
-                try:
-                    conn.execute("ALTER TABLE receipts DROP COLUMN filed_at")
-                except sqlite3.OperationalError as exc:
-                    self.skipTest(f"this SQLite cannot DROP COLUMN: {exc}")
-                conn.execute(
-                    "UPDATE receipts SET filed_path = ? WHERE receipt_id = 'r-1'",
-                    (str(env.path / "filed-long-ago.pdf"),),
-                )
-                conn.commit()
-                self.assertNotIn(
-                    "filed_at", [r[1] for r in conn.execute("PRAGMA table_info(receipts)")]
-                )
-            finally:
-                conn.close()
-
-            init_db()
-
-            self.assertIn("filed_at", receipt_columns())
-            repo = Repository()
-            try:
-                receipt = repo.get_receipt("r-1")
-                self.assertIsNotNone(receipt["filed_path"], "still filed")
-                self.assertIsNone(receipt["filed_at"], "and honestly undated")
-            finally:
-                repo.close()
+    # test_existing_rows_are_not_back_filled() was deleted at sub-step 10d.34,
+    # with the eleven ALTER TABLE ADD COLUMN migrations it exercised. It built a
+    # database without filed_at and proved init_db() added it back. There is no
+    # migration path any more: 10d.22 rebuilds the tables from schema.py, so
+    # there is no older database for it to describe.
 
 
 if __name__ == "__main__":

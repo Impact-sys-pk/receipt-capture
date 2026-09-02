@@ -52,7 +52,7 @@ class VatSwapTest(unittest.TestCase):
         # After swap: gross should be 8.0 and net should be 6.67 (rounded)
         self.assertAlmostEqual(res.gross_amount, 8.00)
         self.assertAlmostEqual(res.net_amount, 6.67, places=2)
-        self.assertIn('auto_treated_amount_as_gross', res.details)
+        self.assertIn('treated_amount_as_gross', res.details)
 
     def test_negative_no_swap_real_net(self):
         extractor = OpenAIVisionExtractor()
@@ -70,7 +70,7 @@ class VatSwapTest(unittest.TestCase):
         extractor._client = SimpleNamespace(**{"chat": SimpleNamespace(**{"completions": SimpleNamespace(**{"create": lambda **kwargs: SimpleResponse(content)})})})
         res = extractor.extract(self.path, os.path.basename(self.path))
         # Should not perform the gross-as-net correction
-        self.assertNotIn('auto_treated_amount_as_gross', res.details or '')
+        self.assertNotIn('treated_amount_as_gross', res.details or '')
         # net should remain 100.0
         self.assertAlmostEqual(res.net_amount, 100.0)
 

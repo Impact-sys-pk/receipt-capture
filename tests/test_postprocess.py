@@ -15,10 +15,12 @@ import logging
 import subprocess
 import sys
 import unittest
+
+import config
 from pathlib import Path
 
 from worker.extraction.postprocess import (
-    apply_vat_inclusive_swap,
+    establish_gross_from_vat,
     parse_ambiguous_date,
     resolve_invoice_date,
 )
@@ -105,53 +107,81 @@ class IsoShapedRawTest(unittest.TestCase):
         self.assertIsNone(details)
 
 
-class VatInclusiveSwapTest(unittest.TestCase):
-    def test_swap_fires_when_the_amount_reads_as_gross(self):
-        # net=8.00 with vat=1.33 implies 16.6% on 8.00, but 20% on 6.67, so the
-        # 8.00 is really the gross.
-        net, vat, gross, details = apply_vat_inclusive_swap(8.0, 1.33, None, None)
+class EstablishGrossFromVatTest(unittest.TestCase):
+    def test_the_assumption_verifies_and_the_figure_is_the_gross(self):
+        # 10d.42. Assume 8.00 is the gross. The implied rate is then
+        # 1.33 / (8.00 - 1.33) = 19.94%, which is 20% within the rounding
+        # allowance, so the assumption verifies and is accepted.
+        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertAlmostEqual(gross, 8.00)
         self.assertAlmostEqual(net, 6.67, places=2)
         self.assertAlmostEqual(vat, 1.33)
-        self.assertIn("auto_treated_amount_as_gross", details)
-        # 1.33 / (8.00 - 1.33) = 0.1994, formatted to three places.
-        self.assertIn("implied_rate=0.199", details)
+        self.assertIn("treated_amount_as_gross", details)
+        self.assertIn("implied_rate=19.9%", details)
 
-    def test_swap_does_not_fire_on_a_genuine_net_reading(self):
-        net, vat, gross, details = apply_vat_inclusive_swap(100.0, 20.0, None, None)
+    def test_an_unrecognised_implied_rate_changes_nothing_and_says_the_percentage(self):
+        # 100.00 with 20.00 of VAT implies 20 / 80 = 25%, which is no rate 18.4
+        # knows. 10d.42: change nothing, and put the implied percentage in the
+        # note so a person can see what the figures actually said.
+        net, vat, gross, details = establish_gross_from_vat(100.0, 20.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertEqual(net, 100.0)
         self.assertEqual(vat, 20.0)
         self.assertIsNone(gross)
-        self.assertIsNone(details)
+        self.assertIn("gross_not_established", details)
+        self.assertIn("implied_rate=25.0%", details)
+
+    def test_the_rounding_allowance_is_not_a_window(self):
+        # The old code used a 0.03 tolerance, which is three percentage points,
+        # so an implied 17% or 23% was accepted as 20%. Both must now be refused.
+        for amount, vat_figure in ((117.0, 17.0), (123.0, 23.0)):
+            with self.subTest(amount=amount):
+                _, _, gross, details = establish_gross_from_vat(
+                    amount, vat_figure, None, None,
+                    config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+                self.assertIsNone(gross)
+                self.assertIn("gross_not_established", details)
+
+    def test_vat_not_less_than_the_amount_changes_nothing(self):
+        # The assumption cannot even be stated: there is no net to imply a rate
+        # against. Change nothing, and say which case it was.
+        net, vat, gross, details = establish_gross_from_vat(5.0, 5.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        self.assertEqual((net, vat, gross), (5.0, 5.0, None))
+        self.assertIn("vat_not_less_than_amount", details)
 
     def test_note_is_appended_to_existing_details_not_replacing_them(self):
-        _, _, _, details = apply_vat_inclusive_swap(8.0, 1.33, None, "model said something")
+        _, _, _, details = establish_gross_from_vat(8.0, 1.33, None, "model said something", config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertTrue(details.startswith("model said something; "))
-        self.assertIn("auto_treated_amount_as_gross", details)
+        self.assertIn("treated_amount_as_gross", details)
 
     def test_untouched_when_gross_is_already_present(self):
-        net, vat, gross, details = apply_vat_inclusive_swap(8.0, 1.33, 9.33, None)
+        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, 9.33, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertEqual((net, vat, gross, details), (8.0, 1.33, 9.33, None))
 
     def test_untouched_when_net_or_vat_is_missing(self):
-        self.assertEqual(apply_vat_inclusive_swap(None, 1.33, None, None), (None, 1.33, None, None))
-        self.assertEqual(apply_vat_inclusive_swap(8.0, None, None, None), (8.0, None, None, None))
+        self.assertEqual(establish_gross_from_vat(None, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE), (None, 1.33, None, None))
+        self.assertEqual(establish_gross_from_vat(8.0, None, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE), (8.0, None, None, None))
 
     def test_non_numeric_values_are_left_alone_rather_than_raising(self):
         # The broad except is load-bearing: a coercion failure must leave the
         # values untouched, not fail the extraction.
         self.assertEqual(
-            apply_vat_inclusive_swap("eight", "one", None, None),
+            establish_gross_from_vat("eight", "one", None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE),
             ("eight", "one", None, None),
         )
 
-    def test_reduced_rate_also_triggers_the_swap(self):
-        net, vat, gross, details = apply_vat_inclusive_swap(105.0, 5.0, None, None)
-        # 5/105 = 0.048 and 5/100 = 0.05, both inside the 0.03 tolerance of the
-        # 5% rate, so the reading is ambiguous and nothing is swapped.
-        self.assertEqual(net, 105.0)
-        self.assertIsNone(gross)
-        self.assertIsNone(details)
+    def test_the_reduced_rate_verifies_too(self):
+        # 105.00 with 5.00 of VAT. Assume 105.00 is the gross: 5 / 100 is exactly
+        # 5%, which 18.4 recognises, so it verifies.
+        #
+        # This changed at 10d.42 and the change is the point of the sub-step. The
+        # old code asked whether the figure looked like a gross AND did not look
+        # like a net, and 5/105 = 4.76% was inside its three-point tolerance of
+        # 5% as well, so it called the reading ambiguous and did nothing.
+        # Assume-and-verify has no second test to fail.
+        net, vat, gross, details = establish_gross_from_vat(105.0, 5.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        self.assertAlmostEqual(gross, 105.0)
+        self.assertAlmostEqual(net, 100.0)
+        self.assertIn("implied_rate=5.0%", details)
 
 
 class ResolveInvoiceDateTest(unittest.TestCase):
@@ -255,15 +285,15 @@ class SilentHandlerTest(unittest.TestCase):
     def test_happy_path_logs_nothing(self):
         logger = logging.getLogger("worker.extraction.postprocess")
         with self.assertNoLogs(logger, level="DEBUG"):
-            apply_vat_inclusive_swap(8.0, 1.33, None, None)
-            apply_vat_inclusive_swap(100.0, 20.0, None, None)
+            establish_gross_from_vat(8.0, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+            establish_gross_from_vat(100.0, 20.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
             resolve_invoice_date("2026-09-05", "09/05/26", None, True)
             resolve_invoice_date("2026-09-05", None, None, True)
             parse_ambiguous_date("09/05/26", True)
 
     def test_vat_swap_warns_once_when_coercion_fails(self):
         with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
-            net, vat, gross, details = apply_vat_inclusive_swap("eight", "one", None, None)
+            net, vat, gross, details = establish_gross_from_vat("eight", "one", None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
         # Still leaves the values untouched rather than failing the extraction.
         self.assertEqual((net, vat, gross, details), ("eight", "one", None, None))
         self.assertEqual(len(logs.records), 1)
@@ -287,7 +317,7 @@ class SilentHandlerTest(unittest.TestCase):
         # A receipt is client data. The exception and the field being processed
         # belong in the log; the payload does not.
         with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
-            apply_vat_inclusive_swap("eight", "one", None, "supplier prose from the receipt")
+            establish_gross_from_vat("eight", "one", None, "supplier prose from the receipt", config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertNotIn("supplier prose from the receipt", logs.output[0])
 
 

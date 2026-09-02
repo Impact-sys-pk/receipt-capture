@@ -46,7 +46,14 @@ class TempEnvironment:
         self._saved = {
             "DB_PATH": config.DB_PATH,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
-            "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
+            # 10d.35 re-reads the registry at the top of every poll. Pinned at a
+            # path that does not exist, with the remembered mtime set to match, so
+            # the re-read sees no change and leaves the registry this fixture
+            # built. Without it a test would silently run against the live
+            # clients.json the moment somebody saved it.
+            "CLIENTS_JSON": config.CLIENTS_JSON,
+            "_CLIENTS_MTIME": config._CLIENTS_MTIME,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "REVIEW_ROOT": config.REVIEW_ROOT,
@@ -63,9 +70,13 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        config.CLIENTS_BY_CODE = {
-            "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"},
-            "XYZ": {"client_name": "Other Client", "business_type": "UNSPECIFIED"},
+        config.CLIENTS_JSON = self.path / "clients-not-placed.json"
+        config._CLIENTS_MTIME = config._registry_mtime()
+        config.CLIENTS_BY_ID = {
+            "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"},
+            "CLIENT_OTHER": {"client_name": "Other Client", "client_folder_name": "Other Client",
+                             "client_id": "CLIENT_OTHER", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"},
         }
         return self
 
@@ -77,28 +88,28 @@ class TempEnvironment:
 
     @property
     def review_dir(self):
-        return config.REVIEW_ROOT / "ABC"
+        return config.REVIEW_ROOT / "CLIENT001"
 
     def source_file(self, name):
         path = self.path / name
         path.write_text("dummy", encoding="utf-8")
         return path
 
-    def write_pair(self, client_code, receipt_id, original_filename, extra=None):
+    def write_pair(self, client_id, receipt_id, original_filename, extra=None):
         """Write a Review pair through the real writer, so _unique_path applies."""
         extracted = {"receipt_id": receipt_id, "original_filename": original_filename}
         if extra is not None:
             extracted = extra
         return file_review(
             self.source_file(original_filename),
-            client_code,
+            client_id,
             original_filename,
             "needs_review",
             ["missing gross_amount"],
             extracted,
         )
 
-    def seed_receipt(self, receipt_id, filename="receipt.pdf", client_code="ABC", **extraction):
+    def seed_receipt(self, receipt_id, filename="receipt.pdf", client_id="CLIENT001", **extraction):
         file_path = self.path / f"src-{receipt_id}.pdf"
         file_path.write_text("dummy", encoding="utf-8")
         repo = Repository()
@@ -114,7 +125,6 @@ class TempEnvironment:
                 file_hash=f"hash-{receipt_id}",
                 firm_id="INTELLITAX",
                 client_id="CLIENT001",
-                client_code=client_code,
                 source="email",
             )
             defaults = dict(
@@ -147,10 +157,10 @@ def run_cli(argv):
 class RemoveReviewPairTest(unittest.TestCase):
     def test_removes_both_files_and_leaves_the_folder_empty(self):
         with TempEnvironment() as env:
-            image, sidecar = env.write_pair("ABC", "r-1", "parking.pdf")
+            image, sidecar = env.write_pair("CLIENT001", "r-1", "parking.pdf")
             self.assertTrue(image.exists() and sidecar.exists())
 
-            removed = remove_review_pair("r-1", "ABC", "parking.pdf")
+            removed = remove_review_pair("r-1", "CLIENT001", "parking.pdf")
 
             self.assertEqual(removed, 2)
             self.assertFalse(image.exists())
@@ -161,13 +171,13 @@ class RemoveReviewPairTest(unittest.TestCase):
         # _unique_path() writes the second item as parking-2.pdf. Reconstructing
         # {stem}{ext} would delete the first receipt's pair instead of this one.
         with TempEnvironment() as env:
-            first_image, first_sidecar = env.write_pair("ABC", "r-first", "parking.pdf")
-            second_image, second_sidecar = env.write_pair("ABC", "r-second", "parking.pdf")
+            first_image, first_sidecar = env.write_pair("CLIENT001", "r-first", "parking.pdf")
+            second_image, second_sidecar = env.write_pair("CLIENT001", "r-second", "parking.pdf")
 
             self.assertEqual(first_image.name, "parking.pdf")
             self.assertEqual(second_image.name, "parking-2.pdf")
 
-            removed = remove_review_pair("r-second", "ABC", "parking.pdf")
+            removed = remove_review_pair("r-second", "CLIENT001", "parking.pdf")
 
             self.assertEqual(removed, 2)
             self.assertFalse(second_image.exists())
@@ -177,7 +187,7 @@ class RemoveReviewPairTest(unittest.TestCase):
 
     def test_missing_pair_returns_zero_and_does_not_raise(self):
         with TempEnvironment():
-            self.assertEqual(remove_review_pair("r-never-existed", "ABC", "gone.pdf"), 0)
+            self.assertEqual(remove_review_pair("r-never-existed", "CLIENT001", "gone.pdf"), 0)
 
     def test_review_folder_that_does_not_exist_returns_zero(self):
         with TempEnvironment():
@@ -188,11 +198,11 @@ class RemoveReviewPairTest(unittest.TestCase):
         # so that payload has no receipt_id and no receipt row exists.
         with TempEnvironment() as env:
             image, sidecar = env.write_pair(
-                "ABC", "unused", "uber-statement.csv",
+                "CLIENT001", "unused", "uber-statement.csv",
                 extra={"type": "statement", "platform": "uber"},
             )
 
-            removed = remove_review_pair("r-unrelated", "ABC", "uber-statement.csv")
+            removed = remove_review_pair("r-unrelated", "CLIENT001", "uber-statement.csv")
 
             self.assertEqual(removed, 0)
             self.assertTrue(image.exists())
@@ -202,29 +212,29 @@ class RemoveReviewPairTest(unittest.TestCase):
         # The receipt was reassigned to another client after the review item was
         # written. Matching on a UUID is exact, so the scan is safe.
         with TempEnvironment() as env:
-            image, sidecar = env.write_pair("XYZ", "r-moved", "parking.pdf")
+            image, sidecar = env.write_pair("CLIENT_OTHER", "r-moved", "parking.pdf")
 
             with self.assertLogs("worker.filing", level="WARNING") as logs:
-                removed = remove_review_pair("r-moved", "ABC", "parking.pdf")
+                removed = remove_review_pair("r-moved", "CLIENT001", "parking.pdf")
 
             self.assertEqual(removed, 2)
             self.assertFalse(image.exists())
             self.assertFalse(sidecar.exists())
             joined = "\n".join(logs.output)
-            self.assertIn("XYZ", joined)
-            self.assertIn("ABC", joined)
+            self.assertIn("CLIENT_OTHER", joined)
+            self.assertIn("CLIENT001", joined)
 
     def test_file_review_writes_receipt_id_at_the_top_level(self):
         # Forward-only, so a future reader need not reach into extracted_values.
         with TempEnvironment() as env:
-            _, sidecar = env.write_pair("ABC", "r-top-level", "parking.pdf")
+            _, sidecar = env.write_pair("CLIENT001", "r-top-level", "parking.pdf")
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["receipt_id"], "r-top-level")
 
     def test_a_statement_sidecar_gets_no_receipt_id_key(self):
         with TempEnvironment() as env:
             _, sidecar = env.write_pair(
-                "ABC", "unused", "uber-statement.csv",
+                "CLIENT001", "unused", "uber-statement.csv",
                 extra={"type": "statement"},
             )
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -235,7 +245,7 @@ class ResolveRemovesReviewPairTest(unittest.TestCase):
     def test_successful_resolve_removes_the_pair(self):
         with TempEnvironment() as env:
             env.seed_receipt("r-resolve", filename="parking.pdf")
-            image, sidecar = env.write_pair("ABC", "r-resolve", "parking.pdf")
+            image, sidecar = env.write_pair("CLIENT001", "r-resolve", "parking.pdf")
 
             exit_code, out = run_cli([
                 "r-resolve", "--supplier", "Apcoa Parking", "--gross", "12.00",
@@ -252,7 +262,7 @@ class ResolveRemovesReviewPairTest(unittest.TestCase):
                 validation_status="possible_duplicate",
                 gross_amount=12.0,
             )
-            image, sidecar = env.write_pair("ABC", "r-discard", "parking.pdf")
+            image, sidecar = env.write_pair("CLIENT001", "r-discard", "parking.pdf")
 
             exit_code, out = run_cli(["r-discard", "--duplicate-decision", "discard"])
 
@@ -264,7 +274,7 @@ class ResolveRemovesReviewPairTest(unittest.TestCase):
         # That receipt still needs review, so its pair must stay on disk.
         with TempEnvironment() as env:
             env.seed_receipt("r-still-invalid", filename="parking.pdf", validation_status="failed")
-            image, sidecar = env.write_pair("ABC", "r-still-invalid", "parking.pdf")
+            image, sidecar = env.write_pair("CLIENT001", "r-still-invalid", "parking.pdf")
 
             exit_code, out = run_cli(["r-still-invalid", "--supplier", "Apcoa Parking"])
 

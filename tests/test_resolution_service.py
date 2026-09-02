@@ -46,7 +46,14 @@ class TempEnvironment:
         self._saved = {
             "DB_PATH": config.DB_PATH,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
-            "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
+            # 10d.35 re-reads the registry at the top of every poll. Pinned at a
+            # path that does not exist, with the remembered mtime set to match, so
+            # the re-read sees no change and leaves the registry this fixture
+            # built. Without it a test would silently run against the live
+            # clients.json the moment somebody saved it.
+            "CLIENTS_JSON": config.CLIENTS_JSON,
+            "_CLIENTS_MTIME": config._CLIENTS_MTIME,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
         }
@@ -56,8 +63,11 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        config.CLIENTS_BY_CODE = {
-            "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
+        config.CLIENTS_JSON = self.path / "clients-not-placed.json"
+        config._CLIENTS_MTIME = config._registry_mtime()
+        config.CLIENTS_BY_ID = {
+            "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
         }
         return self
 
@@ -81,7 +91,6 @@ class TempEnvironment:
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
             client_id="CLIENT001",
-            client_code="ABC",
             source="email",
         )
         defaults = dict(
@@ -268,7 +277,8 @@ class NotFoundTest(unittest.TestCase):
                 repo.save_receipt(
                     receipt_id="r-bare", message_id="m", email_subject=None,
                     email_from=None, email_received_at=None, filename="bare.pdf",
-                    file_path=file_path, file_hash="h", client_code="ABC",
+                    file_path=file_path, file_hash="h",
+                    firm_id="INTELLITAX", client_id="CLIENT001", source="email",
                 )
                 outcome = resolve_receipt(
                     repo, env.engine(repo), "r-bare", _good_corrections(),

@@ -2,13 +2,17 @@
 
 Design document 10.2. This logic lived inside `OpenAIVisionExtractor.extract()`,
 so a second provider would silently not inherit any of it and both the day-first
-date fix and the VAT-inclusive-total fix would stop applying the moment the
+date fix and the gross-figure fix would stop applying the moment the
 engine changed. Neither is provider-specific and both cost real debugging.
 
 A pure move: the behaviour here is byte-for-byte the behaviour that was in
 `openai_vision.py`, with one deliberate difference. `prefer_dayfirst` is a
 parameter rather than a read of `config.PREFER_DAYFIRST` inside the function, so
-these functions are testable without patching module state. The caller passes
+these functions are testable without patching module state. The same reasoning
+gives establish_gross_from_vat() its `recognised_rates` and `rate_allowance`
+parameters: design document 18.4's rate vocabulary lives in config.VAT_RATES and
+is read by the caller, not by this module, which imports config nowhere and must
+keep it that way. The caller passes
 `config.PREFER_DAYFIRST`, read at call time, so behaviour is identical.
 
 No `ExtractionResult`, no provider client, and no logging of document content.
@@ -56,12 +60,28 @@ def parse_ambiguous_date(raw: str, prefer_dayfirst: bool) -> str | None:
         a, b, c = [int(p) for p in parts]
     except Exception:
         return None
-    # Normalize year
+
+    # Normalise the year. Sub-step 10d.41, findings 3 and 4 of design document
+    # 10.2, which step 6b did not take.
+    #
+    # A two-digit year is still 2000 + c, so 26 is 2026. Where that lands in the
+    # future the date is treated as unreadable and this returns None, so
+    # 01/01/99 is no longer read as 2099 and filed.
+    #
+    # There is deliberately NO century pivot. A cutoff tight enough to turn 99
+    # into 1999 turns 28 into 1928, so the system would be choosing between 1928
+    # and 2028 on its own. CLAUDE.md's closing rule governs: if something is
+    # uncertain, mark it for review and do not guess.
+    #
+    # The `elif c < 1000` branch is deleted. It had an identical body to the one
+    # above it and a comment claiming "treat as 2000s" while 2000 + 999 is 2999.
+    # A three-digit year is a misread, not a year.
     if c < 100:
         year = 2000 + c
+        if year > date.today().year:
+            return None
     elif c < 1000:
-        # unlikely, treat as 2000s
-        year = 2000 + c
+        return None
     else:
         year = c
 
@@ -85,13 +105,46 @@ def parse_ambiguous_date(raw: str, prefer_dayfirst: bool) -> str | None:
         return None
 
 
-def apply_vat_inclusive_swap(net, vat, gross, details):
-    """Treat an amount read as net as the gross where the VAT rate says so.
+def establish_gross_from_vat(net, vat, gross, details, recognised_rates, rate_allowance):
+    """Which of the two figures on a receipt is the gross. Sub-step 10d.42.
 
-    Fires only when there is no gross and both net and VAT are present. If the
-    implied rate matches a common VAT rate when the amount is treated as gross,
-    and does not when it is treated as net, the amount is the gross. Records the
-    correction in `details`.
+    Nothing here is a VAT question and the naming no longer says it is. The
+    function was called apply_vat_inclusive_swap(), which described a mechanism
+    rather than a subject: the VAT figure is the evidence, and the gross is what
+    is being established.
+
+    Fires only where a receipt yields a money figure and a VAT figure and no
+    gross. Assume, verify, and flag rather than guess:
+
+    - ASSUME the figure is the gross. Paul's observation is that a receipt
+      showing two numbers always shows gross and VAT.
+    - VERIFY. The implied rate is the VAT divided by the figure less the VAT, and
+      it must come out at a recognised rate within a rounding allowance only,
+      which is a fraction of a percentage point.
+    - If it verifies, ACCEPT: gross is the figure, net is the figure less the VAT.
+    - If it does not verify, CHANGE NOTHING and route to Review, with the implied
+      percentage in the note.
+
+    Three things this deliberately is not.
+
+    It is not gated on the client's VAT registration. A non-registered client's
+    expense IS the gross, so getting this wrong overstates their profit and loss
+    by the VAT, which makes it matter more for them and not less.
+
+    There is no per-rate window and no minimum receipt size. Both were designed
+    and then made unnecessary by the assume-and-verify shape.
+
+    And the recognised rates come from design document 18.4's vocabulary rather
+    than from a literal list here. The old code had `common_rates = [0.2, 0.05]`
+    and a `rate_tol = 0.03`, which is three percentage points: it would have
+    accepted an implied 17% or 23% as 20%.
+
+    `recognised_rates` and `rate_allowance` are parameters for the same reason
+    `prefer_dayfirst` is one, stated at the top of this module: this module
+    imports config nowhere, so it needs neither the openai package nor a
+    populated .env, and tests/test_postprocess.py proves that in a subprocess.
+    The caller passes config.VAT_RATES_IMPLIABLE and
+    config.VAT_RATE_ROUNDING_ALLOWANCE, read at call time.
 
     Returns (net, vat, gross, details).
     """
@@ -100,38 +153,38 @@ def apply_vat_inclusive_swap(net, vat, gross, details):
             # numeric coercion
             n = float(net)
             v = float(vat)
-            implied_rate_net = None
-            implied_rate_gross = None
-            if n > 0:
-                implied_rate_net = v / n
-            if (n - v) > 0:
-                implied_rate_gross = v / (n - v)
 
-            # Common VAT rates to check against (20%, 5%)
-            common_rates = [0.2, 0.05]
-            # Tolerances
-            rate_tol = 0.03
+            # The assumption: the figure is the gross. So the net is the figure
+            # less the VAT, and that is what the rate is measured against.
+            if (n - v) <= 0:
+                # Not a gross and a VAT: the VAT is the whole figure or more.
+                # Change nothing, and say why, so it reaches a person.
+                note = f"gross_not_established(vat_not_less_than_amount, amount={n:.2f}, vat={v:.2f})"
+                details = f"{details}; {note}" if details else note
+                return net, vat, gross, details
 
-            match_gross_rate = any(abs(implied_rate_gross - r) <= rate_tol for r in common_rates) if implied_rate_gross is not None else False
-            match_net_rate = any(abs(implied_rate_net - r) <= rate_tol for r in common_rates) if implied_rate_net is not None else False
+            implied_rate = v / (n - v)
+            verified = any(
+                abs(implied_rate - rate) <= rate_allowance
+                for rate in recognised_rates
+            )
 
-            # If treating the extracted `net` as gross makes the implied rate match common VAT rates
-            # while treating it as net does not, then swap: treat net as gross
-            if match_gross_rate and not match_net_rate:
+            if verified:
                 gross = round(n, 2)
                 net = round(gross - v, 2)
-                # annotate details to record the automatic correction
-                note = f"auto_treated_amount_as_gross(implied_rate={implied_rate_gross:.3f})"
-                if details:
-                    details = f"{details}; {note}"
-                else:
-                    details = note
+                note = f"treated_amount_as_gross(implied_rate={implied_rate * 100:.1f}%)"
+            else:
+                # Change nothing. The note carries the implied percentage, which
+                # is the one thing a person needs to decide what the figure was.
+                note = f"gross_not_established(implied_rate={implied_rate * 100:.1f}%)"
+
+            details = f"{details}; {note}" if details else note
     except Exception:
         # If any numeric coercion fails, leave values unchanged. Logged rather
         # than swallowed: a genuine error here otherwise looks exactly like a
         # receipt that needed no correction. The values themselves are not
         # logged; a receipt is client data.
-        logger.warning("vat-inclusive swap skipped, could not process the amounts", exc_info=True)
+        logger.warning("gross could not be established, could not process the amounts", exc_info=True)
 
     return net, vat, gross, details
 
@@ -167,6 +220,10 @@ def resolve_invoice_date(invoice_date, invoice_date_raw, details, prefer_dayfirs
         # date looks like: it is the only signal that the deterministic path did
         # not run, and saying "no raw" here would name the wrong cause. The date
         # is left exactly as the model gave it, as in the branch below.
+        # This is also where 10d.41's rejection lands: a two-digit year that
+        # resolves into the future, and a three-digit year, both make
+        # parse_ambiguous_date() return None, so the raw string is reported as
+        # unreadable and the model's own date is left exactly as it gave it.
         if invoice_date_raw and not parsed_from_raw:
             note = (
                 f"ambiguous_invoice_date_unparsed_raw(raw={invoice_date_raw}, "

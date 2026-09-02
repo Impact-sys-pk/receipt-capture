@@ -60,7 +60,6 @@ class AutoRetryNoLoopTest(unittest.TestCase):
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
             client_id="CLIENT001",
-            client_code="ABC",
             source="email",
         )
         repo.save_extraction(
@@ -110,7 +109,10 @@ class AutoRetryNoLoopTest(unittest.TestCase):
             "DB_PATH": temp_path / "receipts.db",
             "CLIENTS_ROOT": temp_path / "Clients",
             "LOGS_DIR": temp_path / "logs",
-            "CLIENTS_BY_CODE": {"ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}},
+            "CLIENTS_BY_ID": {"CLIENT001": {"client_name": "Test Client",
+                                        "client_folder_name": "Test Client",
+                                        "client_id": "CLIENT001", "firm_id": "INTELLITAX",
+                                        "trade": "UNSPECIFIED"}},
         }
 
     def test_extraction_error_is_recorded_so_the_receipt_is_not_retried_next_poll(self):

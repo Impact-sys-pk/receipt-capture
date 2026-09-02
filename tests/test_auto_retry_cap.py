@@ -37,7 +37,7 @@ class FakeExtractor:
 
 
 class AutoRetryCapTest(unittest.TestCase):
-    def _make_stuck_receipt(self, repo, temp_path, receipt_id, age_days, client_code):
+    def _make_stuck_receipt(self, repo, temp_path, receipt_id, age_days, client_id):
         file_path = temp_path / f"{receipt_id}.pdf"
         file_path.write_text("dummy", encoding="utf-8")
 
@@ -52,7 +52,6 @@ class AutoRetryCapTest(unittest.TestCase):
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
             client_id="CLIENT001",
-            client_code=client_code,
             source="email",
         )
         repo.save_extraction(
@@ -89,7 +88,7 @@ class AutoRetryCapTest(unittest.TestCase):
 
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
             original_logs_dir = config.LOGS_DIR
             original_runs_log = config.RUNS_LOG
 
@@ -101,8 +100,9 @@ class AutoRetryCapTest(unittest.TestCase):
             config.LOGS_DIR = temp_path / "logs"
             config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-            config.CLIENTS_BY_CODE = {
-                "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
+            config.CLIENTS_BY_ID = {
+                "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
             }
 
             repo = None
@@ -111,8 +111,8 @@ class AutoRetryCapTest(unittest.TestCase):
                 recent_id = "recent-receipt"
                 old_id = "old-receipt"
 
-                self._make_stuck_receipt(repo, temp_path, recent_id, age_days=6.9, client_code="ABC")
-                self._make_stuck_receipt(repo, temp_path, old_id, age_days=7.1, client_code="ABC")
+                self._make_stuck_receipt(repo, temp_path, recent_id, age_days=6.9, client_id="CLIENT001")
+                self._make_stuck_receipt(repo, temp_path, old_id, age_days=7.1, client_id="CLIENT001")
 
                 engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
                 stats = {}
@@ -149,7 +149,7 @@ class AutoRetryCapTest(unittest.TestCase):
                     repo.close()
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
                 config.LOGS_DIR = original_logs_dir
                 config.RUNS_LOG = original_runs_log
 
@@ -162,7 +162,7 @@ class AutoRetryCapTest(unittest.TestCase):
 
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
             original_logs_dir = config.LOGS_DIR
             original_runs_log = config.RUNS_LOG
 
@@ -174,15 +174,16 @@ class AutoRetryCapTest(unittest.TestCase):
             config.LOGS_DIR = temp_path / "logs"
             config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-            config.CLIENTS_BY_CODE = {
-                "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
+            config.CLIENTS_BY_ID = {
+                "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
             }
 
             repo = None
             try:
                 repo = Repository()
                 old_id = "old-receipt-2"
-                self._make_stuck_receipt(repo, temp_path, old_id, age_days=10, client_code="ABC")
+                self._make_stuck_receipt(repo, temp_path, old_id, age_days=10, client_id="CLIENT001")
 
                 engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
 
@@ -206,7 +207,7 @@ class AutoRetryCapTest(unittest.TestCase):
                     repo.close()
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
                 config.LOGS_DIR = original_logs_dir
                 config.RUNS_LOG = original_runs_log
 

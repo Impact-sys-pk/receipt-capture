@@ -30,7 +30,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
 
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
             original_review_root = config.REVIEW_ROOT
             original_logs_dir = config.LOGS_DIR
             original_runs_log = config.RUNS_LOG
@@ -48,8 +48,9 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
             config.LOGS_DIR = temp_path / "logs"
             config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-            config.CLIENTS_BY_CODE = {
-                "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
+            config.CLIENTS_BY_ID = {
+                "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
             }
 
             repo = None
@@ -70,7 +71,6 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                     file_hash="hash2",
                     firm_id="INTELLITAX",
                     client_id="CLIENT001",
-                    client_code="ABC",
                     source="email",
                 )
                 repo.save_extraction(
@@ -128,7 +128,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                     repo.close()
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
                 config.REVIEW_ROOT = original_review_root
                 config.LOGS_DIR = original_logs_dir
                 config.RUNS_LOG = original_runs_log
@@ -142,7 +142,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
 
             original_db = config.DB_PATH
             original_clients_root = config.CLIENTS_ROOT
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
             original_review_root = config.REVIEW_ROOT
             original_logs_dir = config.LOGS_DIR
             original_runs_log = config.RUNS_LOG
@@ -160,8 +160,9 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
             config.LOGS_DIR = temp_path / "logs"
             config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-            config.CLIENTS_BY_CODE = {
-                "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
+            config.CLIENTS_BY_ID = {
+                "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
             }
 
             repo = None
@@ -182,7 +183,6 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                     file_hash="hash3",
                     firm_id="INTELLITAX",
                     client_id="CLIENT001",
-                    client_code="ABC",
                     source="email",
                 )
                 repo.save_extraction(
@@ -246,7 +246,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                     repo.close()
                 config.DB_PATH = original_db
                 config.CLIENTS_ROOT = original_clients_root
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
                 config.REVIEW_ROOT = original_review_root
                 config.LOGS_DIR = original_logs_dir
                 config.RUNS_LOG = original_runs_log

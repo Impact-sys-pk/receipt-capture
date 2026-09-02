@@ -93,7 +93,7 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, client_id=No
     if duplicate_reason:
         entry["duplicate_reason"] = duplicate_reason
 
-    log_path = config.LOGS_DIR / f"receipt_events_{firm_id}.ndjson"
+    log_path = config.LOGS_DIR / f"receipt_events_{firm_id or config.UNATTRIBUTED_FIRM_ID}.ndjson"
     with log_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -103,9 +103,9 @@ def process_extraction_result(
     extraction,
     file_path: Path,
     filename: str,
-    client_code: str,
     firm_id: str,
     client_id: str,
+    source: str,
     message_id: str,
     attachment_id: str = None,
     file_hash: str = None,
@@ -125,6 +125,17 @@ def process_extraction_result(
     - Part 1 auto-retry
 
     Returns: (final_status, filed_path_if_ok_or_none)
+
+    `source` is one of the four words of sub-step 10d.40 and is the receipt's own,
+    passed in by whichever caller wrote the row. It used to be worked out here as
+    "email" if there is a message_id else "folder", which is a fifth and sixth
+    word that existed only in the sidecar, so one receipt read `capture` in the
+    database and `folder` on disk.
+
+    Sub-steps 10d.16 and 10d.18. A receipt whose client cannot be resolved to a
+    folder under Clients is a review item, whatever the extraction says about it.
+    That gate is below, before the ok branch, and it is the reason this function
+    can no longer reach `ok` with client_id = UNKNOWN.
     """
     if stats is None:
         stats = {}
@@ -181,19 +192,35 @@ def process_extraction_result(
     filed_path = None
     review_path = None
 
+    # 10d.16 and 10d.18. An unresolved client files nothing into Clients and the
+    # item goes to Review, so a clean extraction for a client nobody can name is
+    # a review item rather than an ok receipt filed into a guessed folder. This
+    # is the only part of step 10d that reports to the operator.
+    client_folder_name = (config.CLIENTS_BY_ID.get(client_id) or {}).get("client_folder_name")
+    if validation.status == "ok" and (client_id == config.UNKNOWN_CLIENT_ID or not client_folder_name):
+        reason = (
+            "client could not be resolved"
+            if client_id == config.UNKNOWN_CLIENT_ID
+            else f"client {client_id} has no client_folder_name in the registry"
+        )
+        validation = type(validation)(
+            status="needs_review",
+            notes=list(validation.notes or []) + [reason],
+        )
+
     # File based on validation outcome
     if validation.status == "ok":
         # Categorise first, then build the sidecar once with the result. This
         # used to build the payload with category=None and confidence="high" and
         # overwrite both keys afterwards, which made this a second writer of the
         # same format in all but name.
-        business_type = config.CLIENTS_BY_CODE.get(client_code, {}).get('business_type', 'UNSPECIFIED')
+        client = config.CLIENTS_BY_ID.get(client_id) or {}
         categorisation = categorisation_engine.categorise(
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             supplier_name=extraction.supplier_name,
             client_id=client_id,
-            business_type=business_type
+            business_type=client.get('trade', 'UNSPECIFIED')
         )
 
         # Save categorisation
@@ -203,7 +230,7 @@ def process_extraction_result(
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             client_id=client_id,
-            business_type=categorisation.business_type,
+            trade=categorisation.business_type,
             vendor_key=categorisation.vendor_key,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
@@ -214,12 +241,15 @@ def process_extraction_result(
             categorised_at=datetime.now(timezone.utc).isoformat()
         )
 
-        client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get('client_name', client_code)
+        # 10d.40. The sidecar used its own vocabulary, "email" or "folder", while
+        # the database said "capture", so one receipt was two different words in
+        # two places. Both now use the receipt's own source, which is one of the
+        # four and nothing else.
         sidecar_payload = make_enriched_sidecar(
             receipt_id=receipt_id,
-            source="email" if message_id else "folder",
-            client_code=client_code,
-            client_name=client_name,
+            source=source,
+            client_id=client_id,
+            client_name=client.get('client_name', ''),
             capture_date=datetime.now(timezone.utc).isoformat(),
             invoice_date=extraction.invoice_date,
             supplier=extraction.supplier_name,
@@ -233,14 +263,14 @@ def process_extraction_result(
             validation_status="ok",
             asserted=asserted_values,
             original_filename=filename,
-            claimed_client_code=None,
+            claimed_client_id=None,
         )
 
         # File receipt
         tax_year = determine_tax_year(extraction.invoice_date or datetime.now(timezone.utc).date().isoformat())
         filed_path, sidecar_path = file_receipt(
             file_path,
-            client_name,
+            client_folder_name,
             tax_year,
             extraction.supplier_name or "unknown",
             extraction.gross_amount or 0.0,
@@ -255,12 +285,11 @@ def process_extraction_result(
 
     else:  # failed, needs_review, possible_duplicate
         # Build sidecar with confidence="low"
-        client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get('client_name', client_code)
         sidecar_payload = make_enriched_sidecar(
             receipt_id=receipt_id,
-            source="email" if message_id else "folder",
-            client_code=client_code,
-            client_name=client_name,
+            source=source,
+            client_id=client_id,
+            client_name=(config.CLIENTS_BY_ID.get(client_id) or {}).get('client_name', ''),
             capture_date=datetime.now(timezone.utc).isoformat(),
             invoice_date=extraction.invoice_date,
             supplier=extraction.supplier_name,
@@ -275,13 +304,13 @@ def process_extraction_result(
             validation_status=validation.status,
             asserted=asserted_values,
             original_filename=filename,
-            claimed_client_code=None,
+            claimed_client_id=None,
         )
 
-        # File to Review folder
+        # File to Review folder. 10d.54: keyed on client_id.
         review_path, sidecar_path = file_review(
             file_path,
-            client_code,
+            client_id,
             filename,
             validation.status,
             validation.notes,

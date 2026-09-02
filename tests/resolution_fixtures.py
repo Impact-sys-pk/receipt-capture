@@ -37,7 +37,14 @@ class TempEnvironment:
             "DB_PATH": config.DB_PATH,
             "ONEDRIVE_ROOT": config.ONEDRIVE_ROOT,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
-            "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
+            # 10d.35 re-reads the registry at the top of every poll. Pinned at a
+            # path that does not exist, with the remembered mtime set to match, so
+            # the re-read sees no change and leaves the registry this fixture
+            # built. Without it a test would silently run against the live
+            # clients.json the moment somebody saved it.
+            "CLIENTS_JSON": config.CLIENTS_JSON,
+            "_CLIENTS_MTIME": config._CLIENTS_MTIME,
             "FILES_DIR": config.FILES_DIR,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
@@ -75,12 +82,15 @@ class TempEnvironment:
         config.RESOLUTIONS_DIR = self.path / "Resolutions"
         config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
         config.BACKUPS_ROOT = self.path / "Backups"
-        config.CLIENTS_BY_CODE = {
-            "ABC": {
+        config.CLIENTS_JSON = self.path / "clients-not-placed.json"
+        config._CLIENTS_MTIME = config._registry_mtime()
+        config.CLIENTS_BY_ID = {
+            "CLIENT001": {
                 "client_name": "Test Client",
+                "client_folder_name": "Test Client",
                 "client_id": "CLIENT001",
                 "firm_id": "INTELLITAX",
-                "business_type": "UNSPECIFIED",
+                "trade": "UNSPECIFIED",
             }
         }
         return self
@@ -106,7 +116,6 @@ class TempEnvironment:
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
             client_id="CLIENT001",
-            client_code="ABC",
             source="email",
         )
         defaults = dict(
@@ -135,9 +144,9 @@ class TempEnvironment:
     def engine(self, repo):
         return CategorisationEngine(repo=repo, enable_ai_fallback=False)
 
-    def inbox_dir(self, client_code="ABC"):
+    def inbox_dir(self, client_id="CLIENT001"):
         """The client's folder inside the redirected Receipt Inbox."""
-        path = config.RECEIPT_INBOX_ROOT / client_code
+        path = config.RECEIPT_INBOX_ROOT / client_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 

@@ -37,11 +37,10 @@ class PracticeRootTest(unittest.TestCase):
         expected = {
             "FILES_DIR": "Documents",
             "BACKUPS_ROOT": "Backups",
-            "EXPORTS_DIR": "Exports",
             "RECEIPT_INBOX_ROOT": "Receipt Inbox",
             "REVIEW_ROOT": "Review",
-            "CLIENTS_CSV": "clients.csv",
-            "FIRMS_CSV": "firms.csv",
+            "CLIENTS_JSON": "clients.json",
+            "FIRMS_JSON": "firms.json",
             "PIPELINE_STATUS_PATH": "pipeline-status.json",
             "PIPELINE_LOCKFILE": "pipeline.lock",
         }
@@ -80,7 +79,15 @@ class LocalRootTest(unittest.TestCase):
         # benefit, and a OneDrive conflict copy of a log is worse than useless.
         self.assertEqual(config.LOGS_DIR, config.LOCAL_ROOT / "logs")
         self.assertEqual(config.RUNS_LOG, config.LOGS_DIR / "runs.ndjson")
-        self.assertEqual(config.RECEIPTS_LOG, config.LOGS_DIR / "receipt_events.ndjson")
+        # RECEIPTS_LOG was deleted at sub-step 10d.19, not revived. It named
+        # logs\receipt_events.ndjson, one file for every firm, and nothing wrote
+        # it: both writers build receipt_events_{firm_id}.ndjson from the firm in
+        # hand. Closes outstanding item 72.
+        self.assertFalse(
+            hasattr(config, "RECEIPTS_LOG"),
+            "RECEIPTS_LOG is back. It is a firm-less log path in a system where "
+            "every intake event belongs to a firm or to UNATTRIBUTED.",
+        )
         self.assertFalse(config.LOGS_DIR.is_relative_to(config.ONEDRIVE_ROOT))
 
     def test_the_process_logs_land_there_too(self):
@@ -109,7 +116,7 @@ class NoSharedParentTest(unittest.TestCase):
         )
 
     def test_the_two_roots_contain_nothing_of_each_other(self):
-        for name in ("FILES_DIR", "BACKUPS_ROOT", "EXPORTS_DIR"):
+        for name in ("FILES_DIR", "BACKUPS_ROOT"):
             with self.subTest(constant=name):
                 self.assertFalse(getattr(config, name).is_relative_to(config.LOCAL_ROOT))
         for name in ("DB_PATH", "LOGS_DIR"):

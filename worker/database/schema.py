@@ -15,6 +15,12 @@ def init_db():
             vendor_name             TEXT,
             times_seen              INTEGER DEFAULT 1,
             last_updated            TEXT NOT NULL,
+            -- 10d.39, closing outstanding items 17 and 47. Nullable, written and
+            -- never read. The UNIQUE key deliberately does not include it, so
+            -- behaviour does not change and the learned pool stays shared: the
+            -- column exists so the provenance of a learned mapping is captured
+            -- while it is still capturable.
+            firm_id                 TEXT,
             UNIQUE(business_type, vendor_code, vendor_name)
         );
 
@@ -56,7 +62,7 @@ def init_db():
             receipt_id              TEXT NOT NULL,
             extraction_id           TEXT NOT NULL,
             client_id               TEXT NOT NULL,
-            business_type           TEXT NOT NULL,
+            trade                   TEXT NOT NULL,
             vendor_key              TEXT,
             suggested_code          TEXT,
             suggested_name          TEXT,
@@ -73,12 +79,26 @@ def init_db():
             FOREIGN KEY (extraction_id) REFERENCES extractions(extraction_id)
         );
 
+        -- Sub-steps 10d.23 to 10d.28. No column on this table carries a default
+        -- any more: each one was a value arriving as a fallback rather than as a
+        -- recorded conclusion, and save_receipt() writes all of them explicitly.
+        -- client_code is gone entirely, 10d.23.
+        --
+        -- email_received_at is ISO 8601 UTC and one format only, 10d.27. It used
+        -- to take an integer mtime from the folder path and an RFC-shaped string
+        -- from the email path, into the same TEXT column.
+        --
+        -- file_path is the copy in the Intellibills document store and filed_path
+        -- is the copy in the client folder. The same two names mean the same two
+        -- things on `statements` below, 10d.56.
+        --
+        -- locked_at is TEXT, 10d.28, so it compares as a string against the ISO
+        -- timestamps everything else on this database stores.
         CREATE TABLE IF NOT EXISTS receipts (
             receipt_id          TEXT PRIMARY KEY,
-            firm_id             TEXT NOT NULL DEFAULT 'INTELLITAX',
-            client_id           TEXT DEFAULT 'UNKNOWN',
-            client_code         TEXT DEFAULT 'UNKNOWN',
-            source              TEXT DEFAULT 'email',
+            firm_id             TEXT NOT NULL,
+            client_id           TEXT NOT NULL,
+            source              TEXT NOT NULL,
             message_id          TEXT NOT NULL,
             email_subject       TEXT,
             email_from          TEXT,
@@ -87,19 +107,29 @@ def init_db():
             file_path           TEXT NOT NULL,
             file_hash           TEXT NOT NULL,
             filed_path          TEXT,
-            status              TEXT DEFAULT 'pending',
+            filed_at            TEXT,
+            duplicate_of        TEXT,
+            locked_at           TEXT,
+            status              TEXT NOT NULL,
             created_at          TEXT NOT NULL
         );
 
+        -- Sub-steps 10d.29 and 10d.56. client_code is gone, and file_path now
+        -- means what it means on `receipts`: the copy in the document store.
+        -- filed_path is new here and is the copy in the client folder, which is
+        -- what file_path used to hold. One column name, one meaning, both tables.
+        -- app.py:361 is why it matters: it takes receipt["file_path"] as the file
+        -- to copy FROM when filing, and the same line written against a statement
+        -- would have copied the filed copy onto itself.
         CREATE TABLE IF NOT EXISTS statements (
             statement_id        TEXT PRIMARY KEY,
             client_id           TEXT NOT NULL,
-            client_code         TEXT NOT NULL,
             platform            TEXT NOT NULL,
             week_ending         TEXT NOT NULL,
             source              TEXT NOT NULL,
             file_hash           TEXT NOT NULL,
             file_path           TEXT NOT NULL,
+            filed_path          TEXT,
             status              TEXT NOT NULL,
             created_at          TEXT NOT NULL
         );
@@ -118,19 +148,32 @@ def init_db():
             vat_amount          REAL,
             gross_amount        REAL,
             details             TEXT,
-            currency            TEXT DEFAULT 'GBP',
+            -- 10d.31. No default: the currency is what the extraction read, and
+            -- every writer states it. The twelve "GBP" literals that used to sit
+            -- across app.py, the resolution service and openai_vision.py are now
+            -- config.DEFAULT_CURRENCY.
+            currency            TEXT,
             raw_response        TEXT,
             validation_status   TEXT,
             validation_notes    TEXT,
+            pipeline_version    TEXT,
+            receipt_ref_number  TEXT,
+            receipt_time        TEXT,
             FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
         );
 
+        -- 10d.32. firm_id is informational and nothing reads it. The key is
+        -- deliberately unchanged: a message_id is generated by the sender's mail
+        -- client and is unique by design, so the key is already unique across
+        -- firms and adding firm_id would loosen it rather than tighten it.
+        -- Amendment 129, closing outstanding item 6.
         CREATE TABLE IF NOT EXISTS processed_attachments (
             message_id      TEXT NOT NULL,
             attachment_id   TEXT NOT NULL,
             file_hash       TEXT NOT NULL,
             processed_at    TEXT NOT NULL,
             receipt_id      TEXT NOT NULL,
+            firm_id         TEXT,
             PRIMARY KEY (message_id, attachment_id)
         );
 
@@ -154,9 +197,19 @@ def init_db():
 
         -- Design document 5.1. One row per resolution, whatever the entry
         -- point, so a correction records who made it and through which tool.
-        -- extraction_id is nullable and deliberately carries NO foreign key: an
-        -- outcome with no extraction row would otherwise fail to write its own
-        -- audit row, which is the same class of bug as b480a7e.
+        --
+        -- 10d.33. Neither receipt_id nor extraction_id carries a foreign key.
+        --
+        -- The comment that used to sit here said extraction_id had no key so
+        -- that an outcome with no extraction row could still write its audit
+        -- row. That reason was false: a NULL foreign key value satisfies the
+        -- constraint, so the case it claimed to protect was never at risk.
+        --
+        -- The real reason, and it now applies to both columns: this table is the
+        -- audit trail, and an audit row that cannot be written because the thing
+        -- it describes has gone is worse than a dangling id. receipt_id's key
+        -- also made this table refuse a row about a receipt the rebuild had
+        -- dropped, which is exactly when somebody wants the history.
         CREATE TABLE IF NOT EXISTS resolution_events (
             event_id            TEXT PRIMARY KEY,
             receipt_id          TEXT NOT NULL,
@@ -168,68 +221,11 @@ def init_db():
             gl_override_code    TEXT,
             outcome             TEXT NOT NULL,
             reason              TEXT,
-            created_at          TEXT NOT NULL,
-            FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
+            created_at          TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_resolution_events_receipt
             ON resolution_events(receipt_id, created_at);
     """)
-    conn.commit()
-
-    existing_receipt_columns = {row[1] for row in conn.execute("PRAGMA table_info(receipts)").fetchall()}
-    if "client_code" not in existing_receipt_columns:
-        conn.execute("ALTER TABLE receipts ADD COLUMN client_code TEXT DEFAULT 'UNKNOWN'")
-    if "source" not in existing_receipt_columns:
-        conn.execute("ALTER TABLE receipts ADD COLUMN source TEXT DEFAULT 'email'")
-    if "filed_path" not in existing_receipt_columns:
-        conn.execute("ALTER TABLE receipts ADD COLUMN filed_path TEXT")
-    conn.commit()
-    # Ensure extractions table has `details` column for older DBs
-    existing_extraction_columns = {row[1] for row in conn.execute("PRAGMA table_info(extractions)").fetchall()}
-    if "details" not in existing_extraction_columns:
-        conn.execute("ALTER TABLE extractions ADD COLUMN details TEXT")
-
-    # Part 1: Auto-retry on version change
-    if "pipeline_version" not in existing_extraction_columns:
-        conn.execute("ALTER TABLE extractions ADD COLUMN pipeline_version TEXT")
-
-    # Part 2B: Semantic duplicate signals
-    if "receipt_ref_number" not in existing_extraction_columns:
-        conn.execute("ALTER TABLE extractions ADD COLUMN receipt_ref_number TEXT")
-    if "receipt_time" not in existing_extraction_columns:
-        conn.execute("ALTER TABLE extractions ADD COLUMN receipt_time TEXT")
-
-    conn.commit()
-
-    # Part 2B: Track duplicate relationships + Part 3 locking
-    existing_receipt_columns = {row[1] for row in conn.execute("PRAGMA table_info(receipts)").fetchall()}
-    if "duplicate_of" not in existing_receipt_columns:
-        conn.execute("ALTER TABLE receipts ADD COLUMN duplicate_of TEXT")
-    if "locked_at" not in existing_receipt_columns:
-        conn.execute("ALTER TABLE receipts ADD COLUMN locked_at TIMESTAMP")
-
-    # Design document 5.1a. 4.3 step 1a's already_filed message promises the
-    # operator a date and 8.3 lists a "filed" column that would otherwise only
-    # ever be a yes or no. mark_receipt_filed() is the only writer of filed_path,
-    # so it is the only writer of this and the two stay consistent by
-    # construction. Existing rows keep NULL and are deliberately not back-filled
-    # from a file mtime: that records when a copy was written rather than when the
-    # practice filed it, and a plausible wrong date is worse than a NULL.
-    if "filed_at" not in existing_receipt_columns:
-        conn.execute("ALTER TABLE receipts ADD COLUMN filed_at TEXT")
-
-    conn.commit()
-
-    # Design document 5.1 as amended. discard_receipt() takes a reason and the
-    # table had nowhere to put it, so it reached a log line and then vanished. For
-    # a discard the reason is the most useful thing to keep: the difference between
-    # "duplicate of r-x" and "the client sent a bank statement by mistake".
-    existing_event_columns = {
-        row[1] for row in conn.execute("PRAGMA table_info(resolution_events)").fetchall()
-    }
-    if existing_event_columns and "reason" not in existing_event_columns:
-        conn.execute("ALTER TABLE resolution_events ADD COLUMN reason TEXT")
-
     conn.commit()
     conn.close()

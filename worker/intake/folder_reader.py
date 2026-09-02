@@ -13,14 +13,24 @@ SIDE_CAR_EXT = ".json"
 INTAKE_PATTERN = "rcpt_"
 STATEMENT_PREFIX = "stmt_"
 
+# receipts.source has four values and no others. Sub-step 10d.40. `capture` was a
+# fifth and was hardcoded here; it is retired. Each writer declares its own word:
+# the phone app writes `phone`, Add Receipts writes `desktop`, the email path
+# writes `email`, and anything the pipeline cannot attribute to a writer is
+# `other`.
+EMAIL_SOURCE = "email"
+PHONE_SOURCE = "phone"
+DESKTOP_SOURCE = "desktop"
+OTHER_SOURCE = "other"
+INTAKE_SOURCES = (EMAIL_SOURCE, PHONE_SOURCE, DESKTOP_SOURCE, OTHER_SOURCE)
+
 
 class IntakeRecord:
     def __init__(
         self,
         source: str,
-        client_code: str,
-        client_id: str,
-        firm_id: str,
+        client_id: str | None,
+        firm_id: str | None,
         source_path: Path,
         filename: str,
         file_hash: str,
@@ -32,7 +42,6 @@ class IntakeRecord:
         internal_path: Path | None = None,
     ):
         self.source = source
-        self.client_code = client_code
         self.client_id = client_id
         self.firm_id = firm_id
         self.source_path = source_path
@@ -65,11 +74,24 @@ def _find_sidecar_for_file(file_path: Path) -> Path | None:
     return None
 
 
-def _format_client_code(code: str) -> str:
-    return code.strip().upper()
-
-
 def scan_inbox() -> list[IntakeRecord]:
+    """Read the Receipt Inbox. The client comes out of the sidecar, never the folder.
+
+    Sub-step 10d.11. The folder name under Receipt Inbox is decoration: it is
+    there so a person can see whose inbox they are looking at, and nothing reads
+    it. It used to be the client code, resolved through CLIENTS_BY_CODE with a
+    silent fallback, which is how a receipt could be attributed to a client that
+    was not in the registry at all.
+
+    A file with no sidecar therefore has no client. It gets `source = other` and
+    no client_id, and app.py routes it to Review per 10d.16 and 10d.18. It is
+    kept and reported, never refused: the file is somebody's receipt whatever
+    the pipeline can work out about it.
+
+    A sidecar naming a client_id the registry does not hold is the same case. It
+    is logged, because that is a registry problem rather than a receipt problem,
+    and it still goes to Review rather than being attributed to anybody.
+    """
     intake_records: list[IntakeRecord] = []
     inbox_root = config.RECEIPT_INBOX_ROOT
 
@@ -78,15 +100,6 @@ def scan_inbox() -> list[IntakeRecord]:
         return intake_records
 
     for client_dir in sorted(p for p in inbox_root.iterdir() if p.is_dir()):
-        client_code = _format_client_code(client_dir.name)
-        client = config.CLIENTS_BY_CODE.get(client_code)
-        if client:
-            client_id = client["client_id"]
-            firm_id = client["firm_id"]
-        else:
-            client_id = "UNKNOWN"
-            firm_id = config.DEFAULT_FIRM_ID
-
         for item in sorted(client_dir.iterdir()):
             if item.is_dir():
                 continue
@@ -110,9 +123,10 @@ def scan_inbox() -> list[IntakeRecord]:
                     "type": sidecar.get("type"),
                 }
 
+            client_id, firm_id, source = _resolve_from_sidecar(sidecar, item)
+
             intake_records.append(IntakeRecord(
-                source="capture",
-                client_code=client_code,
+                source=source,
                 client_id=client_id,
                 firm_id=firm_id,
                 source_path=item,
@@ -126,3 +140,45 @@ def scan_inbox() -> list[IntakeRecord]:
             ))
 
     return intake_records
+
+
+def _resolve_from_sidecar(sidecar, item) -> tuple[str | None, str | None, str]:
+    """(client_id, firm_id, source) for one inbox item. None means unresolved.
+
+    Sub-steps 10d.11, 10d.19 and 10d.40. The firm comes off the resolved client
+    record and is never DEFAULT_FIRM_ID: an item whose client cannot be resolved
+    has no firm either, and saying otherwise is what put unattributable receipts
+    into a real firm's records.
+
+    `source` is one of the four words of 10d.40 and comes off the sidecar, which
+    is what the writer declared. Anything else, including no sidecar at all, is
+    `other`.
+    """
+    declared_source = (sidecar or {}).get("source")
+    source = declared_source if declared_source in INTAKE_SOURCES else OTHER_SOURCE
+    if sidecar and declared_source and declared_source not in INTAKE_SOURCES:
+        logger.warning(
+            f"inbox sidecar for {item.name} declares source {declared_source!r}, which is not one "
+            f"of {INTAKE_SOURCES}; recording it as {OTHER_SOURCE!r}"
+        )
+
+    if not sidecar:
+        logger.info(f"inbox file with no sidecar, so no client: {item}")
+        return None, None, OTHER_SOURCE
+
+    client_id = sidecar.get("client_id")
+    if isinstance(client_id, str):
+        client_id = client_id.strip()
+    if not client_id:
+        logger.info(f"inbox sidecar carries no client_id, so no client: {item}")
+        return None, None, source
+
+    client = config.CLIENTS_BY_ID.get(client_id)
+    if not client:
+        logger.warning(
+            f"inbox sidecar for {item.name} names client_id {client_id!r}, which is not in "
+            f"{config.CLIENTS_JSON.name}; routing it to Review rather than attributing it"
+        )
+        return None, None, source
+
+    return client_id, client["firm_id"], source

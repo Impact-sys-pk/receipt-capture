@@ -80,11 +80,16 @@ class ResolutionEventsSchemaTest(unittest.TestCase):
                 self.assertEqual(info["source"][3], 1)
                 self.assertEqual(info["outcome"][3], 1)
 
+                # 10d.33. Neither column carries a foreign key now. receipt_id's
+                # was dropped with it: this table is the audit trail, and an audit
+                # row that cannot be written because the receipt it describes has
+                # gone is worse than a dangling id, which is exactly the case a
+                # rebuild creates.
                 fk_targets = [
                     row[2] for row in
                     repo._conn.execute("PRAGMA foreign_key_list(resolution_events)").fetchall()
                 ]
-                self.assertEqual(fk_targets, ["receipts"], "only receipt_id may carry a FK")
+                self.assertEqual(fk_targets, [], "no column on this table carries a FK")
             finally:
                 repo.close()
 
@@ -107,9 +112,9 @@ class ResolutionEventsSchemaTest(unittest.TestCase):
             repo = Repository()
             try:
                 repo._conn.execute(
-                    "INSERT INTO receipts (receipt_id, firm_id, client_id, message_id, "
+                    "INSERT INTO receipts (receipt_id, firm_id, client_id, source, message_id, "
                     "filename, file_path, file_hash, status, created_at) "
-                    "VALUES ('r-1','INTELLITAX','C1','m1','f.pdf','p','h','needs_review','now')"
+                    "VALUES ('r-1','INTELLITAX','C1','email','m1','f.pdf','p','h','needs_review','now')"
                 )
                 repo._conn.execute(
                     "INSERT INTO resolution_events (event_id, receipt_id, extraction_id, "
@@ -149,14 +154,14 @@ class ListResolutionEventsTest(unittest.TestCase):
             repo = Repository()
             try:
                 repo._conn.execute(
-                    "INSERT INTO receipts (receipt_id, firm_id, client_id, message_id, "
+                    "INSERT INTO receipts (receipt_id, firm_id, client_id, source, message_id, "
                     "filename, file_path, file_hash, status, created_at) "
-                    "VALUES ('r-1','INTELLITAX','C1','m1','f.pdf','p','h','ok','now')"
+                    "VALUES ('r-1','INTELLITAX','C1','email','m1','f.pdf','p','h','ok','now')"
                 )
                 repo._conn.execute(
-                    "INSERT INTO receipts (receipt_id, firm_id, client_id, message_id, "
+                    "INSERT INTO receipts (receipt_id, firm_id, client_id, source, message_id, "
                     "filename, file_path, file_hash, status, created_at) "
-                    "VALUES ('r-2','INTELLITAX','C1','m2','g.pdf','p','h2','ok','now')"
+                    "VALUES ('r-2','INTELLITAX','C1','email','m2','g.pdf','p','h2','ok','now')"
                 )
                 for event_id, receipt_id, created_at in [
                     ("e-old", "r-1", "2026-07-01T00:00:00+00:00"),

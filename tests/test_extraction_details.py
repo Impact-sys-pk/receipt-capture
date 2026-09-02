@@ -4,7 +4,7 @@ The column exists at schema.py:120, with a migration for older databases, but
 save_extraction() took no details parameter and its INSERT never listed it. So
 every automatic amendment the post-processing made went unrecorded.
 
-That matters most for apply_vat_inclusive_swap(), which rewrites net and gross on
+That matters most for establish_gross_from_vat(, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE), which rewrites net and gross on
 the strength of an implied VAT rate. CLAUDE.md requires a full audit trail, and an
 unrecorded amendment to two financial figures is the gap that matters most here.
 
@@ -34,7 +34,7 @@ sys.modules.setdefault("openai", fake_openai)
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
 from worker.extraction.base import ExtractionResult
-from worker.extraction.postprocess import apply_vat_inclusive_swap
+from worker.extraction.postprocess import establish_gross_from_vat
 from worker.extraction_pipeline import process_extraction_result
 import resolve_receipt
 
@@ -46,7 +46,14 @@ class TempEnvironment:
         self._saved = {
             "DB_PATH": config.DB_PATH,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
-            "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
+            # 10d.35 re-reads the registry at the top of every poll. Pinned at a
+            # path that does not exist, with the remembered mtime set to match, so
+            # the re-read sees no change and leaves the registry this fixture
+            # built. Without it a test would silently run against the live
+            # clients.json the moment somebody saved it.
+            "CLIENTS_JSON": config.CLIENTS_JSON,
+            "_CLIENTS_MTIME": config._CLIENTS_MTIME,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "REVIEW_ROOT": config.REVIEW_ROOT,
@@ -62,8 +69,11 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        config.CLIENTS_BY_CODE = {
-            "ABC": {"client_name": "Test Client", "business_type": "UNSPECIFIED"}
+        config.CLIENTS_JSON = self.path / "clients-not-placed.json"
+        config._CLIENTS_MTIME = config._registry_mtime()
+        config.CLIENTS_BY_ID = {
+            "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
         }
         return self
 
@@ -87,7 +97,6 @@ class TempEnvironment:
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
             client_id="CLIENT001",
-            client_code="ABC",
             source="email",
         )
         return file_path
@@ -169,8 +178,8 @@ class PipelineDetailsTest(unittest.TestCase):
     def test_vat_amendment_is_recorded_against_the_receipt(self):
         # Build the note the way the pipeline does, so the test breaks if the
         # note text changes rather than asserting a string I typed.
-        net, vat, gross, details = apply_vat_inclusive_swap(8.0, 1.33, None, None)
-        self.assertIn("auto_treated_amount_as_gross", details)
+        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        self.assertIn("treated_amount_as_gross", details)
 
         with TempEnvironment() as env:
             repo = Repository()
@@ -192,9 +201,9 @@ class PipelineDetailsTest(unittest.TestCase):
                     extraction=extraction,
                     file_path=file_path,
                     filename="r-swap.pdf",
-                    client_code="ABC",
                     firm_id="INTELLITAX",
                     client_id="CLIENT001",
+                    source="email",
                     message_id="msg-r-swap",
                     repo=repo,
                     categorisation_engine=CategorisationEngine(repo=repo, enable_ai_fallback=False),
@@ -207,7 +216,7 @@ class PipelineDetailsTest(unittest.TestCase):
 
             stored = env.details_from_db("r-swap")
             self.assertEqual(stored, details)
-            self.assertIn("auto_treated_amount_as_gross", stored)
+            self.assertIn("treated_amount_as_gross", stored)
 
     def test_an_extraction_with_no_amendments_stores_null(self):
         with TempEnvironment() as env:
@@ -230,9 +239,9 @@ class PipelineDetailsTest(unittest.TestCase):
                     extraction=extraction,
                     file_path=file_path,
                     filename="r-clean.pdf",
-                    client_code="ABC",
                     firm_id="INTELLITAX",
                     client_id="CLIENT001",
+                    source="email",
                     message_id="msg-r-clean",
                     repo=repo,
                     categorisation_engine=CategorisationEngine(repo=repo, enable_ai_fallback=False),

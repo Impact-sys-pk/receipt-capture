@@ -37,12 +37,13 @@ class CaptureInboxCleanupTest(unittest.TestCase):
             original_inbox = config.RECEIPT_INBOX_ROOT
             original_clients_root = config.CLIENTS_ROOT
             original_db = config.DB_PATH
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
 
             config.RECEIPT_INBOX_ROOT = temp_inbox
             config.CLIENTS_ROOT = temp_clients_root
             config.DB_PATH = temp_db
-            config.CLIENTS_BY_CODE = {"ABC": {"client_name": "Test Client", "client_id": "CLIENT001", "firm_id": "FIRM001"}}
+            config.CLIENTS_BY_ID = {"CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                            "client_id": "CLIENT001", "firm_id": "FIRM001", "trade": "UNSPECIFIED"}}
 
             try:
                 client_dir = temp_inbox / "ABC"
@@ -72,7 +73,6 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                         file_hash=actual_hash,
                         firm_id="FIRM001",
                         client_id="CLIENT001",
-                        client_code="ABC",
                         source="capture",
                     )
                     repo.mark_receipt_filed(receipt_id, str(temp_path / "filed" / "duplicate.pdf"))
@@ -94,7 +94,7 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                 config.RECEIPT_INBOX_ROOT = original_inbox
                 config.CLIENTS_ROOT = original_clients_root
                 config.DB_PATH = original_db
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
 
     def test_remove_hash_duplicate_inbox_statement_pair(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -108,12 +108,13 @@ class CaptureInboxCleanupTest(unittest.TestCase):
             original_inbox = config.RECEIPT_INBOX_ROOT
             original_clients_root = config.CLIENTS_ROOT
             original_db = config.DB_PATH
-            original_clients_by_code = config.CLIENTS_BY_CODE
+            original_clients_by_id = config.CLIENTS_BY_ID
 
             config.RECEIPT_INBOX_ROOT = temp_inbox
             config.CLIENTS_ROOT = temp_clients_root
             config.DB_PATH = temp_db
-            config.CLIENTS_BY_CODE = {"ABC": {"client_name": "Test Client", "client_id": "CLIENT001", "firm_id": "FIRM001"}}
+            config.CLIENTS_BY_ID = {"CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                            "client_id": "CLIENT001", "firm_id": "FIRM001", "trade": "UNSPECIFIED"}}
 
             try:
                 client_dir = temp_inbox / "ABC"
@@ -131,12 +132,14 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                     repo.save_statement(
                         statement_id=statement_id,
                         client_id="CLIENT001",
-                        client_code="ABC",
                         platform="Xero",
                         week_ending="2026-07-10",
-                        source="capture",
+                        source="desktop",
                         file_hash=actual_hash,
-                        file_path=temp_path / "filed" / "stmt_001.pdf",
+                        # 10d.56: file_path is the document store copy and
+                        # filed_path is the client folder copy, on both tables.
+                        file_path=temp_path / "Documents" / "stmt_001.pdf",
+                        filed_path=temp_path / "filed" / "stmt_001.pdf",
                     )
 
                     intake_records = scan_inbox()
@@ -154,7 +157,7 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                 config.RECEIPT_INBOX_ROOT = original_inbox
                 config.CLIENTS_ROOT = original_clients_root
                 config.DB_PATH = original_db
-                config.CLIENTS_BY_CODE = original_clients_by_code
+                config.CLIENTS_BY_ID = original_clients_by_id
 
 
 if __name__ == "__main__":

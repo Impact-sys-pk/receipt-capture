@@ -411,12 +411,16 @@ When corrected, **record the superseded wording alongside the correction** rathe
 
 **Two names that mean different things and are one word apart on screen.** `postTxn()` and the **Post Selected** button sign off a transaction that already exists. `postReceiptToCashbook()` and **Post Selected to Cashbook** create a new transaction from a receipt. And **Attach** means receipt to transaction, while **Link** means transaction to transaction, as for a transfer. Anything written for Paul to follow has to disambiguate both pairs.
 
-### Two rules about `clients.csv`, added 2026-07-30
+### ~~Two rules about `clients.csv`, added 2026-07-30~~ Retired by step 10d
 
-Both are easy to break by accident, and one of them would be broken by a change that looks like a fix. From amendment 74.
+**Struck through 2026-09-02 by sub-step 10d.4. Both rules existed only because a CSV row cannot hold a list, and `clients.json` gives a client an `emails` array, so there is nothing left for either of them to protect.** Amendment 111 carries the reasoning. `clients.csv` itself is renamed `clients.csv.superseded-2026-08-20` rather than deleted. Original wording follows, struck rather than removed.
 
-- **One client may have more than one email address**, expressed as two rows differing **only** in the email column. This works: `load_clients()` at `config.py:71` indexes every row that has an email, `resolve_client_info()` at `worker/database/repository.py:57` is the only consumer of that index, and nothing enumerates it as a client list. **The rows must be identical apart from the email**, because the code index takes whichever loaded last while the email index keeps both, so a mismatched `business_type` would depend on which address a receipt arrived from.
-- **Do not add a duplicate-`client_id` check.** It would break the above. The defect amendment 49 fixed was one `client_id` given to two genuinely **different** clients, which conflated them. That is a different thing. The test is whether the other columns match, not whether the id repeats.
+~~Both are easy to break by accident, and one of them would be broken by a change that looks like a fix. From amendment 74.~~
+
+- ~~**One client may have more than one email address**, expressed as two rows differing **only** in the email column. This works: `load_clients()` at `config.py:71` indexes every row that has an email, `resolve_client_info()` at `worker/database/repository.py:57` is the only consumer of that index, and nothing enumerates it as a client list. **The rows must be identical apart from the email**, because the code index takes whichever loaded last while the email index keeps both, so a mismatched `business_type` would depend on which address a receipt arrived from.~~
+- ~~**Do not add a duplicate-`client_id` check.** It would break the above. The defect amendment 49 fixed was one `client_id` given to two genuinely **different** clients, which conflated them. That is a different thing. The test is whether the other columns match, not whether the id repeats.~~
+
+**What replaces them, and it is one rule rather than two.** One client is one record in `clients.json`, keyed on `client_id`, and its `emails` array holds every address that client sends from. `load_clients()` builds `CLIENTS_BY_ID` from the record and `CLIENTS` from every address in the array, both pointing at the same record, so there is no second index that can disagree with the first and no arrangement that depends on load order. A duplicate `client_id` is now simply a duplicate: the last record loaded wins and the earlier one is lost silently, which is a registry fault rather than a supported arrangement. **`CLIENTS_BY_CODE` is deleted with `client_code`.**
 
 ### How to communicate
 

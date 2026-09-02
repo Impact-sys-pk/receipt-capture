@@ -37,13 +37,6 @@ def normalise_supplier(supplier: str) -> str:
     return text or "unknown"
 
 
-def normalise_client_name(client_name: str, client_code: str) -> str:
-    name = client_name.strip() if client_name else client_code
-    name = INVALID_FILENAME_CHARS.sub("", name)
-    name = re.sub(r"\s+", " ", name).strip()
-    return name or client_code
-
-
 def _unique_path(directory: Path, base_name: str, suffix: str) -> Path:
     destination = directory / f"{base_name}{suffix}"
     if not destination.exists():
@@ -61,20 +54,27 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def get_client_directory(client_name: str) -> Path:
-    return config.CLIENTS_ROOT / client_name / config.CLIENT_INTELLIBOOKS_FOLDER_NAME
+def get_client_directory(client_folder_name: str) -> Path:
+    """This client's folder under Clients. Sub-step 10d.14.
+
+    The name comes off the client record's `client_folder_name`, which is fixed
+    once a folder exists, and never off `client_name`, which is display only and
+    freely editable. 18.2b's narrowed freeze permits this change to the source of
+    the name and permits nothing else in this function.
+    """
+    return config.CLIENTS_ROOT / client_folder_name / config.CLIENT_INTELLIBOOKS_FOLDER_NAME
 
 
 def file_receipt(
     source_file: Path,
-    client_name: str,
+    client_folder_name: str,
     tax_year: str,
     supplier: str,
     gross: float,
     original_filename: str,
     enriched_sidecar: dict[str, Any],
 ) -> tuple[Path, Path]:
-    client_dir = get_client_directory(client_name)
+    client_dir = get_client_directory(client_folder_name)
     destination_dir = client_dir / config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year
     destination_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,14 +92,14 @@ def file_receipt(
 
 def file_statement(
     source_file: Path,
-    client_name: str,
+    client_folder_name: str,
     tax_year: str,
     platform: str,
     week_ending: str,
     original_extension: str,
     enriched_sidecar: dict[str, Any],
 ) -> tuple[Path, Path]:
-    client_dir = get_client_directory(client_name)
+    client_dir = get_client_directory(client_folder_name)
     destination_dir = client_dir / config.CLIENT_STATEMENTS_FOLDER_NAME / tax_year / platform
     destination_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,13 +115,13 @@ def file_statement(
 
 def file_review(
     source_file: Path,
-    client_code: str,
+    client_id: str,
     original_filename: str,
     status: str,
     reasons: list[str],
     extracted_values: dict[str, Any],
 ) -> tuple[Path, Path]:
-    review_dir = _review_dir_for_client_code(client_code)
+    review_dir = _review_dir_for_client_id(client_id)
     review_dir.mkdir(parents=True, exist_ok=True)
 
     base_name = Path(original_filename).stem
@@ -152,25 +152,31 @@ def _receipt_id_from_extracted_values(extracted_values: dict[str, Any] | None) -
     return None
 
 
-def _review_dir_for_client_code(client_code: str) -> Path:
-    """This client's Review folder. Design document 18.2a.
+def _review_dir_for_client_id(client_id: str) -> Path:
+    """This client's Review folder. Design document 18.2a, and sub-step 10d.54.
 
-    `Intellibills\\Review\\{CODE}\\`, not `Clients\\{client name}\\Review\\`. Two
-    changes in one, and both are the point.
+    Review sits under Intellibills, keyed on the client, not under the client folder.
+    Two changes in one, and both are the point.
 
     It leaves the client folder because a receipt awaiting a human is work in
     progress rather than a document the client is entitled to see, and the client
     folder is what a portal would show.
 
-    And it is keyed on the client code rather than the client name. The name came
-    from `CLIENTS_BY_CODE`, so the folder a receipt was written to depended on
-    what `clients.csv` spelled that day, and amendment 44 records the two
+    And it is keyed on an identifier rather than the client name. The name came
+    from a registry lookup, so the folder a receipt was written to depended on
+    what the registry spelled that day, and amendment 44 records the two
     registries holding different spellings for one client. That worked only
-    because NTFS is case-insensitive; on S3 or Linux they are two folders. The
-    code cannot drift that way, and the writer and the reader now derive the same
-    path from the same value with no lookup in between.
+    because NTFS is case-insensitive; on S3 or Linux they are two folders. An
+    identifier cannot drift that way, and the writer and the reader now derive
+    the same path from the same value with no lookup in between.
+
+    The key was the client code until sub-step 10d.54 and is now `client_id`.
+    The reasoning above holds word for word: a `client_id` cannot drift either,
+    and it is the one field on the client record that is unchangeable by design.
+    `scanReview()` in IntelliBooks-Desktop-v3.html is the reader, sub-step
+    10d.59, and the two halves have to move together or the Review list is empty.
     """
-    return config.REVIEW_ROOT / client_code
+    return config.REVIEW_ROOT / client_id
 
 
 def _read_review_sidecar(path: Path) -> dict[str, Any] | None:
@@ -268,7 +274,7 @@ def _delete_review_pair(sidecar: Path) -> int:
 
 
 def remove_review_pair(
-    receipt_id: str, client_code: str, original_filename: str | None = None
+    receipt_id: str, client_id: str, original_filename: str | None = None
 ) -> int:
     """Remove a receipt's Review image and sidecar. Returns the number of files removed.
 
@@ -278,7 +284,7 @@ def remove_review_pair(
 
     Design document 3.5. Step 8's resolution service calls this same function.
     """
-    review_dir = _review_dir_for_client_code(client_code)
+    review_dir = _review_dir_for_client_id(client_id)
     sidecar = _find_review_sidecar(review_dir, receipt_id, original_filename)
 
     if sidecar is None:
@@ -306,8 +312,12 @@ def _scan_other_clients_for_receipt(searched_dir: Path, receipt_id: str) -> Path
     Receipt ids are UUIDs, so matching on one is exact and the scan is safe. No
     filename fallback here: a filename is not unique across clients.
 
-    Simpler than it was, because every subfolder of REVIEW_ROOT is a client code
-    rather than a client name with a Review folder somewhere inside it.
+    Simpler than it was, because every subfolder of REVIEW_ROOT is one client's
+    rather than a client name with a Review folder somewhere inside it. Sub-step
+    10d.54 changes what names those subfolders, from the client code to the
+    `client_id`, and this function needs no change for it: it iterates whatever
+    is there and matches on the receipt id inside each sidecar. Confirmed by
+    reading it rather than assumed.
     """
     if not config.REVIEW_ROOT.is_dir():
         return None
@@ -338,7 +348,7 @@ def write_review_file(review_dir: Path, original_filename: str, receipt_id: str,
 def make_enriched_sidecar(
     receipt_id: str,
     source: str,
-    client_code: str,
+    client_id: str,
     client_name: str,
     capture_date: str,
     invoice_date: str,
@@ -353,7 +363,7 @@ def make_enriched_sidecar(
     validation_status: str,
     asserted: dict[str, Any] | None,
     original_filename: str,
-    claimed_client_code: str | None = None,
+    claimed_client_id: str | None = None,
 ) -> dict[str, Any]:
     """Build the sidecar that travels with a filed receipt.
 
@@ -370,12 +380,28 @@ def make_enriched_sidecar(
     A missing category is null in all three. Never a match_source: "unmatched"
     looks like a category name that Desktop will fail to match, and then someone
     posts it to the cashbook. null fails honestly.
+
+    18.2b freezes this function and sub-step 10d.14 repeats that it is not
+    touched at all. It has been touched, once, and only to rename `client_code`
+    to `client_id` and `claimed_client_code` to `claimed_client_id`. The reason
+    is evidence rather than judgement: `parseSidecar()` in
+    IntelliBooks-Desktop-v3.html reads `data.client_id` and no longer reads any
+    code, so leaving this key named `client_code` would hand the other half of
+    the contract a key it has already stopped reading. Section A of the step 10d
+    briefs also says `client_code` appears in no file any of the three products
+    writes, and this is such a file. Nothing else here moved: not the filename
+    convention, not the three category keys, not the write on arrival.
+
+    `claimed_client_id` is still dead and is still passed None at all four call
+    sites. Outstanding item 117 says whether step 10d populates or removes it is
+    a decision for Paul, so it is neither populated nor removed here, only
+    renamed off an abolished word.
     """
     return {
         "receipt_id": receipt_id,
-        "client_code": client_code,
+        "client_id": client_id,
         "client_name": client_name,
-        "claimed_client_code": claimed_client_code,
+        "claimed_client_id": claimed_client_id,
         "source": source,
         "capture_date": capture_date,
         "invoice_date": invoice_date,

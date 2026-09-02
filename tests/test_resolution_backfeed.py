@@ -67,7 +67,7 @@ def note_payload(**overrides):
     payload = {
         "schema": 1,
         "receipt_id": "r-1",
-        "client_code": "ABC",
+        "client_id": "CLIENT001",
         "action": "filed",
         "resolved_by": "desktop",
         "resolved_at": "2026-07-25T14:02:11.000Z",

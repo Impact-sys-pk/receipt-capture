@@ -36,7 +36,14 @@ class TempEnvironment:
         self.path = Path(self._temp.name)
         self._saved = {
             "DB_PATH": config.DB_PATH,
-            "CLIENTS_BY_CODE": config.CLIENTS_BY_CODE,
+            "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
+            # 10d.35 re-reads the registry at the top of every poll. Pinned at a
+            # path that does not exist, with the remembered mtime set to match, so
+            # the re-read sees no change and leaves the registry this fixture
+            # built. Without it a test would silently run against the live
+            # clients.json the moment somebody saved it.
+            "CLIENTS_JSON": config.CLIENTS_JSON,
+            "_CLIENTS_MTIME": config._CLIENTS_MTIME,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
         }
@@ -44,8 +51,11 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        config.CLIENTS_BY_CODE = {
-            "ABC": {"client_name": "Test Client", "business_type": "PHV_DRIVER"}
+        config.CLIENTS_JSON = self.path / "clients-not-placed.json"
+        config._CLIENTS_MTIME = config._registry_mtime()
+        config.CLIENTS_BY_ID = {
+            "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
+                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "PHV_DRIVER"}
         }
         return self
 
@@ -55,7 +65,7 @@ class TempEnvironment:
         self._temp.cleanup()
         return False
 
-    def seed(self, repo, receipt_id, status="needs_review", client_code="ABC"):
+    def seed(self, repo, receipt_id, status="needs_review", client_id="CLIENT001"):
         file_path = self.path / f"{receipt_id}.pdf"
         file_path.write_text("dummy", encoding="utf-8")
         repo.save_receipt(
@@ -68,8 +78,7 @@ class TempEnvironment:
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
             firm_id="INTELLITAX",
-            client_id="CLIENT001",
-            client_code=client_code,
+            client_id=client_id,
             source="email",
         )
         repo._conn.execute(
@@ -140,14 +149,19 @@ class GetResolutionViewTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_unknown_client_code_falls_back_to_the_code_itself(self):
+    def test_an_unresolvable_client_shows_the_id_rather_than_inventing_a_name(self):
+        # Sub-step 10d.13. The lookup is on client_id now, and the display
+        # fallback is the id itself: it is the one thing that is certainly true
+        # about the receipt. What went is the fallback that produced a plausible
+        # FOLDER name from a lookup miss, which is what filed four receipts where
+        # IntelliBooks does not look. get_resolution_view() names no folder.
         with TempEnvironment() as env:
             repo = Repository()
             try:
-                env.seed(repo, "r-1", client_code="NOPE")
+                env.seed(repo, "r-1", client_id="NOT_IN_THE_REGISTRY")
                 env.add_extraction(repo, "r-1", "ext-1", "2026-07-27T00:00:00+00:00")
                 view = get_resolution_view(repo, "r-1")
-                self.assertEqual(view.client_name, "NOPE")
+                self.assertEqual(view.client_name, "NOT_IN_THE_REGISTRY")
                 self.assertEqual(view.business_type, "UNSPECIFIED")
             finally:
                 repo.close()
@@ -177,7 +191,7 @@ class GetResolutionViewTest(unittest.TestCase):
                     receipt_id="r-1",
                     extraction_id="ext-1",
                     client_id="CLIENT001",
-                    business_type="PHV_DRIVER",
+                    trade="PHV_DRIVER",
                     vendor_key=None,
                     suggested_code="271",
                     suggested_name="Parking and tolls",

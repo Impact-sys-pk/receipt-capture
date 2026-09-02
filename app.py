@@ -9,6 +9,7 @@ import sys
 import time
 import uuid
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import config
@@ -19,7 +20,7 @@ from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_al
 from worker.extraction.factory import get_extractor
 from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.extraction_pipeline import process_extraction_result
-from worker.intake.folder_reader import scan_inbox
+from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler
 from worker.resolution.service import apply_resolution_note
 from worker.filing import (
@@ -99,7 +100,7 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, extraction_s
     if duplicate_reason:
         entry["duplicate_reason"] = duplicate_reason
 
-    log_path = config.LOGS_DIR / f"receipt_events_{firm_id}.ndjson"
+    log_path = config.LOGS_DIR / f"receipt_events_{firm_id or config.UNATTRIBUTED_FIRM_ID}.ndjson"
     with log_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -137,10 +138,102 @@ def _write_pipeline_status(last_run: str, processed_today: int, review_count: in
     config.PIPELINE_STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _resolve_client_name(client_code: str) -> str:
-    if not client_code:
-        return "UNKNOWN"
-    return config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)
+def _client_folder_name(client_id: str) -> str | None:
+    """The folder under Clients for this client, or None if it cannot be resolved.
+
+    Sub-step 10d.13 deletes the fallback that used to sit here, which was
+    `CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)`: it
+    silently substituted the code for the name whenever the lookup missed, and on
+    2026-09-01 that filed four TESTST receipts into a TESTST folder while
+    IntelliBooks looked under Test Sole Trader and found nothing, with no message
+    on screen.
+
+    Returning None is the whole point. A caller that cannot name the folder must
+    not file into Clients at all: the item goes to Review, per 10d.18.
+    """
+    if not client_id or client_id == config.UNKNOWN_CLIENT_ID:
+        return None
+    folder = (config.CLIENTS_BY_ID.get(client_id) or {}).get("client_folder_name")
+    return folder or None
+
+
+def _review_key(client_id: str | None) -> str:
+    """The Review subfolder name for a client, or for one that could not be resolved.
+
+    Sub-step 10d.54: Intellibills\\Review\\ is keyed on client_id. An item with
+    no client still needs somewhere to go, per 10d.18, and it goes under the
+    reserved UNKNOWN id rather than being dropped or guessed at. scanReview() in
+    IntelliBooks-Desktop-v3.html reads one folder per client, so this is a real
+    folder a person can be pointed at.
+    """
+    return client_id or config.UNKNOWN_CLIENT_ID
+
+
+def _iso_utc(value) -> str | None:
+    """One timestamp format for receipts.email_received_at: ISO 8601 UTC. 10d.27.
+
+    The column used to take whatever each path had: an RFC-shaped string from the
+    mail server on one, an integer mtime on the other, into the same TEXT column,
+    so the two could not be compared or sorted against each other.
+
+    A value that cannot be read is returned as None rather than as a guess. A
+    NULL says the arrival time is not known; a plausible wrong timestamp does not.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, (int, float)):
+        dt = datetime.fromtimestamp(value, tz=timezone.utc)
+    else:
+        text = str(value).strip()
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                dt = parsedate_to_datetime(text)
+            except (TypeError, ValueError):
+                logger.warning(f"could not read an arrival timestamp from {text!r}; recording NULL")
+                return None
+        if dt is None:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _iso_utc_from_mtime(path: Path) -> str | None:
+    """The arrival time of a folder-intake file, as ISO 8601 UTC. 10d.27."""
+    try:
+        return _iso_utc(path.stat().st_mtime)
+    except OSError as exc:
+        logger.warning(f"could not read the modification time of {path}: {exc}; recording NULL")
+        return None
+
+
+def _mailbox_firm_name() -> str:
+    """The firm whose capture mailbox this pipeline polls, for an unknown sender.
+
+    Sub-step 10d.36. send_unknown_sender_alert() is the only automatic email that
+    reaches somebody who is not a known client, so it is the first thing an
+    unregistered sender sees, and it named the wrong company.
+
+    There is no client to take a firm from, by definition, so the firm is the one
+    that owns the mailbox. One pipeline instance polls one mailbox, so where the
+    registry holds exactly one firm that is the answer. Where it holds none or
+    several, this returns an empty string and the alert falls back to wording that
+    names nobody, which is better than naming the wrong firm. Row F7 of
+    2026-08-20_LIST_settings_firm_and_client.md records the multi-firm case as a
+    wall: a single local mailbox cannot tell which firm an unknown sender meant.
+    """
+    firms = list(config.FIRMS.values())
+    if len(firms) == 1:
+        return firms[0].get("name", "") or ""
+    logger.warning(
+        f"{len(firms)} firms in {config.FIRMS_JSON.name}, so the firm behind the capture mailbox "
+        "cannot be identified for an unknown-sender alert; sending it without a firm name"
+    )
+    return ""
 
 
 def _remove_inbox_pair(intake) -> None:
@@ -363,22 +456,31 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
                 logger.warning(f"source file missing for receipt {receipt_id}: {source_path}")
                 continue
 
-            client_name = _resolve_client_name(receipt["client_code"])
+            client_folder_name = _client_folder_name(receipt["client_id"])
+            if not client_folder_name:
+                # 10d.18. An unresolved client files nothing into Clients. This
+                # receipt is already ok and already has its document store copy;
+                # leaving it unfiled is the honest outcome and it is reported.
+                logger.warning(
+                    f"receipt {receipt_id} is ok but its client {receipt['client_id']} has no "
+                    "client_folder_name in the registry, so it is not filed into Clients"
+                )
+                continue
             invoice_date = extraction.get("invoice_date") or datetime.now(timezone.utc).date().isoformat()
             tax_year = determine_tax_year(invoice_date)
             supplier = extraction.get("supplier_name") or "unknown"
             gross = extraction.get("gross_amount") if extraction.get("gross_amount") is not None else 0.0
-            currency = extraction.get("currency") or "GBP"
+            currency = extraction.get("currency") or config.DEFAULT_CURRENCY
 
             # Categorise the receipt (reuse the real extraction_id, don't generate a new one)
-            business_type = config.CLIENTS_BY_CODE.get(receipt["client_code"], {}).get("business_type", "UNSPECIFIED")
+            trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
             extraction_id = extraction["extraction_id"]
             categorisation = categorisation_engine.categorise(
                 receipt_id=receipt_id,
                 extraction_id=extraction_id,
                 supplier_name=supplier,
                 client_id=receipt["client_id"],
-                business_type=business_type
+                business_type=trade
             )
 
             # Save categorisation
@@ -388,7 +490,7 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
                 receipt_id=receipt_id,
                 extraction_id=extraction_id,
                 client_id=receipt["client_id"],
-                business_type=categorisation.business_type,
+                trade=categorisation.business_type,
                 vendor_key=categorisation.vendor_key,
                 suggested_code=categorisation.suggested_code,
                 suggested_name=categorisation.suggested_name,
@@ -402,8 +504,8 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
             sidecar_payload = make_enriched_sidecar(
                 receipt_id=receipt_id,
                 source=receipt["source"],
-                client_code=receipt["client_code"],
-                client_name=client_name,
+                client_id=receipt["client_id"],
+                client_name=(config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("client_name", ""),
                 capture_date=datetime.now(timezone.utc).isoformat(),
                 invoice_date=invoice_date,
                 supplier=supplier,
@@ -417,11 +519,11 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
                 validation_status="ok",
                 asserted=None,
                 original_filename=receipt["filename"],
-                claimed_client_code=None,
+                claimed_client_id=None,
             )
             dest_path, sidecar_path = file_receipt(
                 source_path,
-                client_name,
+                client_folder_name,
                 tax_year,
                 supplier,
                 gross,
@@ -562,7 +664,7 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
                     engine=extractor.name,
                     supplier_name=None, invoice_date=None,
                     net_amount=None, vat_amount=None, gross_amount=None,
-                    currency="GBP",
+                    currency=config.DEFAULT_CURRENCY,
                     raw_response=f"original file missing, cannot retry: {file_path}",
                     validation_status="failed",
                     validation_notes=[f"original file missing, cannot retry: {file_path}"],
@@ -581,9 +683,9 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
                 extraction=extraction,
                 file_path=file_path,
                 filename=receipt['filename'],
-                client_code=receipt['client_code'],
                 firm_id=receipt['firm_id'],
                 client_id=receipt['client_id'],
+                source=receipt['source'],
                 message_id=receipt.get('message_id'),
                 attachment_id=None,  # Email dedup already done
                 file_hash=None,
@@ -622,7 +724,7 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
                 engine=extractor.name,
                 supplier_name=None, invoice_date=None,
                 net_amount=None, vat_amount=None, gross_amount=None,
-                currency="GBP",
+                currency=config.DEFAULT_CURRENCY,
                 raw_response=str(exc),
                 validation_status="failed",
                 validation_notes=[f"auto-retry extraction error: {exc}"],
@@ -659,6 +761,13 @@ def process_once():
     }
 
     try:
+        # 10d.35. Before anything reads the registry. A client registered while
+        # the pipeline runs used to be invisible to it until a restart, because
+        # config read clients.json once at import and main() polls until the
+        # process ends. A failed parse keeps what is already in memory and never
+        # ends the poll; config.reload_clients_if_changed() carries that rule.
+        config.reload_clients_if_changed()
+
         repo = Repository()
         extractor = get_extractor()
         engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
@@ -692,11 +801,10 @@ def process_once():
             # If embedded images found, treat them as attachments and process normally
             if embedded_images:
                 # Resolve client
-                client_id, firm_id = repo.resolve_client_id(email_from)
-                _, _, client_code = repo.resolve_client_info(email_from)
+                client_id, firm_id, _client_folder = repo.resolve_client_info(email_from)
 
                 # Check for unknown sender
-                if client_id == "UNKNOWN":
+                if client_id == config.UNKNOWN_CLIENT_ID:
                     logger.info(f"unknown sender: {email_from}")
                     stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
 
@@ -705,8 +813,9 @@ def process_once():
                         if "<" in email_from and ">" in email_from:
                             recipient_email = email_from.split("<")[1].split(">")[0].strip()
 
-                        if send_unknown_sender_alert(recipient_email):
-                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, "Unknown")
+                        firm_name = _mailbox_firm_name()
+                        if send_unknown_sender_alert(recipient_email, firm_name):
+                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
 
                     move_email_to_folder(uid, "INBOX.Unknown Sender")
                     continue
@@ -725,12 +834,12 @@ def process_once():
                     if existing:
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
-                        repo.mark_processed(message_id, att_id, file_hash, existing)
+                        repo.mark_processed(message_id, att_id, file_hash, existing, firm_id)
                         move_email_to_folder(uid, "INBOX.Duplicates")
                         continue
 
                     receipt_id = str(uuid.uuid4())
-                    file_path = save_file(receipt_id, client_code, filename, file_data)
+                    file_path = save_file(receipt_id, client_id, filename, file_data)
                     stats["receipts_created"] += 1
 
                     repo.save_receipt(
@@ -738,13 +847,13 @@ def process_once():
                         message_id=message_id,
                         email_subject=email_msg.get("subject", ""),
                         email_from=email_from,
-                        email_received_at=email_msg.get("receivedDateTime", ""),
+                        email_received_at=_iso_utc(email_msg.get("receivedDateTime")),
                         filename=filename,
                         file_path=file_path,
                         file_hash=file_hash,
                         firm_id=firm_id,
                         client_id=client_id,
-                        client_code=client_code,
+                        source=EMAIL_SOURCE,
                     )
                     _log_receipt(receipt_id, message_id, filename, "created", firm_id=firm_id, client_id=client_id, run_id=run_id)
 
@@ -805,7 +914,7 @@ def process_once():
                             net_amount=None,
                             vat_amount=None,
                             gross_amount=None,
-                            currency="GBP",
+                            currency=config.DEFAULT_CURRENCY,
                             raw_response=str(exc),
                             validation_status="failed",
                             validation_notes=[f"extraction error: {exc}"],
@@ -819,7 +928,7 @@ def process_once():
                             run_id=run_id
                         )
 
-                    repo.mark_processed(message_id, att_id, file_hash, receipt_id)
+                    repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
 
                 # After processing all embedded images, move to Processed Receipts if all ok
                 move_email_to_folder(uid, "INBOX.Processed Receipts")
@@ -832,8 +941,7 @@ def process_once():
                 continue
 
             # Resolve sender to firm
-            client_info = repo.resolve_client_info(email_from)
-            client_id, firm_id, client_code = client_info
+            client_id, firm_id, _client_folder = repo.resolve_client_info(email_from)
 
             # Get firm name
             firm_name = config.FIRMS.get(firm_id, {}).get("name", firm_id)
@@ -864,18 +972,35 @@ def process_once():
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
                     continue
 
+                statement_folder_name = _client_folder_name(intake.client_id)
+                if not statement_folder_name:
+                    # 10d.11 and 10d.18. No sidecar, or a client the registry does
+                    # not hold, means no client, so nothing is filed into Clients.
+                    logger.warning(f"statement with no resolvable client, routing to review: {intake.filename}")
+                    file_review(intake.source_path, _review_key(intake.client_id), intake.filename,
+                                "unresolved_client", ["no client_id could be resolved for this file"],
+                                intake.sidecar or {})
+                    stats["review_flags_issued"] += 1
+                    continue
+
                 if not intake.statement_metadata.get("platform") or not intake.statement_metadata.get("week_ending"):
                     logger.warning(f"statement missing metadata, routing to review: {intake.filename}")
-                    file_review(intake.source_path, intake.client_code, intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
+                    file_review(intake.source_path, _review_key(intake.client_id), intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
                     stats["review_flags_issued"] += 1
                     continue
 
                 statement_id = str(uuid.uuid4())
-                client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
                 tax_year = determine_tax_year(intake.statement_metadata["week_ending"])
+                # 10d.55, Paul's decision of 2026-09-02. The statement gets its own
+                # copy in the document store BEFORE it is filed, the way the receipt
+                # branch below already does. Until now this branch never called into
+                # worker/storage/store.py at all, so the copy in the client folder was
+                # the only copy and a statement could not be reconstructed where a
+                # receipt could.
+                store_path = save_inbox_file(statement_id, intake.client_id, intake.source_path)
                 dest_path, sidecar_path = file_statement(
                     intake.source_path,
-                    client_name,
+                    statement_folder_name,
                     tax_year,
                     intake.statement_metadata["platform"],
                     intake.statement_metadata["week_ending"],
@@ -890,12 +1015,15 @@ def process_once():
                 repo.save_statement(
                     statement_id=statement_id,
                     client_id=intake.client_id,
-                    client_code=intake.client_code,
                     platform=intake.statement_metadata["platform"],
                     week_ending=intake.statement_metadata["week_ending"],
                     source=intake.source,
                     file_hash=intake.file_hash,
-                    file_path=dest_path,
+                    # 10d.56. file_path is the document store copy and filed_path is
+                    # the client folder copy, which is what both names mean on
+                    # `receipts`. file_path used to hold the client folder path.
+                    file_path=store_path,
+                    filed_path=dest_path,
                 )
                 logger.info(f"statement filed: {statement_id} {dest_path}")
                 stats["receipts_created"] += 1
@@ -915,31 +1043,36 @@ def process_once():
                 # Continue processing (don't skip)
 
             receipt_id = str(uuid.uuid4())
-            file_path = save_inbox_file(receipt_id, intake.client_code, intake.source_path)
+            # 10d.16 and 10d.18. An unresolved client is a recorded conclusion, not
+            # a fallback: the row is written with UNKNOWN and the item goes to
+            # Review. UNATTRIBUTED is the firm, because there is no client to take
+            # a firm from and DEFAULT_FIRM_ID stopped being that answer at 10d.19.
+            receipt_client_id = intake.client_id or config.UNKNOWN_CLIENT_ID
+            receipt_firm_id = intake.firm_id or config.UNATTRIBUTED_FIRM_ID
+            file_path = save_inbox_file(receipt_id, receipt_client_id, intake.source_path)
             stats["receipts_created"] += 1
 
             repo.save_receipt(
                 receipt_id=receipt_id,
-                message_id=f"capture:{intake.original_name}",
+                message_id=f"{intake.source}:{intake.original_name}",
                 email_subject=None,
                 email_from=None,
-                email_received_at=int(intake.source_path.stat().st_mtime),
+                # 10d.27. One format, ISO 8601 UTC. This used to pass an integer
+                # mtime into the same column the email path fills with a string.
+                email_received_at=_iso_utc_from_mtime(intake.source_path),
                 filename=intake.filename,
                 file_path=file_path,
                 file_hash=intake.file_hash,
-                firm_id=intake.firm_id,
-                client_id=intake.client_id,
-                client_code=intake.client_code,
+                firm_id=receipt_firm_id,
+                client_id=receipt_client_id,
                 source=intake.source,
             )
-            _log_receipt(receipt_id, f"capture:{intake.original_name}", intake.filename, "created", firm_id=intake.firm_id, client_id=intake.client_id, run_id=run_id)
-
-            client_name = config.CLIENTS_BY_CODE.get(intake.client_code, {}).get("client_name", intake.client_code)
+            _log_receipt(receipt_id, f"{intake.source}:{intake.original_name}", intake.filename, "created", firm_id=receipt_firm_id, client_id=receipt_client_id, run_id=run_id)
 
             # Build sidecar assertion values (folder-specific)
             asserted_values = None
             if intake.sidecar:
-                asserted = {k: intake.sidecar.get(k) for k in ("supplier_name", "invoice_date", "net_amount", "vat_amount", "gross_amount", "client_code") if k in intake.sidecar}
+                asserted = {k: intake.sidecar.get(k) for k in ("supplier_name", "invoice_date", "net_amount", "vat_amount", "gross_amount", "client_id") if k in intake.sidecar}
                 if asserted:
                     # Will be used in shared function to detect mismatches
                     asserted_values = asserted
@@ -954,9 +1087,9 @@ def process_once():
                     extraction=extraction,
                     file_path=file_path,
                     filename=intake.filename,
-                    client_code=intake.client_code,
-                    firm_id=intake.firm_id,
-                    client_id=intake.client_id,
+                    firm_id=receipt_firm_id,
+                    client_id=receipt_client_id,
+                    source=intake.source,
                     message_id=None,  # Folder intake, not email
                     attachment_id=None,
                     file_hash=None,
@@ -980,7 +1113,7 @@ def process_once():
                     net_amount=None,
                     vat_amount=None,
                     gross_amount=None,
-                    currency="GBP",
+                    currency=config.DEFAULT_CURRENCY,
                     raw_response=str(exc),
                     validation_status="failed",
                     validation_notes=[f"extraction error: {exc}"],
@@ -988,22 +1121,22 @@ def process_once():
                 )
                 file_review(
                     intake.source_path,
-                    intake.client_code,
+                    _review_key(receipt_client_id),
                     intake.filename,
                     "failed",
                     [str(exc)],
                     {
                         "receipt_id": receipt_id,
                         "source": intake.source,
-                        "client_code": intake.client_code,
-                        "client_name": client_name,
+                        "client_id": receipt_client_id,
+                        "client_name": (config.CLIENTS_BY_ID.get(receipt_client_id) or {}).get("client_name", ""),
                         "original_filename": intake.filename,
                         "error": str(exc),
                     },
                 )
                 _log_receipt(
-                    receipt_id, f"capture:{intake.original_name}", intake.filename, "extraction_failed",
-                    firm_id=intake.firm_id,
+                    receipt_id, f"{intake.source}:{intake.original_name}", intake.filename, "extraction_failed",
+                    firm_id=receipt_firm_id,
                     extraction_status="failed",
                     review_reason=str(exc),
                     run_id=run_id
@@ -1023,6 +1156,20 @@ def process_once():
             email_from = msg.get("from", {}).get("emailAddress", {}).get("address", "")
             received_at = msg.get("receivedDateTime", "")
 
+            # 10d.19. Resolved once per message rather than once per attachment.
+            # It was inside the loop below, so a message with four attachments
+            # resolved the same sender four times and could in principle have
+            # resolved it differently each time if the registry were re-read
+            # between attachments, which 10d.35 now makes possible.
+            client_id, firm_id, _client_folder = repo.resolve_client_info(email_from)
+
+            # The firm to log an event against when the event is about the
+            # message rather than about a receipt: an unsupported attachment, a
+            # duplicate skipped before anything was written. UNATTRIBUTED where
+            # the sender is not a client, because DEFAULT_FIRM_ID stopped being
+            # the answer to an unattributable event at 10d.19.
+            msg_firm_id = firm_id if client_id != config.UNKNOWN_CLIENT_ID else config.UNATTRIBUTED_FIRM_ID
+
             for att in fetch_attachments(message_id, msg.get("msg")):
                 att_id = att["id"]
                 filename = att.get("name", "unknown")
@@ -1032,7 +1179,7 @@ def process_once():
                     logger.info(f"skip unsupported: {filename}")
                     _log_receipt(
                         str(uuid.uuid4()), message_id, filename, "unsupported_file_type",
-                        firm_id=config.DEFAULT_FIRM_ID, run_id=run_id
+                        firm_id=msg_firm_id, run_id=run_id
                     )
                     move_email_to_folder(uid, "INBOX.Unsupported Files")
                     continue
@@ -1042,7 +1189,7 @@ def process_once():
                     stats["duplicates_skipped"] += 1
                     _log_receipt(
                         str(uuid.uuid4()), message_id, filename, "duplicate_skipped",
-                        firm_id=config.DEFAULT_FIRM_ID, duplicate_reason="message_id_match",
+                        firm_id=msg_firm_id, duplicate_reason="message_id_match",
                         run_id=run_id
                     )
                     move_email_to_folder(uid, "INBOX.Duplicates")
@@ -1058,22 +1205,19 @@ def process_once():
                     stats["duplicates_skipped"] += 1
                     _log_receipt(
                         str(uuid.uuid4()), message_id, filename, "duplicate_skipped",
-                        firm_id=config.DEFAULT_FIRM_ID, duplicate_of=existing,
+                        firm_id=msg_firm_id, duplicate_of=existing,
                         duplicate_reason="file_hash_match",
                         run_id=run_id
                     )
-                    repo.mark_processed(message_id, att_id, file_hash, existing)
+                    repo.mark_processed(message_id, att_id, file_hash, existing, msg_firm_id)
                     move_email_to_folder(uid, "INBOX.Duplicates")
                     continue
                 # If file_hash matches a failed/needs_review receipt, allow reprocessing
 
                 receipt_id = str(uuid.uuid4())
-                client_id, firm_id = repo.resolve_client_id(email_from)
-                _, _, client_code = repo.resolve_client_info(email_from)
-                client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)
 
                 # Check for unknown sender
-                if client_id == "UNKNOWN":
+                if client_id == config.UNKNOWN_CLIENT_ID:
                     logger.info(f"unknown sender: {email_from}")
                     stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
 
@@ -1085,16 +1229,17 @@ def process_once():
                             recipient_email = email_from.split("<")[1].split(">")[0].strip()
 
                         # Send alert
-                        if send_unknown_sender_alert(recipient_email):
-                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, "Unknown")
+                        firm_name = _mailbox_firm_name()
+                        if send_unknown_sender_alert(recipient_email, firm_name):
+                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
 
                     # Move to Unknown Sender folder
                     move_email_to_folder(uid, "INBOX.Unknown Sender")
                     _log_receipt(receipt_id, message_id, filename, "unknown_sender",
-                                firm_id=config.DEFAULT_FIRM_ID, run_id=run_id)
+                                firm_id=config.UNATTRIBUTED_FIRM_ID, run_id=run_id)
                     continue
 
-                file_path = save_file(receipt_id, client_code, filename, file_data)
+                file_path = save_file(receipt_id, client_id, filename, file_data)
                 stats["receipts_created"] += 1
 
                 repo.save_receipt(
@@ -1102,13 +1247,13 @@ def process_once():
                     message_id=message_id,
                     email_subject=subject,
                     email_from=email_from,
-                    email_received_at=received_at,
+                    email_received_at=_iso_utc(received_at),
                     filename=filename,
                     file_path=file_path,
                     file_hash=file_hash,
                     firm_id=firm_id,
                     client_id=client_id,
-                    client_code=client_code,
+                    source=EMAIL_SOURCE,
                 )
                 _log_receipt(receipt_id, message_id, filename, "created", firm_id=firm_id, client_id=client_id, run_id=run_id)
 
@@ -1122,9 +1267,9 @@ def process_once():
                         extraction=extraction,
                         file_path=file_path,
                         filename=filename,
-                        client_code=client_code,
                         firm_id=firm_id,
                         client_id=client_id,
+                        source=EMAIL_SOURCE,
                         message_id=message_id,
                         attachment_id=att_id,
                         file_hash=file_hash,
@@ -1158,7 +1303,7 @@ def process_once():
                         net_amount=None,
                         vat_amount=None,
                         gross_amount=None,
-                        currency="GBP",
+                        currency=config.DEFAULT_CURRENCY,
                         raw_response=str(exc),
                         validation_status="failed",
                         validation_notes=[f"extraction error: {exc}"],
@@ -1173,7 +1318,7 @@ def process_once():
                     )
                     move_email_to_folder(uid, "INBOX.Failed Processing")
                     # Mark processed even on failure (extraction error)
-                    repo.mark_processed(message_id, att_id, file_hash, receipt_id)
+                    repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
 
     except Exception as exc:
         errors = exc

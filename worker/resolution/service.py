@@ -198,7 +198,7 @@ class ResolutionNote:
     action: str                             # 'filed' | 'discarded'
     resolved_at: str
     receipt_id: Optional[str] = None        # may be null; then match on filenames
-    client_code: Optional[str] = None
+    client_id: Optional[str] = None
     resolved_by: Optional[str] = None
     values: Dict[str, Any] = field(default_factory=dict)
     category_name: Optional[str] = None
@@ -271,7 +271,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         action=action,
         resolved_at=resolved_at,
         receipt_id=_note_text(raw, "receipt_id"),
-        client_code=_note_text(raw, "client_code"),
+        client_id=_note_text(raw, "client_id"),
         resolved_by=_note_text(raw, "resolved_by"),
         original_review_files=list(review_files),
         reason=_note_text(raw, "reason"),
@@ -334,7 +334,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     currency = raw_values.get("currency")
     if currency is not None and not isinstance(currency, str):
         raise ResolutionNoteError("'values.currency' must be text")
-    values["currency"] = (currency or "GBP").strip() or "GBP"
+    values["currency"] = (currency or config.DEFAULT_CURRENCY).strip() or config.DEFAULT_CURRENCY
 
     # A name, never a code: Desktop has no codes. An empty string is the common
     # case, because Desktop does not require a category before filing, and it means
@@ -361,12 +361,24 @@ def resolve_practice_path(filed_path: str) -> Path:
     return config.ONEDRIVE_ROOT / candidate
 
 
-def _client_details(client_code: Optional[str]) -> Tuple[str, str]:
-    """Client name and business type for a client code, with the documented defaults."""
-    entry = config.CLIENTS_BY_CODE.get(client_code or "", {})
+def _client_details(client_id: Optional[str]) -> Tuple[str, str, Optional[str]]:
+    """(client_name, trade, client_folder_name) for a client_id.
+
+    Sub-steps 10d.13 and 10d.14. Keyed on client_id, because there is no client
+    code any more, and the folder name is returned rather than derived from the
+    display name: `client_name` is freely editable and is never used to build a
+    path, `client_folder_name` is fixed once a folder exists.
+
+    An unresolved client returns None for the folder, and the caller must not
+    file into Clients on that. That is 10d.18 and it is the whole point: the
+    lookup that used to substitute the code for the name whenever it missed is
+    what filed four receipts into a folder IntelliBooks does not read.
+    """
+    entry = config.CLIENTS_BY_ID.get(client_id or "") or {}
     return (
-        entry.get("client_name", client_code or "UNKNOWN"),
-        entry.get("business_type", "UNSPECIFIED"),
+        entry.get("client_name") or (client_id or "UNKNOWN"),
+        entry.get("trade", "UNSPECIFIED"),
+        entry.get("client_folder_name") or None,
     )
 
 
@@ -400,7 +412,7 @@ def get_resolution_view(repo, receipt_id) -> Optional[ResolutionView]:
         if duplicate_of_receipt:
             duplicate_of_extraction = repo.get_extraction_for_receipt(duplicate_of)
 
-    client_name, business_type = _client_details(receipt.get("client_code"))
+    client_name, business_type, _folder = _client_details(receipt.get("client_id"))
 
     return ResolutionView(
         receipt=receipt,
@@ -475,7 +487,7 @@ def _merge_corrections(extraction: Dict[str, Any], corrections: Corrections) -> 
     """
     merged = {name: extraction.get(name) for name in CORRECTABLE_FIELDS}
     merged.update(corrections.values)
-    merged["currency"] = extraction.get("currency") or "GBP"
+    merged["currency"] = extraction.get("currency") or config.DEFAULT_CURRENCY
     return merged
 
 
@@ -576,6 +588,21 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         validation = validate(candidate)
         pipeline_version = config.get_pipeline_version()
 
+        # 10d.16 and 10d.18. A receipt whose client has no folder under Clients
+        # cannot be filed there, whatever the corrections say, so it stays a
+        # review item. Without this a resolved receipt for an unresolved client
+        # would reach file_receipt() with None as the folder name and build a
+        # path with the string "None" in it.
+        _, _, folder_check = _client_details(receipt.get("client_id"))
+        if validation.status == "ok" and not folder_check:
+            validation = type(validation)(
+                status="needs_review",
+                notes=list(validation.notes or []) + [
+                    f"client {receipt.get('client_id')} has no client_folder_name in the registry, "
+                    "so nothing can be filed into Clients"
+                ],
+            )
+
         if validation.status != "ok":
             attempt_id = str(uuid.uuid4())
             # possible_duplicate is a statement about the relationship between two
@@ -639,7 +666,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
 
         # 8. Categorise, then save the engine's suggestion. Never overwrite
         #    suggested_code with the operator's value: that is the audit trail.
-        client_name, business_type = _client_details(receipt.get("client_code"))
+        client_name, business_type, client_folder_name = _client_details(receipt.get("client_id"))
         categorisation = categorisation_engine.categorise(
             receipt_id=receipt_id,
             extraction_id=extraction_id,
@@ -653,7 +680,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             client_id=receipt["client_id"],
-            business_type=categorisation.business_type,
+            trade=categorisation.business_type,
             vendor_key=categorisation.vendor_key,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
@@ -685,7 +712,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         sidecar_payload = make_enriched_sidecar(
             receipt_id=receipt_id,
             source=receipt.get("source", "email"),
-            client_code=receipt.get("client_code"),
+            client_id=receipt.get("client_id"),
             client_name=client_name,
             capture_date=_now(),
             invoice_date=merged["invoice_date"],
@@ -700,14 +727,14 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             validation_status="ok",
             asserted=None,
             original_filename=receipt["filename"],
-            claimed_client_code=None,
+            claimed_client_id=None,
         )
 
         # 11. File it, then record where it went. mark_receipt_filed sets
         #     filed_path, which is what protects it from duplicate detection.
         dest_path, _sidecar_path = file_receipt(
             Path(receipt["file_path"]),
-            client_name,
+            client_folder_name,
             determine_tax_year(invoice_date),
             merged["supplier_name"] or "unknown",
             merged["gross_amount"] or 0.0,
@@ -718,7 +745,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         repo.update_receipt_status(receipt_id, "ok")
 
         # 12. The Review pair is stale now. Already gone is not an error.
-        removed = remove_review_pair(receipt_id, receipt.get("client_code"), receipt.get("filename"))
+        removed = remove_review_pair(receipt_id, receipt.get("client_id"), receipt.get("filename"))
         if not removed:
             logger.info(f"no review pair removed for {receipt_id}, nothing on disk")
 
@@ -806,7 +833,7 @@ def discard_receipt(repo, receipt_id, reason, actor, source,
 
         # The receipt's life in the Review folder is over. Leaving the pair behind
         # is what made IntelliBooks file a duplicate, per 3.5.
-        removed = remove_review_pair(receipt_id, receipt.get("client_code"), receipt.get("filename"))
+        removed = remove_review_pair(receipt_id, receipt.get("client_id"), receipt.get("filename"))
         if not removed:
             logger.info(f"no review pair removed for {receipt_id}, nothing on disk")
 
@@ -861,9 +888,12 @@ def _receipt_for_note(repo, note: ResolutionNote) -> Optional[Dict[str, Any]]:
     An ambiguous match is not a match, the same rule `_find_review_sidecar()`
     applies, because two receipts can share an original filename.
 
-    The note's `client_code` and `client.name` are deliberately not used to find
-    anything. Desktop wrote the client code into the name field, so the two tools do
-    not agree on a client's name. See the 12.4 amendment of 2026-07-28.
+    The note's `client_id` and `client.name` are deliberately not used to find
+    anything. The note's client field was `client_code` until sub-step 10d.60 and
+    is now `client_id`, which both tools do agree on, but it is still not what
+    finds the receipt: a note identifies a receipt, not a client, and matching on
+    the client would turn a mis-keyed note into a wrong receipt rather than into
+    no receipt. See the 12.4 amendment of 2026-07-28.
     """
     if note.receipt_id:
         return repo.get_receipt(note.receipt_id)
@@ -975,7 +1005,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         for carried in ("receipt_ref_number", "receipt_time"):
             if carried not in note.values:
                 merged[carried] = previous.get(carried)
-        currency = note.values.get("currency") or previous.get("currency") or "GBP"
+        currency = note.values.get("currency") or previous.get("currency") or config.DEFAULT_CURRENCY
 
         candidate = ExtractionResult(
             engine="manual_correction",
@@ -1030,7 +1060,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         # Categorise for the audit trail, exactly as 4.3 step 8 does. The engine's
         # suggestion is never overwritten; Desktop's category goes in the correction
         # columns beside it.
-        client_name, business_type = _client_details(receipt.get("client_code"))
+        client_name, business_type, _folder = _client_details(receipt.get("client_id"))
         categorisation = categorisation_engine.categorise(
             receipt_id=receipt_id,
             extraction_id=extraction_id,
@@ -1044,7 +1074,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             client_id=receipt["client_id"],
-            business_type=categorisation.business_type,
+            trade=categorisation.business_type,
             vendor_key=categorisation.vendor_key,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
@@ -1080,7 +1110,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         # Desktop deletes the Review pair itself, per the 12.4 amendment, so finding
         # nothing is the expected case and not a failure.
         removed = remove_review_pair(
-            receipt_id, receipt.get("client_code"), receipt.get("filename")
+            receipt_id, receipt.get("client_id"), receipt.get("filename")
         )
         if not removed:
             logger.info(

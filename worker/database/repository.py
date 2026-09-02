@@ -55,9 +55,24 @@ class Repository:
         return row["receipt_id"] if row else None
 
     def resolve_client_info(self, email_from: str) -> tuple[str, str, str]:
-        """Match email_from to client in clients.csv, return (client_id, firm_id, client_code)."""
+        """Match a sender address to a client. Returns (client_id, firm_id, folder).
+
+        Sub-step 10d.20: the firm on the unresolved branch is
+        config.DEFAULT_FIRM_ID and not the literal "INTELLITAX", which had
+        already stopped being any firm's id in the data.
+
+        The third element used to be the client code and is now
+        client_folder_name, which is what every caller actually wanted it for:
+        naming the folder under Clients. There is no client code any more.
+
+        UNKNOWN is a recorded conclusion here, not a fallback. Sub-step 10d.16:
+        a receipt written with it is a review item, reports, and is never
+        status = ok. The folder name is empty rather than "UNKNOWN", because an
+        unresolved client files nothing into Clients at all, per 10d.18, and a
+        plausible-looking folder name is what created Clients/TESTST/.
+        """
         if not email_from:
-            return ("UNKNOWN", "INTELLITAX", "UNKNOWN")
+            return (config.UNKNOWN_CLIENT_ID, config.DEFAULT_FIRM_ID, "")
 
         email = email_from.strip().lower()
         if "<" in email and ">" in email:
@@ -65,25 +80,32 @@ class Repository:
 
         client = config.CLIENTS.get(email)
         if client:
-            return (client["client_id"], client["firm_id"], client.get("client_code", "UNKNOWN"))
-        return ("UNKNOWN", "INTELLITAX", "UNKNOWN")
+            return (client["client_id"], client["firm_id"], client.get("client_folder_name", ""))
+        return (config.UNKNOWN_CLIENT_ID, config.DEFAULT_FIRM_ID, "")
 
     def resolve_client_id(self, email_from: str) -> tuple[str, str]:
         client_id, firm_id, _ = self.resolve_client_info(email_from)
         return client_id, firm_id
 
     def save_statement(
-        self, statement_id, client_id, client_code, platform,
-        week_ending, source, file_hash, file_path, status="filed"
+        self, statement_id, client_id, platform,
+        week_ending, source, file_hash, file_path, filed_path, status="filed"
     ):
+        """Record a filed statement. Sub-steps 10d.29 and 10d.56.
+
+        client_code is gone. file_path is the copy in the document store and
+        filed_path is the copy in the client folder, which is the same meaning
+        both columns carry on `receipts`. file_path used to hold the client
+        folder path, so the two tables disagreed about one column name.
+        """
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute("""
             INSERT INTO statements
-                (statement_id, client_id, client_code, platform, week_ending,
-                 source, file_hash, file_path, status, created_at)
+                (statement_id, client_id, platform, week_ending,
+                 source, file_hash, file_path, filed_path, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (statement_id, client_id, client_code, platform, week_ending,
-              source, file_hash, str(file_path), status, now))
+        """, (statement_id, client_id, platform, week_ending,
+              source, file_hash, str(file_path), str(filed_path), status, now))
         self._conn.commit()
 
     def find_statement_by_hash(self, file_hash: str) -> Optional[str]:
@@ -150,7 +172,7 @@ class Repository:
 
     def get_unfiled_ok_receipts(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT receipt_id, client_id, firm_id, client_code, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"
+            "SELECT receipt_id, client_id, firm_id, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -206,15 +228,25 @@ class Repository:
     def save_receipt(
         self, receipt_id, message_id, email_subject, email_from,
         email_received_at, filename, file_path, file_hash,
-        firm_id="INTELLITAX", client_id="UNKNOWN", client_code="UNKNOWN", source="email"
+        firm_id, client_id, source
     ):
+        """Insert one receipt row. Every caller states every value.
+
+        Sub-step 10d.17 removes the four keyword defaults that used to sit here,
+        being firm_id, client_id, client_code and source. Python supplied them
+        before the SQL was reached, so removing the column defaults in 10d.24 to
+        10d.26 without removing these would have changed nothing at all.
+
+        client_code is gone with 10d.23. status is written as the literal here,
+        which is why the column no longer carries a default either, 10d.26.
+        """
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute("""
             INSERT INTO receipts
-                (receipt_id, firm_id, client_id, client_code, source, message_id, email_subject, email_from,
+                (receipt_id, firm_id, client_id, source, message_id, email_subject, email_from,
                  email_received_at, filename, file_path, file_hash, filed_path, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-        """, (receipt_id, firm_id, client_id, client_code, source, message_id, email_subject, email_from,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        """, (receipt_id, firm_id, client_id, source, message_id, email_subject, email_from,
               email_received_at, filename, str(file_path), file_hash, None, now))
         self._conn.commit()
 
@@ -260,13 +292,26 @@ class Repository:
             )
         self._conn.commit()
 
-    def mark_processed(self, message_id: str, attachment_id: str, file_hash: str, receipt_id: str):
+    def mark_processed(self, message_id: str, attachment_id: str, file_hash: str,
+                       receipt_id: str, firm_id: str | None = None):
+        """Record that an email attachment has been seen. Sub-step 10d.32.
+
+        firm_id is informational and nothing reads it. The key stays
+        (message_id, attachment_id): a message_id is generated by the sender's
+        mail client and is unique by design, so adding the firm would loosen the
+        key rather than tighten it. Amendment 129.
+
+        It keeps a default because the firm is genuinely unknown on some of the
+        paths that call this: a duplicate skipped before the sender was resolved
+        has no firm to record, and inventing one would be the fallback 10d.19
+        exists to remove.
+        """
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute("""
             INSERT OR IGNORE INTO processed_attachments
-                (message_id, attachment_id, file_hash, processed_at, receipt_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (message_id, attachment_id, file_hash, now, receipt_id))
+                (message_id, attachment_id, file_hash, processed_at, receipt_id, firm_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (message_id, attachment_id, file_hash, now, receipt_id, firm_id))
         self._conn.commit()
 
     def count_receipts_by_status(self, statuses) -> int:
@@ -388,8 +433,18 @@ class Repository:
 
     def upsert_firm_vendor(self, business_type: str, vendor_code: str,
                           nominal_code: str, account_name: str, last_updated: str,
-                          vendor_name: str = None):
-        """Insert or update firm vendor mapping. Each variant gets unique vendor_key."""
+                          vendor_name: str = None, firm_id: str = None):
+        """Insert or update firm vendor mapping. Each variant gets unique vendor_key.
+
+        Sub-step 10d.39. firm_id is written and never read: the unique key does
+        not change, so the pool stays shared and behaviour does not change. The
+        column exists so the provenance of a learned mapping is captured while it
+        is still capturable.
+
+        It is written on insert only. An update is a second firm confirming a
+        mapping the first firm taught, and overwriting the provenance with the
+        latest confirmer would record the wrong firm as the origin.
+        """
         # Check if this exact variant exists
         existing = self._conn.execute("""
             SELECT vendor_key FROM categorisations_firm_vendors
@@ -408,9 +463,9 @@ class Repository:
             vendor_key = str(uuid.uuid4())
             self._conn.execute("""
                 INSERT INTO categorisations_firm_vendors
-                    (vendor_key, business_type, vendor_code, nominal_code, account_name, vendor_name, times_seen, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-            """, (vendor_key, business_type, vendor_code, nominal_code, account_name, vendor_name, last_updated))
+                    (vendor_key, business_type, vendor_code, nominal_code, account_name, vendor_name, times_seen, last_updated, firm_id)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+            """, (vendor_key, business_type, vendor_code, nominal_code, account_name, vendor_name, last_updated, firm_id))
 
         self._conn.commit()
 
@@ -440,19 +495,26 @@ class Repository:
             self._conn.commit()
 
     def save_categorisation(self, categorisation_id: str, receipt_id: str,
-                           extraction_id: str, client_id: str, business_type: str,
+                           extraction_id: str, client_id: str, trade: str,
                            vendor_key: Optional[str], suggested_code: Optional[str],
                            suggested_name: Optional[str], confidence: str,
                            match_source: str, matched_vendor: Optional[str],
                            needs_review: bool, categorised_at: str):
-        """Insert categorisation record."""
+        """Insert categorisation record.
+
+        Sub-step 10d.30 renames the column `categorisations.business_type` to
+        `trade`, per amendment 105, and this parameter goes with it. The
+        categorisation engine's own parameter is still called business_type:
+        10d.30 renames the column, not the engine, and nothing in this step asks
+        for that sweep.
+        """
         self._conn.execute("""
             INSERT INTO categorisations
-                (categorisation_id, receipt_id, extraction_id, client_id, business_type,
+                (categorisation_id, receipt_id, extraction_id, client_id, trade,
                  vendor_key, suggested_code, suggested_name, confidence, match_source,
                  matched_vendor, needs_review, categorised_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (categorisation_id, receipt_id, extraction_id, client_id, business_type,
+        """, (categorisation_id, receipt_id, extraction_id, client_id, trade,
               vendor_key, suggested_code, suggested_name, confidence, match_source,
               matched_vendor, needs_review, categorised_at))
         self._conn.commit()
@@ -576,7 +638,7 @@ class Repository:
             stale_lock_cutoff: datetime cutoff; locks older than this are considered abandoned
         """
         rows = self._conn.execute("""
-            SELECT r.receipt_id, r.client_code, r.firm_id, r.client_id, r.filename, r.file_path,
+            SELECT r.receipt_id, r.firm_id, r.client_id, r.source, r.filename, r.file_path,
                    r.message_id, r.status, r.locked_at, r.created_at
             FROM receipts r
             INNER JOIN extractions e ON r.receipt_id = e.receipt_id
@@ -667,12 +729,17 @@ class Repository:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=allow_stale_after_minutes)
 
         cursor = self._conn.cursor()
+        # 10d.28. locked_at is TEXT, so both the value written and the value
+        # compared against are ISO strings. It used to pass datetime objects into
+        # a TIMESTAMP column and rely on sqlite3's deprecated default adapter,
+        # which meant the stale-lock comparison was a string comparison against a
+        # differently formatted string.
         cursor.execute("""
             UPDATE receipts
             SET locked_at = ?
             WHERE receipt_id = ?
               AND (locked_at IS NULL OR locked_at < ?)
-        """, (datetime.now(timezone.utc), receipt_id, cutoff))
+        """, (datetime.now(timezone.utc).isoformat(), receipt_id, cutoff.isoformat()))
         self._conn.commit()
 
         return cursor.rowcount == 1

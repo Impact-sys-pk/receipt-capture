@@ -12,7 +12,7 @@
 
 ---
 
-**Line numbers refreshed 2026-09-02, 16:30 BST, after step 10a.** `IntelliBooks-Desktop-v3.html` was saved twice that afternoon, as change log items 50 and 51, and grew from 3,307 lines to 3,320. **Every number below was re-derived by taking the line out of the pre-10a.2 copy, `IntelliBooks-Desktop-v3.html.bak-before-intellibooks-parent`, and finding that exact line in the saved file.** The shift is not uniform: nothing above the header comment moved, the region between it and `safeName()` moved by five, and everything below the new `clientFolderPath()` helper moved by thirteen. **`index.html` line numbers are the phone app's and did not move.** **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
+**Line numbers refreshed 2026-09-02, 16:30 BST, after step 10a.** `IntelliBooks-Desktop-v3.html` was saved twice that afternoon, as change log items 50 and 51, and grew from 3,307 lines to 3,320. **Refreshed twice, at 16:30 and 16:55 BST, and the second pass is the one to trust.** The first moved fifteen numbers and left their neighbours, so four sentences held one refreshed number beside stale ones: a `getDir` at 1704 inside a copy region still given as 1702 to 1706, a key read beside a refusal, the category strings outside their own array, and `instance` beside its three uses. **Found by Claude Code, which could not say which half of each pair was stale because `IntelliBooks-Desktop-v3.html` is under the practice root and it cannot read there.** **The second pass enumerated every three and four digit number in this brief rather than patching the four reported**, took each line out of the pre-10a.2 copy `IntelliBooks\App\IntelliBooks-Desktop-v3.html.bak-before-intellibooks-parent`, and found that exact line in the saved file. The shift is not uniform: nothing above the header comment moved, the region between it and `safeName()` moved by five, and everything below the new `clientFolderPath()` helper moved by thirteen. **One number was wrongly changed by the first pass and is put back: the `2606` in section M is what sub-step 10d.38 of the design document cites, not a line in the current file.** **`index.html` line numbers are the phone app's and did not move.** **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
 
 ## A. The field list. Identical in all three briefs
 
@@ -72,13 +72,13 @@
 
 Today the list is `practice.clients` in `IntelliBooks\IntelliBooks-Practice.json`, five records with `id`, `name`, `code`, `created`, `clientType`, `partners`, `vat`, `mode`, `phv`, `yearEnd`, `mtd`, `mtdBasis` and, on one, `balanceSheet`.
 
-After this change the list comes from `Intellibills\clients.json` and IntelliBooks writes back to the same file. **It is read and written from both sides**, which is one of the two reasons amendment 111 chose JSON over CSV: IntelliBooks has a correct CSV reader at `parseCSV()`, line 983, and no CSV writer.
+After this change the list comes from `Intellibills\clients.json` and IntelliBooks writes back to the same file. **It is read and written from both sides**, which is one of the two reasons amendment 111 chose JSON over CSV: IntelliBooks has a correct CSV reader at `parseCSV()`, line 996, and no CSV writer.
 
 **Write with temp-name-and-rename**, the same rule amendment 104 sets for the inbox JSON and 10d.35 sets for the pipeline's reader. The pipeline re-reads this file whenever its modification time moves, so a half-written file would be read.
 
 **`IntelliBooks-Practice.json` is retired with nothing left in it, and no third firm file is created.** Sub-step 10d.52, amendment 164, Paul's decision of 2026-09-01.
 
-Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7. **`settings.captureUrl` becomes the phone app address on `Intellibills\firms.json`**, which is row F10 and the only firm setting it held. **And `version`, `savedAt` and `instance` are per-file housekeeping rather than firm data**: `instance` is a per-browser id generated at line 598 from `localStorage["ib3_instance"]`, stamped on save at 671 and 690, and compared at 718 to notice when another browser has written the same file. **Stamp all three on whatever you write, the way you already do on every books file.**
+Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7. **`settings.captureUrl` becomes the phone app address on `Intellibills\firms.json`**, which is row F10 and the only firm setting it held. **And `version`, `savedAt` and `instance` are per-file housekeeping rather than firm data**: `instance` is a per-browser id generated at line 598 from `localStorage["ib3_instance"]`, stamped on save at 684 and 703, and compared at 731 to notice when another browser has written the same file. **Stamp all three on whatever you write, the way you already do on every books file.**
 
 **The file is renamed `IntelliBooks-Practice.json.superseded-2026-09-01` rather than deleted.**
 
@@ -96,15 +96,15 @@ Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7
 
 | Line | What it opens |
 |---|---|
-| 703 | `Clients\{name}\IntelliBooks` — a legacy migration read, and **the only one using `safeName(client.name)` rather than `safeName(c.name)`** |
-| 1165 | `Clients\{name}\HMRC Summaries`, read |
-| 1181 | `Clients\{name}\HMRC Summaries`, read |
-| 1793 | `Clients\{name}\Receipts`, read, inside `listReceiptYears()` |
-| 1819 | `Clients\{name}\Receipts\{year}`, read, inside `scanFiledReceipts()` |
-| 1978 | `Clients\{name}\Handover Pack\{date}`, create |
-| 2475 | `Clients\{name}\Receipts\{taxYear}`, create, inside `fileReviewReceipt()` |
-| 2847 | `Clients\{name}\{subParts}`, create, inside `writeClientFile()` |
-| 3105 | `Clients\{name}\IntelliBooks`, read |
+| 716 | `Clients\{name}\IntelliBooks` — a legacy migration read, and **the only one using `safeName(client.name)` rather than `safeName(c.name)`** |
+| 1178 | `Clients\{name}\HMRC Summaries`, read |
+| 1194 | `Clients\{name}\HMRC Summaries`, read |
+| 1806 | `Clients\{name}\Receipts`, read, inside `listReceiptYears()` |
+| 1832 | `Clients\{name}\Receipts\{year}`, read, inside `scanFiledReceipts()` |
+| 1991 | `Clients\{name}\Handover Pack\{date}`, create |
+| 2488 | `Clients\{name}\Receipts\{taxYear}`, create, inside `fileReviewReceipt()` |
+| 2860 | `Clients\{name}\{subParts}`, create, inside `writeClientFile()` |
+| 3118 | `Clients\{name}\IntelliBooks`, read |
 
 **All nine change. `safeName()` at line 627 is then dead for this purpose**, because `client_folder_name` is already a folder name and must not be cleaned again: cleaning it a second time is how the two products came to disagree. **Check whether `safeName()` has any other caller before you delete it, and report either way.**
 
@@ -130,7 +130,7 @@ Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7
 
 **10d.12. `importToInbox()` starts writing a sidecar carrying `client_id`.**
 
-`importToInbox()` is at line 1688 and is what the **Add Receipts** control calls. Today it opens `getDir([PIPE_DIR,"Receipt Inbox",c.code],true)` at line 1704 and copies the file alone, at lines 1702 to 1706. **There is no sidecar, so that route has no client in the item.**
+`importToInbox()` is at line 1701 and is what the **Add Receipts** control calls. Today it opens `getDir([PIPE_DIR,"Receipt Inbox",c.code],true)` at line 1704 and copies the file alone, at lines 1715 to 1719. **There is no sidecar, so that route has no client in the item.**
 
 Two changes:
 
@@ -148,17 +148,17 @@ Two changes:
 
 **Correction to the sub-step, and this one is badly wrong.** It cites `IntelliBooks-Desktop-v3.html:2606`. Line 2619 is `$("vat-report-card").style.display="block";`, inside the VAT report renderer, and has nothing to do with this. **The real locations, verified by reading:**
 
-- `function loadSampleData(){` is line **3167**
-- the five sample receipts are the `rs` array at **3204 to 3210**
+- `function loadSampleData(){` is line **3180**
+- the five sample receipts are the `rs` array at **3217 to 3223**
 - the category strings are at **3218 to 3222**: `"Motor expenses"`, `"Sundry expenses"`, `"Repairs and maintenance"`, `"Parking and tolls"`, `"Fuel"`
-- `category:catg` is written into each receipt at **3216**
-- the linked transfer pair gets `category="(Transfer)"` at **3203**
+- `category:catg` is written into each receipt at **3229**
+- the linked transfer pair gets `category="(Transfer)"` at **3216**
 
 **Since the chart adoption, `t.category` and a receipt's `category` hold the four-digit code and the name is display only.** So every sample receipt lands with a category the chart does not contain, and the sample transactions land uncategorised.
 
 **Fix the five to codes from the client's own chart**, read out of `books.categories` rather than typed, so a sample cannot go stale again when a chart changes.
 
-**`category="(Transfer)"` at 3203 is outstanding item 56 and is not this task.** Leave it and say so in the change log.
+**`category="(Transfer)"` at 3216 is outstanding item 56 and is not this task.** Leave it and say so in the change log.
 
 **Why it is here.** 10d.2 recreates the test clients with empty books, and this function is the only way to get transactions into a fresh one, so it is the first thing the day's stage 5 reaches for. It is also the source of the demo version's data.
 
@@ -170,9 +170,9 @@ Two changes:
 
 **10d.44. The setup link carries every firm-owned setting, always, as a complete statement.**
 
-`copyCaptureLink()` is at line 1201. Today it adds a parameter only when the value is truthy: `if(c.vat)link+="&vat=1"` at 1208, `if(c.mode==="confirm")` at 1209, `if(c.phv&&c.phv.length)` at 1210. **And the phone only takes a value when the parameter is present**, at `index.html:200` to `:202`. **So the two halves conspire and a link can turn a setting on and never off.** `&vat=0` and an empty `&phv=` become meaningful, and the link always carries every firm-owned setting.
+`copyCaptureLink()` is at line 1214. Today it adds a parameter only when the value is truthy: `if(c.vat)link+="&vat=1"` at 1221, `if(c.mode==="confirm")` at 1222, `if(c.phv&&c.phv.length)` at 1223. **And the phone only takes a value when the parameter is present**, at `index.html:200` to `:202`. **So the two halves conspire and a link can turn a setting on and never off.** `&vat=0` and an empty `&phv=` become meaningful, and the link always carries every firm-owned setting.
 
-The link also stops carrying the shared key. `&k=` comes off, because 10d.5 replaces it with the per-client `capture_token`, and 10d.7 removes the shared `UPLOAD_KEY` in the same commit with no fallback left working. `copyCaptureLink()` reads that key from `practice.settings.uploadKey` at line 1217 and refuses without it at 1206; **both go**.
+The link also stops carrying the shared key. `&k=` comes off, because 10d.5 replaces it with the per-client `capture_token`, and 10d.7 removes the shared `UPLOAD_KEY` in the same commit with no fallback left working. `copyCaptureLink()` reads that key from `practice.settings.uploadKey` at line 1217 and refuses without it at 1219; **both go**.
 
 **10d.45. Client-owned settings never appear in the link at all**, so the firm cannot overwrite a choice that is not theirs.
 
@@ -192,7 +192,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 **Both files were read off disk on 2026-09-02**, in `Clients\Test Sole Trader\HMRC Summaries\`, and neither was in this plan's first version.
 
-**10d.57. The filenames.** They are `testst-hmrc-2025-04-06-to-2026-04-05.csv` at 1,229 bytes and `testst-archive-2025-04-06-to-2026-04-05.json` at 1,974 bytes. **The prefix is the client code in lower case.** `client_id` replaces it, so `client_004-hmrc-...` in whatever case the rest of the naming settles on. The writer is reached through `getDir(["Clients",safeName(c.name),"HMRC Summaries"])` at lines 1165 and 1181.
+**10d.57. The filenames.** They are `testst-hmrc-2025-04-06-to-2026-04-05.csv` at 1,229 bytes and `testst-archive-2025-04-06-to-2026-04-05.json` at 1,974 bytes. **The prefix is the client code in lower case.** `client_id` replaces it, so `client_004-hmrc-...` in whatever case the rest of the naming settles on. The writer is reached through `getDir(["Clients",safeName(c.name),"HMRC Summaries"])` at lines 1178 and 1194.
 
 **10d.58. The archive JSON's `code` field.** The file carries `"client": "Test Sole Trader"` and `"code": "TESTST"`. **`client_id` replaces `code`. `client` stays, as the display name.**
 
@@ -243,7 +243,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 **Four things I want back.**
 
-**Were my two corrections right?** Nine `getDir` sites rather than four, and `loadSampleData()` at 3167 with the categories at 3218 to 3222 rather than 2619. Tell me if either is wrong.
+**Were my two corrections right?** Nine `getDir` sites rather than four, and `loadSampleData()` at 3180 with the categories at 3218 to 3222 rather than 2606. Tell me if either is wrong.
 
 **How many places build a books filename?** I told you to enumerate them and did not enumerate them myself. Correct me.
 

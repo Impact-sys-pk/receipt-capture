@@ -115,7 +115,10 @@ class TempEnvironment:
         )
 
     def filed_sidecar(self):
-        found = sorted(config.CLIENTS_ROOT.glob("*/Receipts/*/*.json"))
+        # Amendment 170: Clients\{name}\IntelliBooks\Receipts\{tax year}\.
+        # Spelled out rather than built from config, so a wrong constant is caught
+        # here instead of agreeing with itself.
+        found = sorted(config.CLIENTS_ROOT.glob("*/IntelliBooks/Receipts/*/*.json"))
         self_assert = len(found)
         assert self_assert == 1, f"expected exactly one filed sidecar, found {found}"
         return json.loads(found[0].read_text(encoding="utf-8"))

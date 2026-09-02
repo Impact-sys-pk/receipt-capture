@@ -32,6 +32,15 @@ LOCAL_ROOT = Path(os.environ.get("INTELLIBILLS_LOCAL_ROOT", r"C:\Intellibills"))
 INTELLIBILLS_ROOT = ONEDRIVE_ROOT / "Intellibills"
 CLIENTS_ROOT = ONEDRIVE_ROOT / "Clients"
 
+# The parent folder inside a client folder that everything IntelliBooks owns now
+# sits under. Amendment 170, Paul's decision, 2026-09-02. Four children and no
+# more: Receipts, Statements, HMRC Summaries and Handover Pack. The pipeline only
+# writes the first two; IntelliBooks-Desktop-v3.html writes the other two.
+# A string for the same reason as the two below, and its value collides with no
+# path constant: this is Clients\{name}\IntelliBooks, not the practice root's own
+# IntelliBooks folder, which amendment 72 emptied and test_path_layout.py guards.
+CLIENT_INTELLIBOOKS_FOLDER_NAME = "IntelliBooks"
+
 # The two subfolders the pipeline writes inside a client folder, named here rather
 # than repeated as literals in worker/filing.py. Strings, not Paths: they are single
 # name segments joined onto a client directory, and every Path in this module is an

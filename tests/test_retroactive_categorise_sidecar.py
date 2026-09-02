@@ -57,7 +57,10 @@ class TempEnvironment:
 
     def seed_filed_receipt(self, receipt_id, supplier):
         """A filed receipt with its sidecar on disk, and no categorisation row."""
-        filed_dir = config.CLIENTS_ROOT / "Test Client" / "Receipts" / "2026-27"
+        # Amendment 170. Literal, so it describes the layout rather than deriving it.
+        filed_dir = (
+            config.CLIENTS_ROOT / "Test Client" / "IntelliBooks" / "Receipts" / "2026-27"
+        )
         filed_dir.mkdir(parents=True, exist_ok=True)
         filed_image = filed_dir / f"2026-04-01_{receipt_id}_12.00.pdf"
         filed_image.write_text("dummy", encoding="utf-8")

@@ -48,7 +48,13 @@ from worker.resolution.service import apply_resolution_note  # noqa: E402
 
 import app  # noqa: E402
 
-FILED_RELATIVE = r"Clients\Test Client\Receipts\2026-27\2026-04-01_apcoa-parking_96.00.pdf"
+# The one string both products must agree on, per amendment 170: the IntelliBooks
+# parent sits between the client folder and Receipts. IntelliBooks-Desktop-v3.html
+# writes this and resolve_practice_path() reads it.
+FILED_RELATIVE = (
+    r"Clients\Test Client\IntelliBooks\Receipts\2026-27"
+    r"\2026-04-01_apcoa-parking_96.00.pdf"
+)
 
 
 def note_payload(**overrides):

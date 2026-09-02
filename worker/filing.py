@@ -62,7 +62,7 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def get_client_directory(client_name: str) -> Path:
-    return config.CLIENTS_ROOT / client_name
+    return config.CLIENTS_ROOT / client_name / config.CLIENT_INTELLIBOOKS_FOLDER_NAME
 
 
 def file_receipt(

@@ -12,6 +12,8 @@ Runs under AUTOMATIC Task Mode in `CLAUDE.md`. **Its "stop and ask" list is unch
 
 ---
 
+**Line numbers refreshed 2026-09-02, 16:30 BST, after step 10a.** Sub-steps 10a.1 and 10a.2 added three constants and their comments to `config.py`, so every `config.py` line this brief cites moved by eighteen. **All six were re-derived by reading the current file, not by adding a constant, and each now lands on the construct it names.** `worker/filing.py` was edited in place and its line numbers did not move; `app.py`, `worker/database/repository.py`, `worker/intake/folder_reader.py`, `worker/extraction/postprocess.py` and everything under `tests\` were untouched by step 10a. **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
+
 ## A. The field list. Identical in all three briefs
 
 **One client file. `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\clients.json`.** Owned by Intellibills, read and written by both products. JSON, not CSV. **snake_case throughout.**
@@ -99,15 +101,15 @@ Record the pass count. Every later count in your report is against this one.
 
 **10d.4. Strike through, do not delete, `CLAUDE.md`'s "Two rules about `clients.csv`" section**, and add one line saying step 10d retired it and the `emails` array is why. Amendment 111 gives the reasoning: the rule that one client may have two rows differing only in the email column exists because a CSV row cannot hold a list, and its companion rule about the duplicate `client_id` check exists only to protect that arrangement.
 
-**`config.py`.** `load_clients()` at `config.py:108` reads JSON, not CSV, and builds:
+**`config.py`.** `load_clients()` at `config.py:126` reads JSON, not CSV, and builds:
 
 - `CLIENTS_BY_ID`, keyed on `client_id`. **New, and it becomes the primary lookup.**
 - `CLIENTS`, keyed on each lower-cased address in the `emails` array, one entry per address.
-- **`CLIENTS_BY_CODE` is deleted.** **60 occurrences across the repository, counted: 13 outside `tests\` and 47 inside, spread over 17 test files.** Of the 13, one is the definition at `config.py:149` and one is a comment at `worker/filing.py:166`. **The eleven real readers are** `worker/extraction_pipeline.py:190`, `:217` and `:258`; `worker/resolution/service.py:366`; `worker/intake/folder_reader.py:82`; `retroactive_categorise.py:120`; and `app.py:143`, `:374`, `:874`, `:937` and `:1073`. Every one is a `.get(client_code, {})` lookup with a silent fallback. **Report your own count before you change any.**
+- **`CLIENTS_BY_CODE` is deleted.** **60 occurrences across the repository, counted: 13 outside `tests\` and 47 inside, spread over 17 test files.** Of the 13, one is the definition at `config.py:167` and one is a comment at `worker/filing.py:166`. **The eleven real readers are** `worker/extraction_pipeline.py:190`, `:217` and `:258`; `worker/resolution/service.py:366`; `worker/intake/folder_reader.py:82`; `retroactive_categorise.py:120`; and `app.py:143`, `:374`, `:874`, `:937` and `:1073`. Every one is a `.get(client_code, {})` lookup with a silent fallback. **Report your own count before you change any.**
 
 `CLIENTS_CSV` becomes `CLIENTS_JSON`, pointing at `clients.json`.
 
-**10d.35. Re-read the registry while the pipeline runs.** `config.py:149` loads it once at import and `main()` at `app.py:1203` polls until the process ends, so a client registered mid-run is invisible until a restart. `app.py` stats the file at the top of each `process_once()` and calls `load_clients()` again when the modification time has moved. **Two conditions, both required:** a failed parse keeps the registry already in memory, logs an error, and never empties it and never ends the poll; and any writer uses temp-name-and-rename. **Section 8.6's marker file is struck and not built.**
+**10d.35. Re-read the registry while the pipeline runs.** `config.py:167` loads it once at import and `main()` at `app.py:1203` polls until the process ends, so a client registered mid-run is invisible until a restart. `app.py` stats the file at the top of each `process_once()` and calls `load_clients()` again when the modification time has moved. **Two conditions, both required:** a failed parse keeps the registry already in memory, logs an error, and never empties it and never ends the poll; and any writer uses temp-name-and-rename. **Section 8.6's marker file is struck and not built.**
 
 **10d.13. Delete the fallback at `app.py:143`.** Verified present: `return config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)`. It silently substitutes the code for the name whenever the lookup misses. **This is not academic: on 2026-09-01 it filed four TESTST receipts into `Clients\TESTST\` because `clients.csv` had no TESTST row, and IntelliBooks looks under `Clients\Test Sole Trader\` and found nothing, with no message on screen.**
 
@@ -138,7 +140,7 @@ Record the pass count. Every later count in your report is against this one.
 - `app.py:1045` and `:1061` take the firm from the receipt they already name. Both verified.
 - The client is resolved **once before** the per-attachment loop rather than inside it at `app.py:1071`. Verified: that line is `client_id, firm_id = repo.resolve_client_id(email_from)`.
 - An unattributable event goes to a reserved firm id, `receipt_events_UNATTRIBUTED.ndjson`. **The name is built twice, identically, at `app.py:102` and `worker/extraction_pipeline.py:96`, and both change.** Both verified.
-- **`config.RECEIPTS_LOG` at `config.py:52` is deleted rather than revived.** `tests/test_path_layout.py:83` asserts its value and goes with it. Both verified.
+- **`config.RECEIPTS_LOG` at `config.py:70` is deleted rather than revived.** `tests/test_path_layout.py:83` asserts its value and goes with it. Both verified.
 
 **10d.20.** `repository.py:60` and `:69` return `config.DEFAULT_FIRM_ID` instead of the literal `"INTELLITAX"`. Both verified.
 
@@ -222,9 +224,9 @@ The statement branch at **`app.py:858` to `:902`** calls `save_inbox_file()` fir
 
 **10d.51. `Intellibills\firms.csv` becomes `Intellibills\firms.json`, and it takes the phone app address.** Added 2026-09-01 by amendment 164, Paul's decision.
 
-`load_firms()` at `config.py:132` reads JSON. **snake_case throughout, matching `clients.json`.** The record gains the phone app address, which is row F10 of `2026-08-20_LIST_settings_firm_and_client.md` and lives in `IntelliBooks-Practice.json` as `settings.captureUrl` today.
+`load_firms()` at `config.py:150` reads JSON. **snake_case throughout, matching `clients.json`.** The record gains the phone app address, which is row F10 of `2026-08-20_LIST_settings_firm_and_client.md` and lives in `IntelliBooks-Practice.json` as `settings.captureUrl` today.
 
-**One reader in the whole system, measured rather than assumed:** `config.FIRMS` at `config.py:150`, read at `app.py:839` and nowhere else. IntelliBooks does not read `firms.csv` at all. **So the conversion is that one function plus the constant's name.**
+**One reader in the whole system, measured rather than assumed:** `config.FIRMS` at `config.py:168`, read at `app.py:839` and nowhere else. IntelliBooks does not read `firms.csv` at all. **So the conversion is that one function plus the constant's name.**
 
 **The `email` column comes across unchanged rather than being quietly dropped.** It is outstanding item 24: loaded into `config.FIRMS` and read by nothing, and one of the three fields a firm currently is. **Do not remove it and do not add a reader for it.**
 
@@ -234,7 +236,7 @@ The statement branch at **`app.py:858` to `:902`** calls `save_inbox_file()` fir
 
 **10d.36. `send_unknown_sender_alert()` at `worker/email/alerts.py:54` takes a `firm_name`**, the way `send_no_attachment_alert()` at `:11` already does. Three literals go with it: `support@lastingimpact.co.uk` at `:69`, and `Lasting Impact` at `:75` and `:80`. All five lines verified. **This is the only automatic email that reaches somebody who is not a known client, so it is the first thing an unregistered sender sees, and it currently names the wrong company.** Row F7 of `2026-08-20_LIST_settings_firm_and_client.md`, which records it as a wall: a literal in source cannot vary by firm.
 
-**10d.37. Delete `EXPORTS_DIR` at `config.py:38` and its `mkdir` at `:95`.** No reader outside `config.py` and `tests/test_path_layout.py:40` and `:112`, which go with it. All four verified. **The folder itself stays**: `Intellibills\Exports\` holds `2026-08-18_EXPORT_categorisations_client_vendors.csv`, the only thing of value the database ever held, 100 rows, all for the old `Client_006`.
+**10d.37. Delete `EXPORTS_DIR` at `config.py:56` and its `mkdir` at `:95`.** No reader outside `config.py` and `tests/test_path_layout.py:40` and `:112`, which go with it. All four verified. **The folder itself stays**: `Intellibills\Exports\` holds `2026-08-18_EXPORT_categorisations_client_vendors.csv`, the only thing of value the database ever held, 100 rows, all for the old `Client_006`.
 
 **10d.39. `categorisations_firm_vendors` gains a nullable `firm_id`, written and not read.** The unique key does not change, so behaviour does not change and the learned pool stays shared. `upsert_firm_vendor()` at `repository.py:389` takes the firm and writes it. **The engine resolves the firm from the `client_id` it already receives rather than gaining a parameter**, which avoids touching `categorise()`'s five production call sites at `app.py:376`, `worker/extraction_pipeline.py:191`, `worker/resolution/service.py:643` and `:1034`, and `retroactive_categorise.py:133`. All verified. **This comes after 10d.19.**
 

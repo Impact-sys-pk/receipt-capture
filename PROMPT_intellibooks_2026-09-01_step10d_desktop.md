@@ -12,6 +12,8 @@
 
 ---
 
+**Line numbers refreshed 2026-09-02, 16:30 BST, after step 10a.** `IntelliBooks-Desktop-v3.html` was saved twice that afternoon, as change log items 50 and 51, and grew from 3,307 lines to 3,320. **Every number below was re-derived by taking the line out of the pre-10a.2 copy, `IntelliBooks-Desktop-v3.html.bak-before-intellibooks-parent`, and finding that exact line in the saved file.** The shift is not uniform: nothing above the header comment moved, the region between it and `safeName()` moved by five, and everything below the new `clientFolderPath()` helper moved by thirteen. **`index.html` line numbers are the phone app's and did not move.** **Read the region before editing it in any case: these numbers move again as soon as this step's first edit lands.**
+
 ## A. The field list. Identical in all three briefs
 
 **One client file. `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\clients.json`.** Owned by Intellibills, read and written by both products. JSON, not CSV. **snake_case throughout.**
@@ -76,7 +78,7 @@ After this change the list comes from `Intellibills\clients.json` and IntelliBoo
 
 **`IntelliBooks-Practice.json` is retired with nothing left in it, and no third firm file is created.** Sub-step 10d.52, amendment 164, Paul's decision of 2026-09-01.
 
-Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7. **`settings.captureUrl` becomes the phone app address on `Intellibills\firms.json`**, which is row F10 and the only firm setting it held. **And `version`, `savedAt` and `instance` are per-file housekeeping rather than firm data**: `instance` is a per-browser id generated at line 593 from `localStorage["ib3_instance"]`, stamped on save at 671 and 690, and compared at 718 to notice when another browser has written the same file. **Stamp all three on whatever you write, the way you already do on every books file.**
+Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7. **`settings.captureUrl` becomes the phone app address on `Intellibills\firms.json`**, which is row F10 and the only firm setting it held. **And `version`, `savedAt` and `instance` are per-file housekeeping rather than firm data**: `instance` is a per-browser id generated at line 598 from `localStorage["ib3_instance"]`, stamped on save at 671 and 690, and compared at 718 to notice when another browser has written the same file. **Stamp all three on whatever you write, the way you already do on every books file.**
 
 **The file is renamed `IntelliBooks-Practice.json.superseded-2026-09-01` rather than deleted.**
 
@@ -104,11 +106,11 @@ Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7
 | 2847 | `Clients\{name}\{subParts}`, create, inside `writeClientFile()` |
 | 3105 | `Clients\{name}\IntelliBooks`, read |
 
-**All nine change. `safeName()` at line 622 is then dead for this purpose**, because `client_folder_name` is already a folder name and must not be cleaned again: cleaning it a second time is how the two products came to disagree. **Check whether `safeName()` has any other caller before you delete it, and report either way.**
+**All nine change. `safeName()` at line 627 is then dead for this purpose**, because `client_folder_name` is already a folder name and must not be cleaned again: cleaning it a second time is how the two products came to disagree. **Check whether `safeName()` has any other caller before you delete it, and report either way.**
 
-**There is one more place the client name builds a path, and 10d.15 does not name it.** `fileReviewReceipt()` writes a `filed_path` string at line 2519 as `` `Clients\\${safeName(c.name)}\\Receipts\\${taxYear}\\${finalName}` ``. **That is a string written into data, not a folder call, and it must change with the nine.** Found by searching for `Clients\\` rather than for `getDir`.
+**There is one more place the client name builds a path, and 10d.15 does not name it.** `fileReviewReceipt()` writes a `filed_path` into a resolution note at line 2532. **Rewritten 2026-09-02 after step 10a: it no longer builds a string.** It now reads `filed_path:clientFolderPath(c,"Receipts",taxYear,finalName),`, and `clientFolderPath()` at line 635 is the one builder every message and the note share, added by change log item 51. ~~at line 2519 as `` `Clients\\${safeName(c.name)}\\Receipts\\${taxYear}\\${finalName}` ``~~ **So what changes here is the argument, not a path literal, and `clientFolderPath()` is the only place `safeName(c.name)` is still applied to build a client path.** Found by searching for `Clients\\` rather than for `getDir`.
 
-**Why this matters concretely.** On 2026-09-01 the pipeline filed four receipts into `Clients\TESTST\` while this file looked in `Clients\Test Sole Trader\`, and `scanFiledReceipts()` at line 1820 catches the failure with `catch(e){return;}` and a comment reading "nothing filed for this year yet". **The Receipts tab showed nothing and said nothing.** Consider whether that silent return should stay silent; **flag it rather than changing it, because it is not in step 10d.**
+**Why this matters concretely.** On 2026-09-01 the pipeline filed four receipts into `Clients\TESTST\` while this file looked in `Clients\Test Sole Trader\`, and `scanFiledReceipts()` at line 1833 catches the failure with `catch(e){return;}` and a comment reading "nothing filed for this year yet". **The Receipts tab showed nothing and said nothing.** Consider whether that silent return should stay silent; **flag it rather than changing it, because it is not in step 10d.**
 
 ---
 
@@ -128,7 +130,7 @@ Besides the client list it holds five things. `settings.uploadKey` goes at 10d.7
 
 **10d.12. `importToInbox()` starts writing a sidecar carrying `client_id`.**
 
-`importToInbox()` is at line 1688 and is what the **Add Receipts** control calls. Today it opens `getDir([PIPE_DIR,"Receipt Inbox",c.code],true)` at line 1691 and copies the file alone, at lines 1702 to 1706. **There is no sidecar, so that route has no client in the item.**
+`importToInbox()` is at line 1688 and is what the **Add Receipts** control calls. Today it opens `getDir([PIPE_DIR,"Receipt Inbox",c.code],true)` at line 1704 and copies the file alone, at lines 1702 to 1706. **There is no sidecar, so that route has no client in the item.**
 
 Two changes:
 
@@ -136,7 +138,7 @@ Two changes:
 
 **Each copied file gets a sidecar beside it carrying `client_id` and `source: "desktop"`.** Per 10d.40, `receipts.source` has four values and no others: `email`, `phone`, `desktop`, `other`. **Add Receipts writes `desktop`.** A file with no sidecar gets `other` and goes to Review, and that is the pipeline's behaviour, not something for you to implement.
 
-**Match the sidecar shape the pipeline already reads.** `scan_inbox()` at `worker/intake/folder_reader.py` reads the sidecar and tells a statement from a receipt by its `type` key. `parseSidecar()` in this file, at line 1711, is the reader on your own side and takes `data.client.code` or `data.client_code` at line 1725. **Both sides change together: agree the shape with the pipeline brief's field list and write `client_id`, not a code.**
+**Match the sidecar shape the pipeline already reads.** `scan_inbox()` at `worker/intake/folder_reader.py` reads the sidecar and tells a statement from a receipt by its `type` key. `parseSidecar()` in this file, at line 1724, is the reader on your own side and takes `data.client.code` or `data.client_code` at line 1738. **Both sides change together: agree the shape with the pipeline brief's field list and write `client_id`, not a code.**
 
 ---
 
@@ -144,11 +146,11 @@ Two changes:
 
 **10d.38. `loadSampleData()` writes category names into a field that holds codes.**
 
-**Correction to the sub-step, and this one is badly wrong.** It cites `IntelliBooks-Desktop-v3.html:2606`. Line 2606 is `$("vat-report-card").style.display="block";`, inside the VAT report renderer, and has nothing to do with this. **The real locations, verified by reading:**
+**Correction to the sub-step, and this one is badly wrong.** It cites `IntelliBooks-Desktop-v3.html:2606`. Line 2619 is `$("vat-report-card").style.display="block";`, inside the VAT report renderer, and has nothing to do with this. **The real locations, verified by reading:**
 
 - `function loadSampleData(){` is line **3167**
 - the five sample receipts are the `rs` array at **3204 to 3210**
-- the category strings are at **3205 to 3209**: `"Motor expenses"`, `"Sundry expenses"`, `"Repairs and maintenance"`, `"Parking and tolls"`, `"Fuel"`
+- the category strings are at **3218 to 3222**: `"Motor expenses"`, `"Sundry expenses"`, `"Repairs and maintenance"`, `"Parking and tolls"`, `"Fuel"`
 - `category:catg` is written into each receipt at **3216**
 - the linked transfer pair gets `category="(Transfer)"` at **3203**
 
@@ -170,7 +172,7 @@ Two changes:
 
 `copyCaptureLink()` is at line 1201. Today it adds a parameter only when the value is truthy: `if(c.vat)link+="&vat=1"` at 1208, `if(c.mode==="confirm")` at 1209, `if(c.phv&&c.phv.length)` at 1210. **And the phone only takes a value when the parameter is present**, at `index.html:200` to `:202`. **So the two halves conspire and a link can turn a setting on and never off.** `&vat=0` and an empty `&phv=` become meaningful, and the link always carries every firm-owned setting.
 
-The link also stops carrying the shared key. `&k=` comes off, because 10d.5 replaces it with the per-client `capture_token`, and 10d.7 removes the shared `UPLOAD_KEY` in the same commit with no fallback left working. `copyCaptureLink()` reads that key from `practice.settings.uploadKey` at line 1204 and refuses without it at 1206; **both go**.
+The link also stops carrying the shared key. `&k=` comes off, because 10d.5 replaces it with the per-client `capture_token`, and 10d.7 removes the shared `UPLOAD_KEY` in the same commit with no fallback left working. `copyCaptureLink()` reads that key from `practice.settings.uploadKey` at line 1217 and refuses without it at 1206; **both go**.
 
 **10d.45. Client-owned settings never appear in the link at all**, so the firm cannot overwrite a choice that is not theirs.
 
@@ -207,7 +209,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 1. **The diff, whole.** Every hunk named and attributed to a task above.
 2. **`node --check` on the extracted script block.** Quote the result.
 3. **`grep` the file for `c.code`, `client.code`, `\.code` and `safeName(` and report every survivor with a one-line reason.** Some are legitimate; a code that has genuinely gone should be gone everywhere.
-4. **`grep` for `Clients\\` and confirm the tenth site at line 2519 changed with the nine.**
+4. **`grep` for `Clients\\` and confirm the tenth site, `filed_path` at line 2532, changed with the nine. **After step 10a all ten build their path through `clientFolderPath()` or `getDir`, so the grep for `Clients\\` should return the helper and the messages, not ten hand-built paths.****
 5. **`grep` for `-books.json` and confirm every filename builder takes `client_id`.**
 6. **Run these four functions in node against a real books file**, per rule 4: `listReceiptYears()`, `scanFiledReceipts()`, `importToInbox()`'s path builder, and `loadSampleData()`'s receipt loop. Quote the output of each.
 7. **Open the app and check on screen**, naming what you clicked: select **Test Sole Trader**, open the **Receipts** tab, and confirm the year dropdown offers **2025-26** and **2026-27** and that **2025-26 shows 2 receipts and 2026-27 shows 2 receipts**. Those four are on disk today under `Clients\Test Sole Trader\Receipts\`. **If you see 4 in one year or 0 in either, stop and report it.**
@@ -221,7 +223,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 - **Anything that would need a second firm file.** Amendment 164 settled that there is one, `firms.json`, and `firm-settings.json` was rejected.
 - **Any place this brief and the design document disagree** that I have not already marked as a correction.
 - **Anything you would change beyond what the tasks above describe**, including an obvious improvement. Flag, do not fix.
-- **The silent `catch(e){return;}` at line 1820.** Named in task 2 as a flag, not a change.
+- **The silent `catch(e){return;}` at line 1833.** Named in task 2 as a flag, not a change.
 
 ---
 
@@ -241,7 +243,7 @@ The link also stops carrying the shared key. `&k=` comes off, because 10d.5 repl
 
 **Four things I want back.**
 
-**Were my two corrections right?** Nine `getDir` sites rather than four, and `loadSampleData()` at 3167 with the categories at 3205 to 3209 rather than 2606. Tell me if either is wrong.
+**Were my two corrections right?** Nine `getDir` sites rather than four, and `loadSampleData()` at 3167 with the categories at 3218 to 3222 rather than 2619. Tell me if either is wrong.
 
 **How many places build a books filename?** I told you to enumerate them and did not enumerate them myself. Correct me.
 

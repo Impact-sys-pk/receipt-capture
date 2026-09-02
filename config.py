@@ -32,6 +32,15 @@ LOCAL_ROOT = Path(os.environ.get("INTELLIBILLS_LOCAL_ROOT", r"C:\Intellibills"))
 INTELLIBILLS_ROOT = ONEDRIVE_ROOT / "Intellibills"
 CLIENTS_ROOT = ONEDRIVE_ROOT / "Clients"
 
+# The two subfolders the pipeline writes inside a client folder, named here rather
+# than repeated as literals in worker/filing.py. Strings, not Paths: they are single
+# name segments joined onto a client directory, and every Path in this module is an
+# absolute location, which tests/test_path_layout.py relies on when it sweeps
+# vars(config) for Path instances. No underscore and no prefix on either value,
+# because IntelliBooks-Desktop-v3.html reads and writes the same two folders.
+CLIENT_RECEIPTS_FOLDER_NAME = "Receipts"
+CLIENT_STATEMENTS_FOLDER_NAME = "Statements"
+
 # In OneDrive, under the practice root.
 FILES_DIR = INTELLIBILLS_ROOT / "Documents"
 BACKUPS_ROOT = INTELLIBILLS_ROOT / "Backups"

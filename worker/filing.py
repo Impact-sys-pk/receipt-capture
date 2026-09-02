@@ -75,7 +75,7 @@ def file_receipt(
     enriched_sidecar: dict[str, Any],
 ) -> tuple[Path, Path]:
     client_dir = get_client_directory(client_name)
-    destination_dir = client_dir / "Receipts" / tax_year
+    destination_dir = client_dir / config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year
     destination_dir.mkdir(parents=True, exist_ok=True)
 
     ext = source_file.suffix
@@ -100,7 +100,7 @@ def file_statement(
     enriched_sidecar: dict[str, Any],
 ) -> tuple[Path, Path]:
     client_dir = get_client_directory(client_name)
-    destination_dir = client_dir / "Statements" / tax_year / platform
+    destination_dir = client_dir / config.CLIENT_STATEMENTS_FOLDER_NAME / tax_year / platform
     destination_dir.mkdir(parents=True, exist_ok=True)
 
     ext = original_extension if original_extension.startswith(".") else f".{original_extension}"

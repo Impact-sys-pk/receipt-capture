@@ -2,11 +2,21 @@
 Intellitax Auto-Categorisation Engine
 A lightweight, local-only categorisation system with no third-party LLM calls.
 
-Architecture:
-  Layer 1 - Client-level lookup (vendor → nominal code for specific client)
-  Layer 2 - Firm-level lookup (vendor → nominal code by business type)
-  Layer 3 - Fuzzy matching (string similarity)
-  Layer 4 - AI suggestion (fallback, LLM call if enabled)
+Architecture. One numbering, and it is the one in categorise()'s own docstring.
+Corrected 2026-09-03 under step 10h: this file numbered its layers three
+different ways, here, in categorise() and in the inline comments, so a log line
+or a report saying "layer 4" named a different step depending on which set the
+reader had in front of them. Rules were missing here altogether.
+
+  Layer 0 - Rules (client-specific overrides, highest priority)
+  Layer 1 - Client-level lookup (vendor -> nominal code for one client)
+  Layer 2 - Firm-level lookup (vendor -> nominal code by business type)
+  Layer 3 - Fuzzy matching against the client's vendor codes
+  Layer 4 - Fuzzy matching against the firm's vendor codes
+  Layer 5 - AI suggestion (only when enable_ai_fallback is True)
+
+Unmatched is not a layer. It is what is recorded when no layer answered:
+match_source "unmatched", confidence "none", needs_review 1, and no code.
 """
 
 import re
@@ -258,7 +268,7 @@ class CategorisationEngine:
                     matched_vendor=vendor_code, needs_review=False
                 )
 
-            # Layer 3a: Fuzzy match in client lookup
+            # Layer 3: Fuzzy match in client lookup
             client_vendors = self.repo.list_client_vendors(client_id)
             if client_vendors:
                 fuzzy_results = fuzzy_match(vendor_code, client_vendors, threshold=0.70)
@@ -277,7 +287,7 @@ class CategorisationEngine:
                             matched_vendor=best_match, needs_review=True
                         )
 
-            # Layer 3b: Fuzzy match in firm lookup
+            # Layer 4: Fuzzy match in firm lookup
             firm_vendors = self.repo.list_firm_vendors(business_type)
             if firm_vendors:
                 fuzzy_results = fuzzy_match(vendor_code, firm_vendors, threshold=0.70)
@@ -296,7 +306,7 @@ class CategorisationEngine:
                             matched_vendor=best_match, needs_review=True
                         )
 
-        # Layer 4: AI suggestion (if enabled)
+        # Layer 5: AI suggestion (if enabled)
         if self.enable_ai_fallback:
             ai_result = self._ai_suggest(vendor_code, business_type)
             if ai_result:

@@ -16,31 +16,35 @@ optionally an LLM. Anything it cannot place is marked for review rather than gue
 `CategorisationEngine.categorise()` in `worker/categorisation/engine.py` tries these in order and
 stops at the first that answers.
 
-**Rules.** Condition-based overrides on one client. Evaluated before any lookup, highest priority
-first.
+**Layer 0, rules.** Condition-based overrides on one client. Evaluated before any lookup, highest
+priority first.
 
 Condition types, from `_rule_matches()`: `contains` (substring, case-insensitive), `exact_match`,
 `startswith`, `regex`. The field tested is `detail` or `vendor_code`.
 
-**Client vendor lookup.** Exact match on `(client_id, vendor_code)`.
+**Layer 1, client vendor lookup.** Exact match on `(client_id, vendor_code)`.
 
-**Firm vendor lookup.** Exact match on `(business_type, vendor_code)`. This pool is shared across
-every client of that business type.
+**Layer 2, firm vendor lookup.** Exact match on `(business_type, vendor_code)`. This pool is
+shared across every client of that business type.
 
-**Fuzzy match, client then firm.** String similarity through `fuzzy_match()`, threshold 0.70, so a
-candidate must score 70% or better. Client candidates are tried before firm candidates.
+**Layers 3 and 4, fuzzy match, client then firm.** String similarity through `fuzzy_match()`,
+threshold 0.70, so a candidate must score 70% or better. Layer 3 tries the client's vendor codes
+and layer 4 the firm's.
 
-**AI suggestion.** An LLM call, only when the engine was constructed with
+**Layer 5, AI suggestion.** An LLM call, only when the engine was constructed with
 `enable_ai_fallback=True`. Off by default: `__init__` takes `enable_ai_fallback: bool = False`.
 
-**Unmatched.** No layer answered. `match_source` is `unmatched`, `confidence` is `none`,
-`needs_review` is 1, and no code is invented.
+**Unmatched, which is not a layer.** No layer answered. `match_source` is `unmatched`,
+`confidence` is `none`, `needs_review` is 1, and no code is invented.
 
-> **The code numbers these layers three different ways and no numbering is used here for that reason.** `engine.py`'s module docstring at lines 6 to 9 calls the AI layer 4. `categorise()`'s
-> own docstring at lines 195 to 200 calls fuzzy-client 3, fuzzy-firm 4 and AI 5. The inline
-> comments at 261, 280 and 299 call them 3a, 3b and 4. The behaviour is one thing and the labels
-> are three. Flagged, not fixed: renumbering comments is a change to the pipeline and this
-> document's job was to describe it.
+> **`engine.py` numbered its own layers three different ways until 2026-09-03 and now numbers them once, as above.**
+> Its module docstring left rules out and called the AI layer 4;
+> `categorise()`'s docstring called fuzzy-client 3, fuzzy-firm 4 and AI 5; the inline comments
+> called them 3a, 3b and 4.
+> **So a log line or a report saying "layer 4" named a different step depending on which set the reader had in front of them.**
+> All three now read 0 to 5 with rules at 0. Paul's instruction, 2026-09-03. **`docs\specs\` still carries the old numbering** and is left
+> alone: it is a specification with no importer, and amendment 82's rule is that history keeps its
+> old values.
 
 ---
 
@@ -296,11 +300,11 @@ chart lives in `IntelliCharts\`, and **nothing connects the two**: a code this e
 not exist in the master, and every master account outside those 21, 15 and 7 is invisible to the
 engine. This needs a decision and has no step.
 
-**And the master's own name is not what this project's documents say it is.** As at 2026-09-03
-`IntelliCharts\` holds **`COA_MASTER_v2.xlsx`**, whose Read me sheet states 240 accounts and 12
-columns. **There is no `COA_MASTER_v1.csv` in that folder**, and `2026-07-25_CONSOLE_DESIGN.md`
-names `COA_MASTER_v1.csv` in 13 places. Recorded here because it was found while reconciling this
-file; correcting it belongs to `IntelliCharts\`, which has its own note and its own handovers.
+**The master is `IntelliCharts\COA_MASTER_v2.xlsx`, `Master` sheet**, published by
+`publish_master.py` into `IntelliCharts\Chart Library\`. `COA_MASTER_v1.csv` was superseded on
+2026-09-02 and sits in `IntelliCharts\Cockups\`. **No account count is stated here**, on the same
+ground the design document gives: the chart is maintained, so any figure written into a document
+goes stale.
 
 **Every three-digit code in this document's earlier versions was legacy** and has been removed
 rather than translated. Amendment 96 makes three-digit codes provably legacy. The earlier text

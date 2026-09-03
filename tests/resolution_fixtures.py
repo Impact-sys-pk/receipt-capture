@@ -35,7 +35,7 @@ class TempEnvironment:
         self.path = Path(self._temp.name)
         self._saved = {
             "DB_PATH": config.DB_PATH,
-            "ONEDRIVE_ROOT": config.ONEDRIVE_ROOT,
+            "PRACTICE_ROOT": config.PRACTICE_ROOT,
             "CLIENTS_ROOT": config.CLIENTS_ROOT,
             "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
             # 10d.35 re-reads the registry at the top of every poll. Pinned at a
@@ -56,7 +56,7 @@ class TempEnvironment:
         }
         config.DB_PATH = self.path / "receipts.db"
         # The practice root. A note's filed_path is relative to it, per 12.2.
-        config.ONEDRIVE_ROOT = self.path
+        config.PRACTICE_ROOT = self.path
         config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
         # The document store. Independent of the database and of the logs since

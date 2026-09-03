@@ -14,7 +14,7 @@ So the value of every path this system writes to rested on nobody editing
 config.py by mistake. This module reads them.
 
 It asserts against the two roots rather than against literal strings, so it holds
-with ONEDRIVE_ROOT or INTELLIBILLS_LOCAL_ROOT overridden. That is deliberate: the
+with PRACTICE_ROOT or INTELLIBILLS_UNSYNCED_ROOT overridden. That is deliberate: the
 mutation runs above were done with both roots pointed at a scratch directory, and
 a test that only passes on one machine's real paths would have had to be skipped
 for them.
@@ -31,7 +31,7 @@ class PracticeRootTest(unittest.TestCase):
     """What is safe to sync: written once, never held open, or read by a person."""
 
     def test_intellibills_owns_one_folder_in_the_practice_root(self):
-        self.assertEqual(config.INTELLIBILLS_ROOT, config.ONEDRIVE_ROOT / "Intellibills")
+        self.assertEqual(config.INTELLIBILLS_ROOT, config.PRACTICE_ROOT / "Intellibills")
 
     def test_every_synced_path_hangs_off_it(self):
         expected = {
@@ -71,13 +71,13 @@ class LocalRootTest(unittest.TestCase):
         # PRAGMA journal_mode=WAL, so receipts.db has -wal and -shm companions
         # that must stay consistent, and OneDrive copies files while they are
         # open. The audit trail has no second copy.
-        self.assertEqual(config.DB_PATH, config.LOCAL_ROOT / "db" / "receipts.db")
-        self.assertFalse(config.DB_PATH.is_relative_to(config.ONEDRIVE_ROOT))
+        self.assertEqual(config.DB_PATH, config.UNSYNCED_ROOT / "db" / "receipts.db")
+        self.assertFalse(config.DB_PATH.is_relative_to(config.PRACTICE_ROOT))
 
     def test_the_logs_are_outside_any_synced_folder(self):
         # Amendment 79. Appended on every poll, so syncing them is churn for no
         # benefit, and a OneDrive conflict copy of a log is worse than useless.
-        self.assertEqual(config.LOGS_DIR, config.LOCAL_ROOT / "logs")
+        self.assertEqual(config.LOGS_DIR, config.UNSYNCED_ROOT / "logs")
         self.assertEqual(config.RUNS_LOG, config.LOGS_DIR / "runs.ndjson")
         # RECEIPTS_LOG was deleted at sub-step 10d.19, not revived. It named
         # logs\receipt_events.ndjson, one file for every firm, and nothing wrote
@@ -88,7 +88,7 @@ class LocalRootTest(unittest.TestCase):
             "RECEIPTS_LOG is back. It is a firm-less log path in a system where "
             "every intake event belongs to a firm or to UNATTRIBUTED.",
         )
-        self.assertFalse(config.LOGS_DIR.is_relative_to(config.ONEDRIVE_ROOT))
+        self.assertFalse(config.LOGS_DIR.is_relative_to(config.PRACTICE_ROOT))
 
     def test_the_process_logs_land_there_too(self):
         # The one-letter trap amendment 76 named: logs\runs.ndjson and
@@ -118,7 +118,7 @@ class NoSharedParentTest(unittest.TestCase):
     def test_the_two_roots_contain_nothing_of_each_other(self):
         for name in ("FILES_DIR", "BACKUPS_ROOT"):
             with self.subTest(constant=name):
-                self.assertFalse(getattr(config, name).is_relative_to(config.LOCAL_ROOT))
+                self.assertFalse(getattr(config, name).is_relative_to(config.UNSYNCED_ROOT))
         for name in ("DB_PATH", "LOGS_DIR"):
             with self.subTest(constant=name):
                 self.assertFalse(
@@ -134,7 +134,7 @@ class NothingLeftInIntelliBooksTest(unittest.TestCase):
     """
 
     def test_no_path_constant_resolves_inside_intellibooks(self):
-        intellibooks = config.ONEDRIVE_ROOT / "IntelliBooks"
+        intellibooks = config.PRACTICE_ROOT / "IntelliBooks"
         strays = [
             name for name, value in vars(config).items()
             if isinstance(value, Path) and value.is_relative_to(intellibooks)

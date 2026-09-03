@@ -351,14 +351,14 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
 def resolve_practice_path(filed_path: str) -> Path:
     """12.2: `filed_path` is relative to the practice root, with backslashes.
 
-    Resolved against config.ONEDRIVE_ROOT at call time. An absolute path is used as
+    Resolved against config.PRACTICE_ROOT at call time. An absolute path is used as
     given, which costs nothing and means a note written by a future tool that
     happens to be absolute is not silently misread as a relative one.
     """
     candidate = Path(str(filed_path).replace("\\", "/"))
     if candidate.is_absolute():
         return candidate
-    return config.ONEDRIVE_ROOT / candidate
+    return config.PRACTICE_ROOT / candidate
 
 
 def _client_details(client_id: Optional[str]) -> Tuple[str, str, Optional[str]]:

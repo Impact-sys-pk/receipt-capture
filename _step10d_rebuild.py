@@ -141,7 +141,7 @@ def main():
     rule("Step 10d stage 3: rebuild the database")
     print(f"  DB_PATH            {config.DB_PATH}")
     print(f"  BACKUPS_ROOT       {config.BACKUPS_ROOT}")
-    print(f"  practice root      {config.ONEDRIVE_ROOT}")
+    print(f"  practice root      {config.PRACTICE_ROOT}")
     print(f"  mode               {'APPLY' if apply else 'DRY RUN, nothing will be changed'}")
 
     running, why = pipeline_is_running()
@@ -171,7 +171,7 @@ def main():
     else:
         print("  (dry run: no backup taken)")
 
-    list_tree(config.ONEDRIVE_ROOT / "Intellibills", "The Intellibills folder")
+    list_tree(config.PRACTICE_ROOT / "Intellibills", "The Intellibills folder")
     clients_root = config.CLIENTS_ROOT
     rule(f"Every client folder under {clients_root}")
     if clients_root.exists():

@@ -105,7 +105,7 @@ class BackfeedTestCase(unittest.TestCase):
         finally:
             repo.close()
 
-        target = config.ONEDRIVE_ROOT / Path(relative.replace("\\", "/"))
+        target = config.PRACTICE_ROOT / Path(relative.replace("\\", "/"))
         if write_file:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("the copy Desktop filed", encoding="utf-8")

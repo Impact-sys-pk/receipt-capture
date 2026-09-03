@@ -24,16 +24,22 @@ BASE_DIR = Path(__file__).parent
 # the document store and the database, which is how the database came to be one
 # rename away from sitting in OneDrive. Amendment 76 removed it rather than
 # repointing it, for that reason. Do not reintroduce a shared parent.
-ONEDRIVE_ROOT = Path(os.environ.get(
-    "ONEDRIVE_ROOT",
+# Sub-step 10d.21, done 2026-09-03. These were ONEDRIVE_ROOT and LOCAL_ROOT, and
+# the environment variables were ONEDRIVE_ROOT and INTELLIBILLS_LOCAL_ROOT. Each
+# old name stated a thing that is not the property that matters: nothing in this
+# pipeline calls a Microsoft API, and what matters about the first is that it is
+# the practice root and about the second that it is not synced. Neither variable
+# is set in .env or .env.example, so the rename changes no configuration.
+PRACTICE_ROOT = Path(os.environ.get(
+    "PRACTICE_ROOT",
     r"C:\Users\PDK7\OneDrive - Intellitax Accounting Limited"
 ))
-LOCAL_ROOT = Path(os.environ.get("INTELLIBILLS_LOCAL_ROOT", r"C:\Intellibills"))
+UNSYNCED_ROOT = Path(os.environ.get("INTELLIBILLS_UNSYNCED_ROOT", r"C:\Intellibills"))
 
 # One folder per owner in the practice root, so nothing of ours sits in
 # IntelliBooks' folder any more. Amendment 72.
-INTELLIBILLS_ROOT = ONEDRIVE_ROOT / "Intellibills"
-CLIENTS_ROOT = ONEDRIVE_ROOT / "Clients"
+INTELLIBILLS_ROOT = PRACTICE_ROOT / "Intellibills"
+CLIENTS_ROOT = PRACTICE_ROOT / "Clients"
 
 # The parent folder inside a client folder that everything IntelliBooks owns now
 # sits under. Amendment 170, Paul's decision, 2026-09-02. Four children and no
@@ -66,8 +72,8 @@ PIPELINE_STATUS_PATH = INTELLIBILLS_ROOT / "pipeline-status.json"
 PIPELINE_LOCKFILE = INTELLIBILLS_ROOT / "pipeline.lock"
 
 # Local, outside any synced folder.
-DB_PATH = LOCAL_ROOT / "db" / "receipts.db"
-LOGS_DIR = LOCAL_ROOT / "logs"
+DB_PATH = UNSYNCED_ROOT / "db" / "receipts.db"
+LOGS_DIR = UNSYNCED_ROOT / "logs"
 RUNS_LOG = LOGS_DIR / "runs.ndjson"
 
 # Where IntelliBooks Desktop writes its resolution notes, per design document 12.2.

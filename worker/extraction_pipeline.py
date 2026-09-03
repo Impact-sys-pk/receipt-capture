@@ -328,8 +328,17 @@ def process_extraction_result(
             stats['review_flags_issued'] = stats.get('review_flags_issued', 0) + 1
 
     # Mark email attachment as processed (email-only dedup, must happen for ALL outcomes)
+    # Sub-step 10d.32, corrected 2026-09-03. firm_id was omitted here, so it took
+    # mark_processed()'s None default on the one call site an emailed receipt takes
+    # when extraction succeeds. The three call sites in app.py all pass it, and they
+    # are the duplicate and failure paths, so the column was populated for everything
+    # except the normal case. Found by reading the row after the first emailed receipt
+    # of 2026-09-03: firm_id NULL against a receipt whose own row said FIRM001.
+    # It is in scope here and _log_receipt() ten lines below already uses it.
+    # It stays whatever the caller resolved, including None: a firm this path could not
+    # resolve is recorded as unresolved rather than invented, per 10d.19.
     if message_id and attachment_id and file_hash:
-        repo.mark_processed(message_id, attachment_id, file_hash, receipt_id)
+        repo.mark_processed(message_id, attachment_id, file_hash, receipt_id, firm_id)
 
     # Log
     _log_receipt(

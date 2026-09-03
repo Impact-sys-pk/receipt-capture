@@ -74,7 +74,7 @@ class LogsIsolationTest(unittest.TestCase):
     def test_config_is_restored_after_redirection(self):
         # A test that leaks a redirected LOGS_DIR would silently disarm this
         # guard for every test that runs after it.
-        self.assertEqual(config.LOGS_DIR, config.LOCAL_ROOT / "logs")
+        self.assertEqual(config.LOGS_DIR, config.UNSYNCED_ROOT / "logs")
         self.assertEqual(config.RUNS_LOG, config.LOGS_DIR / "runs.ndjson")
 
 

@@ -546,12 +546,17 @@ class CategorisationEngine:
             if vendor_key in self.client_lookup:
                 client_mapping = self.client_lookup[vendor_key]
                 if client_mapping.nominal_code != firm_mapping.nominal_code:
+                    # Sub-step 10d.67: `client_code` goes completely and appears nowhere.
+                    # These four keys never held a client code: they hold the nominal code
+                    # and the account name of the client-level mapping and of the firm-level
+                    # one. `client_name` was the worse of the two, because it read as the
+                    # client's business name and is an account name. Renamed to say so.
                     conflicts.append({
                         "vendor": vendor_key,
-                        "client_code": client_mapping.nominal_code,
-                        "client_name": client_mapping.account_name,
-                        "firm_code": firm_mapping.nominal_code,
-                        "firm_name": firm_mapping.account_name,
+                        "client_nominal_code": client_mapping.nominal_code,
+                        "client_account_name": client_mapping.account_name,
+                        "firm_nominal_code": firm_mapping.nominal_code,
+                        "firm_account_name": firm_mapping.account_name,
                     })
         return conflicts
 

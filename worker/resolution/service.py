@@ -947,7 +947,7 @@ def _resolve_category(note: ResolutionNote) -> Tuple[Optional[str], Optional[str
         None,
         note.category_name,
         f"category '{note.category_name}' was stored as a name without a code, "
-        "because a note's category is not matched to an account",
+        "because a note's category is not matched against the chart of accounts",
     )
 
 

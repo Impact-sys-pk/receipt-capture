@@ -53,6 +53,13 @@ class TempEnvironment:
             "RESOLUTIONS_DIR": config.RESOLUTIONS_DIR,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
             "BACKUPS_ROOT": config.BACKUPS_ROOT,
+            # The chart bundle. Outstanding item 154, raised and fixed 2026-09-04:
+            # this was the one config path the fixture did not redirect, so a test
+            # that reached layer 5 would read the live bundle in OneDrive. Nothing
+            # reaches it today, because layer 5 needs enable_ai_fallback and an
+            # OpenAI client and no test here turns either on. Same class of leak
+            # as the LOGS_DIR one three entries above, and found the same way.
+            "CHARTS_DIR": config.CHARTS_DIR,
         }
         config.DB_PATH = self.path / "receipts.db"
         # The practice root. A note's filed_path is relative to it, per 12.2.
@@ -82,6 +89,11 @@ class TempEnvironment:
         config.RESOLUTIONS_DIR = self.path / "Resolutions"
         config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
         config.BACKUPS_ROOT = self.path / "Backups"
+        # Deliberately not created, which is config.py's own rule for this one:
+        # IntelliCharts publishes the bundle and the pipeline never makes it. A
+        # test that reads a chart from here gets chart.load_chart()'s missing
+        # bundle path, an ERROR and an empty list, rather than a real chart.
+        config.CHARTS_DIR = self.path / "Charts"
         config.CLIENTS_JSON = self.path / "clients-not-placed.json"
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {

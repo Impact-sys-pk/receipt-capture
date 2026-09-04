@@ -141,35 +141,6 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def find_coa_account_by_name(self, account_name: str) -> Optional[dict]:
-        """Look up a chart of accounts entry by name. None if there is no match.
-
-        Design document 12.3 step 6. `coa_accounts` (5.5) is not created until step
-        11 and not populated until step 12, so until then this returns None for
-        every name, which 12.3 says is expected and not an error. Written so it
-        starts working when the table arrives with no change here.
-
-        Only the default scope. The client and group tiers in section 13 need the
-        client_id and business_type to resolve safely, and that belongs to step 11's
-        query layer rather than to a lookup that would otherwise be able to return
-        another client's account.
-        """
-        if not account_name:
-            return None
-        try:
-            row = self._conn.execute("""
-                SELECT code, name FROM coa_accounts
-                WHERE LOWER(name) = LOWER(?)
-                  AND scope = 'default'
-                  AND status = 'active'
-                LIMIT 1
-            """, (account_name,)).fetchone()
-        except sqlite3.OperationalError as exc:
-            if "no such table" in str(exc):
-                return None
-            raise
-        return dict(row) if row else None
-
     def get_unfiled_ok_receipts(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT receipt_id, client_id, firm_id, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"
@@ -199,8 +170,11 @@ class Repository:
     def list_gl_code_options_from_vendors(self) -> list[dict]:
         """Distinct (nominal_code, account_name) pairs from both vendor tables.
 
-        The fallback in design document 11.1, for use until the Default CoA is
-        loaded into coa_accounts at step 12. Not the real option list: it only
+        The fallback in design document 11.1. ~~For use until the Default CoA is
+        loaded into coa_accounts at step 12.~~ `coa_accounts` was cancelled by
+        amendment 96 and the cancellation confirmed by 124: the chart of accounts
+        lives in the bundle IntelliCharts publishes, read by
+        worker/categorisation/chart.py. Not the real option list either way: it only
         contains codes some vendor has already been mapped to.
         """
         rows = self._conn.execute("""

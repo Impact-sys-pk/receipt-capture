@@ -352,9 +352,6 @@ class CategorisationEngine:
                 logger.warning(f"no classifier-eligible accounts for client_id={client_id}")
                 return None
 
-            # Format COA as JSON schema for constrained output
-            coa_options = [{"code": code, "name": name} for code, name in coa]
-
             # Call OpenAI with constrained output
             client = OpenAI(api_key=config.OPENAI_API_KEY)
             response = client.beta.chat.completions.parse(
@@ -379,11 +376,19 @@ Return the best matching GL code and name."""
                             "properties": {
                                 "code": {
                                     "type": "string",
-                                    "description": "GL code (e.g., 103, 281)"
+                                    # No example here. Every account code on this project is
+                                    # four digits, and this description read "e.g., 103, 281"
+                                    # until 2026-09-04, contradicting the list of valid codes
+                                    # in the prompt above it. Outstanding item 156. An example
+                                    # taken from one chart would be absent from another
+                                    # client's, so the list is the only thing that names a code.
+                                    "description": ("The account code, taken exactly from the "
+                                                    "list of valid codes above")
                                 },
                                 "name": {
                                     "type": "string",
-                                    "description": "GL account name"
+                                    "description": ("The account name shown beside that code "
+                                                    "in the list above")
                                 }
                             },
                             "required": ["code", "name"]

@@ -920,13 +920,22 @@ def _receipt_for_note(repo, note: ResolutionNote) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _resolve_category(repo, note: ResolutionNote) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """12.3 step 6. Returns (code, name, validation_note).
+def _resolve_category(note: ResolutionNote) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """12.3 step 6. Returns (code, name, validation_note), and the code is always None.
 
-    `coa_accounts` does not exist until step 11 and is not populated until step 12,
-    so today every note takes the not-found branch: the name is stored, no vendor
-    mapping is learned, and a validation note records it. 12.3 says that is expected
-    and not an error. Nothing here changes when the table arrives.
+    **A resolution note's category name is not resolved to a code at all.** The name
+    is stored, no vendor mapping is learned, and a validation note records it. 12.3
+    says that is expected and not an error.
+
+    ~~It looked up `repo.find_coa_account_by_name()`, which queried `coa_accounts`.~~
+    **That table was cancelled by amendment 96 and the cancellation confirmed by 124**,
+    so the lookup returned None for every name ever asked and the found branch was
+    unreachable. Both are deleted, outstanding item 155, 2026-09-04. Deleted rather
+    than repointed: the chart now lives in the bundle IntelliCharts publishes and
+    could be read here through worker/categorisation/chart.py, and whether a caption
+    typed in IntelliBooks may be matched to an account by name, with or without
+    `coa_alt_names.csv`, is a decision nobody has taken. **A dead lookup is not a
+    place to keep that question.**
 
     A blank category is not a lookup at all. Desktop does not require a category
     before filing, so `""` is the common case and it means "no category".
@@ -934,15 +943,11 @@ def _resolve_category(repo, note: ResolutionNote) -> Tuple[Optional[str], Option
     if not note.category_name:
         return None, None, None
 
-    account = repo.find_coa_account_by_name(note.category_name)
-    if account:
-        return account["code"], account["name"], None
-
     return (
         None,
         note.category_name,
-        f"category '{note.category_name}' is not in the chart of accounts, "
-        "so the name was stored without a code",
+        f"category '{note.category_name}' was stored as a name without a code, "
+        "because a note's category is not matched to an account",
     )
 
 
@@ -1034,7 +1039,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                 "filed by decision in Desktop despite: " + ", ".join(validation.notes)
             )
 
-        code, category_name, category_note = _resolve_category(repo, note)
+        code, category_name, category_note = _resolve_category(note)
         if category_note:
             validation_notes.append(category_note)
 
@@ -1090,19 +1095,15 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                 "category from the IntelliBooks Desktop resolution note",
             )
 
-        if code:
-            # 12.3 step 6 says learn the vendor mapping here. 11.3 says never learn
-            # automatically, because one correction against a misread supplier name
-            # poisons the mapping table and the exact-match layer then applies the
-            # wrong code confidently to every future receipt from that vendor. The
-            # two sections disagree, and this branch is unreachable until
-            # coa_accounts is loaded at step 12, so nothing is learned and the
-            # disagreement is reported rather than decided here.
-            logger.warning(
-                f"note for {receipt_id} resolved category '{category_name}' to code {code}; "
-                "no vendor mapping was learned, because 12.3 step 6 and 11.3 disagree on "
-                "whether a Desktop resolution may learn automatically. Paul decides."
-            )
+        # 12.3 step 6 says learn the vendor mapping from a Desktop resolution. 11.3
+        # says never learn automatically, because one correction against a misread
+        # supplier name poisons the mapping table and the exact-match layer then
+        # applies the wrong code confidently to every future receipt from that
+        # vendor. **The two sections disagree and nothing here decides it.**
+        # There is no code to learn from in any case: _resolve_category() returns
+        # None for every note, so this was an `if code:` branch that logged a
+        # warning and could never run. Removed with item 155 on 2026-09-04, and the
+        # disagreement is recorded here rather than inside unreachable code.
 
         repo.mark_receipt_filed(receipt_id, str(target))
         repo.update_receipt_status(receipt_id, "ok")

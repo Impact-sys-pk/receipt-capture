@@ -4,7 +4,12 @@ from typing import List
 
 from worker.extraction.base import ExtractionResult
 
-_VAT_TOLERANCE = 0.02
+# One penny, sub-step 10g.1 and design document 18.4, changed 2026-09-04 from 0.02.
+# 18.9 had listed the change as cancelled and the code had never moved either way.
+# It is the tolerance on net + VAT against gross on ONE extracted receipt, and it is
+# not the same number as the half-penny in matchScore() in IntelliBooks-Desktop-v3.html,
+# which is a tolerance between two records.
+_VAT_TOLERANCE = 0.01
 
 
 @dataclass

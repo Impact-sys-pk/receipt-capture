@@ -654,8 +654,11 @@ Status assignment:
 ## Database Schema
 
 **`worker\database\schema.py` is the authority and this section is a reading of it.** Reconciled with
-it on 2026-09-04, step 10h of section 16 of `2026-07-25_CONSOLE_DESIGN.md`. **Eleven tables.** This
+it on 2026-09-04, step 10h of section 16 of `2026-07-25_CONSOLE_DESIGN.md`. **Ten tables.** This
 section named seven and described five of those wrongly, which is what the step existed to fix.
+~~Eleven tables.~~ **`email_delta` was removed the same day by outstanding item 159**, so
+`schema.py` creates ten; **a database created before 2026-09-04 still holds `email_delta`, empty**,
+because dropping a table is a migration and `schema.py` only creates.
 
 **There is no `client_code` on any table.** Removed by sub-step 10d.23 and Paul's ruling of
 2026-09-02: it appears nowhere, in either product. **There is no `coa_accounts` table and there will
@@ -799,14 +802,15 @@ corrected in `schema.py`: an audit row that cannot be written because the thing 
 is worse than a dangling id. `receipt_id`'s key also made this table refuse a row about a receipt a
 rebuild had dropped, **which is exactly when somebody wants the history**.
 
-### email_delta
+### ~~email_delta~~ Removed 2026-09-04
 
-Three columns. `key` TEXT PK, `value` TEXT NOT NULL, `updated_at` TEXT NOT NULL.
-
-**Two keys are written by `worker\database\repository.py`, `delta_link` and `last_uid`, and the email
-path does not depend on either.** Polling fetches the whole inbox and deduplicates on the header
-`message_id`, per rule 6 below. **This table is state kept for a fetch strategy the pipeline does not
-use.** Flagged and not fixed 2026-09-04: whether it goes is a decision, not a tidy-up.
+**Not created any more, and nothing reads or writes it.** Outstanding item 159. It held a
+`delta_link` from the Microsoft Graph design that was never built and a `last_uid` implying an
+incremental IMAP fetch that does not exist: **`fetch_new_messages()` searches `ALL` on every poll and
+deduplicates on the header `message_id`**, per rule 6 below, because an IMAP UID cannot be carried
+between polls. `Repository.get_delta_link()`, `save_delta_link()`, `get_last_uid()` and
+`save_last_uid()` went with it, and `fetch_new_messages()` no longer takes the `repo` it never used.
+**A database created before 2026-09-04 still has the table, empty.**
 
 ### email_alerts
 

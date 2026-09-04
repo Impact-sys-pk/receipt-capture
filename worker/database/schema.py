@@ -177,11 +177,13 @@ def init_db():
             PRIMARY KEY (message_id, attachment_id)
         );
 
-        CREATE TABLE IF NOT EXISTS email_delta (
-            key         TEXT PRIMARY KEY,
-            value       TEXT NOT NULL,
-            updated_at  TEXT NOT NULL
-        );
+        -- email_delta was created here until 2026-09-04, holding a delta_link
+        -- and a last_uid. Outstanding item 159: nothing wrote either, because
+        -- fetch_new_messages() searches ALL on every poll and an IMAP UID
+        -- cannot be carried between polls. The four repository accessors went
+        -- with it. A database created before that date still holds the table,
+        -- empty; it is not dropped here, because dropping a table is a
+        -- migration and this file only creates.
 
         CREATE TABLE IF NOT EXISTS email_alerts (
             message_id          TEXT NOT NULL,

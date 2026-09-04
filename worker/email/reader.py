@@ -34,13 +34,20 @@ def _resolve_message_id(msg, uid_str: str) -> str:
     return f"no-message-id:{uid_str}:{msg.get('Date', '')}"
 
 
-def fetch_new_messages(repo):
+def fetch_new_messages():
     """Fetch all messages with attachments from IMAP inbox.
 
     Uses each email's Message-ID header as the stable identity for
     deduplication. IMAP UIDs are used only to address the mailbox for
-    fetch/copy/store within this poll — they must not be reused as a
+    fetch/copy/store within this poll - they must not be reused as a
     cross-poll dedup key.
+
+    Searches ALL, every poll. There is no watermark and no incremental fetch,
+    which follows from the paragraph above: a UID cannot be carried between
+    polls, so there is nothing to carry. It took a `repo` argument until
+    2026-09-04 and never used it; outstanding item 159 removed that argument
+    along with the repository's get_last_uid(), save_last_uid() and the
+    email_delta table, all of which existed to hold a watermark nothing wrote.
     """
     imap = imaplib.IMAP4_SSL(config.IMAP_HOST, config.IMAP_PORT)
     imap.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)

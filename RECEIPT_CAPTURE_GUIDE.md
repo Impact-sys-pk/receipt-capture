@@ -206,7 +206,8 @@ Everything is recorded in an SQLite database at `config.DB_PATH`, which is
 `C:\Intellibills\db\receipts.db` unless `INTELLIBILLS_UNSYNCED_ROOT` says otherwise.
 ~~`data/receipts.db`~~ **Corrected 2026-09-04.**
 
-**Eleven tables.** This guide named five:
+**Ten tables.** This guide named five. ~~Eleven~~ **`email_delta` was removed on 2026-09-04, item
+159; a database created before that date still holds it, empty.**
 - **receipts** — one row per receipt file: who sent it, which of the four sources, where both copies
   are, current status, whether it is genuinely filed, whether it is locked for manual resolution, and
   what it might be a duplicate of
@@ -218,7 +219,6 @@ Everything is recorded in an SQLite database at `config.DB_PATH`, which is
 - **processed_attachments** — duplicate prevention log
 - **resolution_events** — the audit trail, one row per resolution whatever the entry point
 - **email_alerts** — one row per alert sent, which is what stops a second alert for the same email
-- **email_delta** — state for a fetch strategy the email path does not use. See rule 6 in `CLAUDE.md`
 - **categorisations_client_vendors**, **categorisations_firm_vendors**,
   **categorisations_client_rules** — layers 1, 2 and 0 of the categoriser
 

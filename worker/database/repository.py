@@ -314,36 +314,18 @@ class Repository:
             self._conn.backup(dest_conn)
             dest_conn.commit()
 
-    def get_delta_link(self) -> Optional[str]:
-        row = self._conn.execute(
-            "SELECT value FROM email_delta WHERE key = 'delta_link'"
-        ).fetchone()
-        return row["value"] if row else None
-
-    def save_delta_link(self, link: Optional[str]):
-        now = datetime.now(timezone.utc).isoformat()
-        if link is None:
-            self._conn.execute("DELETE FROM email_delta WHERE key = 'delta_link'")
-        else:
-            self._conn.execute("""
-                INSERT INTO email_delta (key, value, updated_at) VALUES ('delta_link', ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-            """, (link, now))
-        self._conn.commit()
-
-    def get_last_uid(self) -> Optional[str]:
-        row = self._conn.execute(
-            "SELECT value FROM email_delta WHERE key = 'last_uid'"
-        ).fetchone()
-        return row["value"] if row else None
-
-    def save_last_uid(self, uid: str):
-        now = datetime.now(timezone.utc).isoformat()
-        self._conn.execute("""
-            INSERT INTO email_delta (key, value, updated_at) VALUES ('last_uid', ?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-        """, (uid, now))
-        self._conn.commit()
+    # get_delta_link(), save_delta_link(), get_last_uid() and save_last_uid()
+    # were here until 2026-09-04. Outstanding item 159: all four were called by
+    # nothing live. The two delta_link accessors came from the Microsoft Graph
+    # design that was never built; the two uid accessors implied an incremental
+    # IMAP fetch that does not exist, because fetch_new_messages() searches ALL
+    # on every poll and a UID cannot be carried between polls. The email_delta
+    # table they wrote into is no longer created either.
+    #
+    # Kept as a comment rather than deleted silently: a reader who finds a
+    # getter, a setter and a table concludes the feature is there, and
+    # EMAIL_PROCESSING_MICROSTEPS.md made exactly that inference and held it
+    # for six weeks.
 
     # Categorisation repository methods
 

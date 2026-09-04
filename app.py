@@ -959,7 +959,7 @@ def process_once():
             # Move email to "No Attachments" folder
             move_email_to_folder(uid, "INBOX.No Attachments")
 
-        messages = fetch_new_messages(repo)
+        messages = fetch_new_messages()
         stats["messages_found"] = len(messages)
         logger.info(f"messages with attachments: {len(messages)}")
 

@@ -63,9 +63,13 @@ load-bearing:
 4. **Return the list**
    - **Nothing is saved.** ~~`repo.save_last_uid(last_uid)`~~ There is no watermark to save
 
-**Flagged, not fixed, 2026-09-04:** `fetch_new_messages(repo)` still takes `repo` and never uses it.
-`get_last_uid()` and `save_last_uid()` still exist on the repository, and `email_delta` still holds
-`last_uid` and `delta_link`, all of them written or read by nothing on this path.
+**Fixed 2026-09-04, outstanding item 159, and it was raised by writing the paragraph above.**
+~~`fetch_new_messages(repo)` still takes `repo` and never uses it. `get_last_uid()` and
+`save_last_uid()` still exist on the repository, and `email_delta` still holds `last_uid` and
+`delta_link`.~~ **All of it is gone**: the unused argument, all four repository accessors including
+the two `delta_link` ones from the Microsoft Graph design that was never built, and the
+`email_delta` table, which `schema.py` no longer creates. **A database created before 2026-09-04
+still holds it, empty.**
 
 ---
 

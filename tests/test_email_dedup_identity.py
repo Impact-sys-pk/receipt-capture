@@ -48,7 +48,7 @@ class FetchNewMessagesUsesUidCommandsTest(unittest.TestCase):
             ("OK", [(b"1 (RFC822 {n}", raw)]),  # uid("fetch", ...)
         ]
 
-        fetch_new_messages(repo=MagicMock())
+        fetch_new_messages()
 
         # Non-uid search/fetch must never be called: they return sequence
         # numbers that renumber whenever the mailbox is modified.

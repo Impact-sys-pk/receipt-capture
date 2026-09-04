@@ -213,7 +213,7 @@ def run_pipeline_once(extractor, pipeline_version=VERSION):
 
     with patch.object(app, "get_extractor", lambda: extractor), \
          patch.object(app, "fetch_emails_without_attachments", lambda: []), \
-         patch.object(app, "fetch_new_messages", lambda repo: []), \
+         patch.object(app, "fetch_new_messages", lambda: []), \
          patch.object(config, "get_pipeline_version", lambda: pipeline_version):
         app.process_once()
 

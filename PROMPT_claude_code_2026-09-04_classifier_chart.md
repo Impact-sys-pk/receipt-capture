@@ -21,15 +21,18 @@ C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\Charts\
     FIN_ADVISER.csv                   112 accounts,  51
     chart_library.csv                 the nine chart_codes and their names
     coa_alt_names.csv                 the caption dictionary, 18 rows
-    PUBLISHED.txt                     2026-09-04 11:01 BST
+    PUBLISHED.txt                     2026-09-04 12:10 BST
 ```
 
-Every chart CSV has this header, in this order:
+The eight industry and general charts have this header, in this order, 14 columns:
 
 ```
 chart_code,code,name,type,status,applies_to,vat_default,vat_variable,vat_explanation,
 vat_recoverability,sa103f_box,mtd_itsa_category,notes,classifier_eligible
 ```
+
+`Master_COA.csv` has the same 13 columns without the leading `chart_code`, because it is the
+master and not a chart drawn from the library. **Read the columns by name, never by position.**
 
 **`classifier_eligible` is `Yes` or `No` on every row, never blank.**
 `publish_master.py` refuses to publish otherwise. It marks the accounts the classifier may propose.
@@ -110,3 +113,16 @@ categorisation should hold a chart code at all or an Intellibills taxonomy entry
 ## Commit
 
 One commit for the lot, and the message says which numbers you verified rather than that it works.
+
+## Corrections to this brief, made after it was worked
+
+Both were wrong when Claude Code read it and both were flagged back, 2026-09-04:
+
+| Line | Said | Is |
+|---|---|---|
+| The bundle listing | `PUBLISHED.txt 2026-09-04 11:01 BST` | `12:10 BST`. The bundle was republished twice after this brief was written, at 11:45 and 12:10. The account counts in the listing were unaffected and every one of the nine was verified against the 12:10 bundle. |
+| The header block | Every chart CSV carries 14 columns starting `chart_code` | `Master_COA.csv` carries 13 and no `chart_code`. Only the eight library charts carry it. |
+
+Neither changed the work. `worker/categorisation/chart.py` reads by column name, so the master
+parses on the same code path, and `test_the_master_chart_parses_without_a_chart_code_column`
+holds it there.

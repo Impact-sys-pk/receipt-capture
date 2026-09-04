@@ -25,7 +25,13 @@ Everything else described here, checking status, correcting an obviously-misread
 
 ### Step 1: Receipt Arrival
 
-Receipts can arrive in two ways:
+**Reconciled with the code on 2026-09-04, step 10h.** Where this guide was wrong it now says so
+rather than being quietly corrected, because you have read the old wording.
+
+Receipts arrive by email or through the Receipt Inbox folder, and **the database records which of
+four sources each one came from**: `email`, `phone`, `desktop` or `other`, and no other value,
+sub-step 10d.40. `phone` is the phone app, `desktop` is an import from IntelliBooks Desktop, and
+`other` is a file dropped into the inbox by hand.
 
 **A) Email Attachments**
 - Clients email receipts to `capture@lastingimpact.co.uk`
@@ -64,17 +70,23 @@ Receipts can arrive in two ways:
 - **Duplicates** — The exact same file, or the same transaction, has already been genuinely filed. This is blocked outright and not reprocessed.
 - **Unsupported Files** — Wrong file type (.docx, .xlsx, etc.). Once you resend using a supported format, it goes through cleanly.
 - **No Attachments** — Alert sent: "Please resend with receipt attached." Once resent with a file attached, it goes through cleanly.
-- **Unknown Sender** — Alert sent: "Please register your email with support." Once the sender is added to `clients.csv`, a resend goes through cleanly.
+- **Unknown Sender** — Alert sent: "Please register your email with support." Once that address is added to the client's record in `Intellibills\clients.json`, a resend goes through cleanly.
 
 **Automated alerts (sent automatically):**
 - **No-attachment emails:** Client sees alert from their firm name (e.g., "Best Accounting")
 - **Unknown senders:** Alert requests email registration
 - Alerts are sent once per email (tracked to avoid spam)
 
-**B) Folder Upload**
-- Files can be placed in the Receipt Inbox folder (shared network drive)
-- The sender includes a sidecar file (metadata file) that specifies the client code
-- The system picks up these files every 5 minutes
+**B) The Receipt Inbox folder**
+- Files land in `Intellibills\Receipt Inbox\`, in a subfolder per client
+- **Each file has a sidecar JSON beside it carrying the `client_id`**, and the client comes from the
+  sidecar rather than from the folder the file sat in. ~~a sidecar that specifies the client code~~
+  **There is no client code. Sub-step 10d.23 and Paul's ruling of 2026-09-02: it appears nowhere**
+- **An inbox sidecar replaces the file's extension**, so `x.pdf` has `x.json`. A filed receipt's
+  sidecar appends instead, `x.pdf.json`. Two conventions, deliberately, and confusing them was a
+  real defect on 2026-09-03
+- Three things write into that folder: the phone app, IntelliBooks Desktop's import, and a person
+- The system picks these up on every poll
 - Folder-uploaded receipts never touch an email mailbox folder, there isn't one to move, everything about their status lives in the database and, for review/failed cases, a disk copy in the client's Review folder (see "Where Data Really Lives" below)
 
 **Architecture Note:** The current single-firm implementation uses REDIRECT routing at the email service level (simple, reliable, 100% accurate). For future multi-firm or AWS deployments, see `MULTIFIRM_EMAIL_FORWARDING_ANALYSIS_AND_FINDINGS.md` for architectural analysis and why cloud APIs use webhook+metadata instead of email header parsing.
@@ -92,10 +104,15 @@ The supplier/date/amount check is deliberately not a hard block either. Two genu
 
 ### Step 3: File Storage
 
-The original receipt file is saved locally to disk in a date-based folder structure:
+The original receipt file is copied into the document store:
 ```
-data/files/2026/07/22/[receipt_id]_original_filename.pdf
+Intellibills\Documents\[client_id]\[year]\[month]\[receipt_id]_original_filename.pdf
 ```
+~~`data/files/2026/07/22/[receipt_id]_original_filename.pdf`~~ **Wrong in four places in this guide
+until 2026-09-04.** `data\` was removed by amendment 76, there is no day level, and the folder is the
+`client_id` rather than a client code, sub-step 10d.53. **The year and month are the arrival date and
+not the invoice date**, deliberately: this runs before extraction, so there is no invoice date yet,
+and an arrival date never needs correcting, so no file in the store ever has to move.
 
 Files are never deleted or overwritten, and never moved either, filing always makes a copy elsewhere and leaves this original exactly where it was. This ensures you always have the original document, no matter how many times a receipt gets retried or refiled.
 
@@ -132,23 +149,35 @@ The system checks that the extracted data makes sense:
 ### Step 6: Categorisation
 
 Categorisation is now attempted on every path that files a receipt, whether it arrived fresh by email or folder, got picked up by the automatic retry, or was corrected by hand through `resolve_receipt.py`. A receipt is never filed with a blank category as a matter of course:
-- Looks up the supplier in stored vendor mappings (by client or firm-wide)
-- Assigns a GL code (accounting category) for bookkeeping
-- Confidence score shows how sure the match is
-- If no match is found, it's marked `unmatched` and flagged for manual review, but it's still recorded as a genuine attempt, not silently skipped
+- **Six layers, numbered 0 to 5**: rules 0, this client's mappings 1, the firm's shared pool 2,
+  fuzzy against the client's 3, fuzzy against the firm's 4, AI 5
+- **Codes are four digits.** Any three-digit code you see anywhere is legacy
+- **Layer 5, the AI, may only propose accounts the client's own published chart marks
+  `classifier_eligible`**, read from `Intellibills\Charts\` and new on 2026-09-04. It is not a rule
+  about what you may post: you may post a receipt to any active account, and always could
+- Confidence is `high`, `medium`, `low` or `none`
+- If nothing matches, it is `unmatched` with confidence `none` and flagged for review. **That is not
+  a sixth layer**, it is the absence of a match, and it is still recorded as a genuine attempt
 
 ### Step 7: Filing
 
 Once a receipt validates successfully and is categorised:
-- It's moved (copied, the original is untouched) to the Clients folder with an organised folder structure:
+- It's copied, the original untouched, into the client's folder:
   ```
-  Clients/[Client Name]/Tax Year 2026/[Supplier Name]/[receipt files]
+  Clients\[client_folder_name]\IntelliBooks\Receipts\[2026-27]\[invoice date]_[supplier]_[gross].[ext]
   ```
+  ~~`Clients/[Client Name]/Tax Year 2026/[Supplier Name]/[receipt files]`~~ **Wrong until 2026-09-04
+  and wrong in three ways**: there is no `Tax Year` folder and no per-supplier folder, the tax year
+  reads `2026-27`, and the folder name is the record's `client_folder_name` and never the display
+  name, sub-step 10d.14. **The supplier and the amount are in the file name instead.** Read off
+  `Clients\Test Sole Trader\IntelliBooks\Receipts\2022-23\` on 2026-09-04
 - A metadata file (sidecar) is created alongside with all the extracted information, including the category
 - The receipt's `filed_path` is set in the database, this is what marks it as genuinely, finally done, and it's what protects it from ever being wrongly filed a second time
 
 If validation fails, needs review, or looks like a possible duplicate:
-- A copy is placed in the client's Review folder for reference, alongside a sidecar describing why
+- A copy is placed in `Intellibills\Review\`, alongside a `.review.json` sidecar saying why.
+  ~~the client's Review folder~~ **Corrected 2026-09-04: the Review folder is one folder under
+  `Intellibills\`, not one per client under `Clients\`**
 - This is not necessarily the end of the road for that receipt, see "Automatic Retry & Manual Resolution" below
 - Every retry attempt creates its own numbered copy in the Review folder (e.g. `receipt.jpg`, `receipt-2.jpg`), rather than overwriting the previous one, so don't be surprised to see more than one copy of the same underlying document there if it's been retried a few times
 
@@ -173,12 +202,25 @@ See "Helper Scripts" below for usage.
 
 ### Step 9: Database Storage
 
-Everything is recorded in an SQLite database (`data/receipts.db`):
-- **receipts** — One entry per receipt file (who sent it, where it is, current status, whether it's genuinely filed, whether it's locked for manual resolution, and what it might be a duplicate of)
-- **extractions** — AI extraction results (supplier, amounts, dates, reference number, time, which version of the code produced this attempt), one row per attempt, never overwritten
-- **categorisations** — GL code assignments (bookkeeping categories)
-- **processed_attachments** — Duplicate prevention log
-- **statements** — Separate tracking for bank statements and similar documents
+Everything is recorded in an SQLite database at `config.DB_PATH`, which is
+`C:\Intellibills\db\receipts.db` unless `INTELLIBILLS_UNSYNCED_ROOT` says otherwise.
+~~`data/receipts.db`~~ **Corrected 2026-09-04.**
+
+**Eleven tables.** This guide named five:
+- **receipts** — one row per receipt file: who sent it, which of the four sources, where both copies
+  are, current status, whether it is genuinely filed, whether it is locked for manual resolution, and
+  what it might be a duplicate of
+- **extractions** — AI extraction results, one row per attempt, never overwritten
+- **categorisations** — the suggestion and, beside it rather than over it, any correction
+- **statements** — **PHV platform statements: uber, bolt, freenow.** ~~bank statements and similar
+  documents~~ **Wrong until 2026-09-04, and worth being clear about: nothing in this system reads a
+  bank statement.** Bank transactions are imported in IntelliBooks Desktop
+- **processed_attachments** — duplicate prevention log
+- **resolution_events** — the audit trail, one row per resolution whatever the entry point
+- **email_alerts** — one row per alert sent, which is what stops a second alert for the same email
+- **email_delta** — state for a fetch strategy the email path does not use. See rule 6 in `CLAUDE.md`
+- **categorisations_client_vendors**, **categorisations_firm_vendors**,
+  **categorisations_client_rules** — layers 1, 2 and 0 of the categoriser
 
 Current status values on a receipt: `pending`, `ok`, `failed`, `needs_review`, `possible_duplicate`, `retry_exhausted` (stuck for more than 7 days, automatic retry has given up, needs a person to look at it), `discarded` (confirmed as a genuine duplicate and deliberately not filed).
 
@@ -199,15 +241,23 @@ This is worth being precise about, since it's easy to assume the mailbox folders
 If you want to know, right now, what genuinely needs attention: `python query_receipts.py` or `python view_receipts.py`, not a folder listing.
 
 ### Files
-- **Original receipts:** `data/files/YYYY/MM/DD/[receipt_id]_filename` (never moved or deleted)
-- **Filed receipts:** `Clients/[Client]/Tax Year YYYY/[Supplier]/[receipt_id]_filename`
-- **Review folder:** `Clients/[Client]/Review/[filename]` (a copy per attempt, plus a `.review.json` sidecar for each)
-- **Metadata sidecars:** Same folder as the receipt with `.json` extension
+- **Original receipts:** `Intellibills\Documents\[client_id]\[year]\[month]\[receipt_id]_filename`
+  (never moved or deleted)
+- **Filed receipts:** `Clients\[client_folder_name]\IntelliBooks\Receipts\[2026-27]\[date]_[supplier]_[gross].[ext]`
+- **Review folder:** `Intellibills\Review\` (a copy per attempt, plus a `.review.json` sidecar for each)
+- **Metadata sidecars:** beside the receipt. **A filed receipt's sidecar appends the extension**,
+  `x.pdf.json`; **an inbox sidecar replaces it**, `x.json`. Two conventions and both are deliberate
+- **All four paths above were wrong in this guide until 2026-09-04**
 
 ### Logs
-- **Processing log:** `logs/runs.ndjson` — Record of each time the system runs
-- **Receipt events:** `logs/receipt_events_[firm_id].ndjson` — Timeline of what happened to each receipt
-- **Status:** `pipeline-status.json` — Last run time, error messages, stats
+All of these live under `config.LOGS_DIR`, which is `C:\Intellibills\logs` unless
+`INTELLIBILLS_UNSYNCED_ROOT` says otherwise, and deliberately outside OneDrive.
+- **Processing log:** `runs.ndjson` — a record of each run
+- **Receipt events:** `receipt_events_[firm_id].ndjson` — the timeline for each receipt, with
+  `receipt_events_UNATTRIBUTED.ndjson` for an event that belongs to no firm
+- **Per entry point:** `run.log` for the pipeline, plus `resolve.log`, `discard.log`, `console.log`
+- **Status:** `Intellibills\pipeline-status.json` — last run time, error messages, stats. **This one
+  is in OneDrive, not in the logs folder**, because IntelliBooks Desktop reads it
 
 Note: log files are no longer tracked in git, they're runtime output, not source, so they won't show up as "changes" when checking the state of the code.
 
@@ -215,23 +265,40 @@ Note: log files are no longer tracked in git, they're runtime output, not source
 
 ## Client Assignment
 
-When a receipt arrives via email, the system looks up the sender's email address in `clients.csv`. For folder uploads, it looks up the `client_code` from the sidecar file instead.
+**This whole section was rewritten on 2026-09-04. Step 10d replaced everything it used to say.**
 
-**Example:**
-- Paul sends from `pdk7@hotmail.co.uk` → automatically assigned to Client_001, business type PHV_DRIVER
-- Intellitax admin sends from `paul.keating@intellitax.co.uk` → automatically assigned to Client_002, business type ACCOUNTANCY
-- Unknown sender → defaults to client_id UNKNOWN, can be manually assigned later
+**There is one client registry and it is `Intellibills\clients.json`, keyed on `client_id`**, sub-step
+10d.3. IntelliBooks Desktop writes it; the pipeline only reads it, and re-reads it whenever its
+modification time changes. ~~`IntelliBooks/clients.csv`~~ **Gone.** ~~a `client_code` from the
+sidecar~~ **Gone: there is no client code anywhere, in either product.**
 
-**If a `client_code` doesn't have a matching row in `clients.csv`**, the system falls back to using the raw code itself as the client's folder name. Worth knowing, because it means a typo or an unregistered test code won't error out, it'll quietly file things under a folder named after the exact code used, which may not be where you'd think to look. If a receipt seems to have gone missing, check that its `client_code` is genuinely registered before assuming something's broken.
+**By email:** the sender's address is looked up against every address in each client record's
+`emails` array. One client can have several addresses.
 
-The client list is stored in the shared Intellitax OneDrive folder at:
-```
-IntelliBooks/clients.csv
-```
+**From the Receipt Inbox:** the `client_id` comes from the item's own sidecar, not from the folder it
+sat in.
+
+**When the client cannot be resolved:** `client_id` is `UNKNOWN`, which is a reserved id and not a
+client, and `firm_id` is `FIRM001`, which is `config.DEFAULT_FIRM_ID` and the only source for it. The
+receipt is still recorded and can be assigned later in IntelliBooks Desktop.
+
+**~~A typo or unregistered code files quietly under a folder named after the raw code.~~ That
+behaviour is gone**, and it is worth knowing it has gone because it was the thing to check first when
+a receipt seemed to have vanished. **A receipt whose client has no `client_folder_name` is not filed
+at all**: it is held with the reason recorded, rather than being filed somewhere nobody would look.
+
+**Client folder names come from `client_folder_name` on the record and never from `client_name`**,
+sub-step 10d.14. The display name is freely editable; the folder name is fixed once the folder
+exists.
 
 ---
 
 ## Helper Scripts: Tools for Inspection and Maintenance
+
+**All six root scripts read `config.DB_PATH`. Fixed 2026-09-04, outstanding item 158**: each used to
+open `data/receipts.db`, a path amendment 76 removed, **and an sqlite connection to a missing file
+succeeds and creates an empty one**, so each reported no receipts rather than saying it could not find
+any. If you ran one of these before 2026-09-04 and it showed nothing, that is why.
 
 These scripts help you inspect, debug, and maintain the system. None of them modify the main database unless you explicitly ask them to, apart from `resolve_receipt.py`, which does so deliberately and always appends rather than overwrites.
 
@@ -244,7 +311,7 @@ python query_receipts.py
 Shows:
 - Receipt ID (shortened)
 - Filename
-- Source (email or inbox folder)
+- Source: `email`, `phone`, `desktop` or `other`
 - Email sender and subject (for email receipts)
 - Current status (pending, ok, needs_review, failed, possible_duplicate, retry_exhausted, discarded)
 - When it was created
@@ -307,7 +374,7 @@ Purpose:
 **`import_vendor_csv.py`** — Load vendor/supplier mappings
 ```bash
 python import_vendor_csv.py path/to/vendors.csv <client_id>
-python import_vendor_csv.py vendors.csv Client_006
+python import_vendor_csv.py vendors.csv Client_002
 ```
 Purpose:
 - Import a pre-prepared CSV of supplier → GL code mappings
@@ -318,7 +385,7 @@ Purpose:
 **`seed_client_vendors.py`** — Populate vendor mappings from existing receipts
 ```bash
 python seed_client_vendors.py <csv_path> <client_id>
-python seed_client_vendors.py 'Test Receipts/transactions_sample.csv' Client_006
+python seed_client_vendors.py 'Test Receipts/transactions_sample.csv' Client_002
 ```
 Purpose:
 - Scans all successfully processed receipts
@@ -335,6 +402,18 @@ Purpose:
 - Removes noise words and location codes for consistency
 - Re-runs the categorisation matching logic
 - Useful if you've updated vendor mappings and want to re-categorise old receipts
+
+**`discard_receipt.py`** — mark a receipt as a confirmed duplicate and deliberately not filed
+```bash
+python discard_receipt.py <receipt_id>
+```
+Sets the status to `discarded` and records why. **Not in this guide until 2026-09-04.**
+
+**`retroactive_categorise.py`** — categorise receipts filed before categorisation ran on every path
+```bash
+python retroactive_categorise.py
+```
+**Not in this guide until 2026-09-04.**
 
 **`export_bookkeeping.py`** — Export data for accounting software
 ```bash
@@ -404,12 +483,13 @@ See "Resolution Scripts" above.
 
 ### Debug a Specific Receipt
 Look in the database using `view_receipts.py`, then check:
-- The original file: `data/files/YYYY/MM/DD/[receipt_id]_filename`
-- The Review folder copy (if any): `Clients/[Client]/Review/[filename(-N)]` plus its `.review.json`
+- The original file: `Intellibills\Documents\[client_id]\[year]\[month]\[receipt_id]_filename`
+- The Review folder copy, if any: `Intellibills\Review\[filename(-N)]` plus its `.review.json`
 
 ### Add New Supplier Mappings
 1. Prepare a CSV with supplier → GL code mappings
-2. Run: `python import_vendor_csv.py my_vendors.csv Client_006`
+2. Run: `python import_vendor_csv.py my_vendors.csv Client_002`
+3. **The client ids are whatever is in `Intellibills\clients.json`.** ~~`Client_006`~~ **There is no Client_006: the registry holds `Client_001` to `Client_005` as at 2026-09-04.** Corrected that day
 
 ### Re-Categorise Receipts
 If you've added new vendor mappings:
@@ -441,17 +521,24 @@ POLL_INTERVAL_SECONDS=300  (optional, check for new receipts every 300 seconds)
 PREFER_DAYFIRST=1  (optional, 1 = prefer DD/MM date format, 0 = MM/DD)
 ```
 
-**`clients.csv`** — Client list (in shared OneDrive)
-Location: `IntelliBooks/clients.csv`
+**`clients.json`** — the client registry, in OneDrive
+Location: `Intellibills\clients.json`. ~~`IntelliBooks/clients.csv`~~ **Corrected 2026-09-04.**
+**Written by IntelliBooks Desktop and only read by the pipeline.** Edit it there, not by hand.
 
-Columns:
-- `client_id` — Unique identifier (e.g., Client_001)
-- `name` — Client's display name
-- `email` — Email address to match (for auto-assignment)
-- `firm_id` — Which firm this client belongs to (usually INTELLITAX)
-- `business_type` — Type of client (PHV_DRIVER, ACCOUNTANCY, etc.)
-- `client_code` — Code used in folder intake (must match exactly, or the raw code is used as the folder name instead of the client's real name)
-- `notes` — Any notes
+Fields the pipeline reads:
+- `client_id` — the key, for example `Client_001`
+- `client_name` — display name, freely editable
+- `client_folder_name` — the folder under `Clients\`, fixed once that folder exists
+- `firm_id` — **`FIRM001`.** ~~usually INTELLITAX~~ **Corrected 2026-09-04.** A record with no
+  `firm_id` is refused and the pipeline never sees that client
+- `emails` — every address that client sends from, as an array
+- `trade` — `PHV_DRIVER`, `UNSPECIFIED` and so on
+- `capture_token` — **a credential.** It is what the phone app authenticates with, it is per client
+  and revocable, and it must never be published, pasted into a document or committed
+- `chart_code` — which published chart the classifier may suggest from, new on 2026-09-04
+- `entity_type`, `partners`, `phv`, `vat`, `year_end`, `mtd`, `mtd_basis`, `balance_sheet` — the
+  client's own settings, used by IntelliBooks Desktop
+- **There is no `client_code` and no `business_type` column.** `trade` is the field
 
 ---
 
@@ -461,11 +548,11 @@ Columns:
 
 **2026-07-22 10:15 AM** — Client sends email to capture@lastingimpact.co.uk with a receipt PDF
 ↓
-**System identifies:** It's from paul.keating@intellitax.co.uk → Client_002
+**System identifies:** it is from `pdk7@hotmail.co.uk`, which is on `Client_004`'s `emails` array, so the receipt is `Client_004`, Test Sole Trader. **That is the only address on any record as at 2026-09-04**, read off `Intellibills\clients.json`
 
 **Step 1 — Check duplicates:** Not seen before, and nothing matches on supplier/date/amount either ✓
 
-**Step 2 — Save file:** `data/files/2026/07/22/abc123de_receipt.pdf`
+**Step 2 — Save file:** `Intellibills\Documents\Client_004\2026\07\abc123de_receipt.pdf`
 
 **Step 3 — Extract:** OpenAI reads the PDF
 - Supplier: Amazon
@@ -474,12 +561,12 @@ Columns:
 
 **Step 4 — Validate:** All checks pass ✓ Status: `ok`
 
-**Step 5 — Categorise:** Looks up "Amazon" in vendor list
-- Found: GL code 5050 (Office Supplies)
-- Confidence: High
+**Step 5 — Categorise:** looks up "Amazon" in the vendor mappings
+- Found: `7500 Printing, postage and stationery`, a real four-digit master code
+- Confidence: high, match source `client`
 
-**Step 6 — File:** Moves receipt to
-`Clients/Intellitax/Tax Year 2026/Amazon/abc123de_receipt.pdf`, `filed_path` set
+**Step 6 — File:** copies the receipt to
+`Clients\Test Sole Trader\IntelliBooks\Receipts\2026-27\2026-07-22_amazon_125.50.pdf`, `filed_path` set
 
 **Step 7 — Log:** Everything recorded in database and logs
 
@@ -487,7 +574,7 @@ Columns:
 
 ### Timeline Example 2: Needs Review, Then Resolved
 
-**2026-07-17** — A receipt is captured but the date can't be confidently read, extraction returns `needs_review` ("missing supplier_name"). A copy is placed in `Clients/Test/Review/`.
+**2026-07-17** — a receipt is captured but the date cannot be confidently read, extraction returns `needs_review` ("missing supplier_name"). A copy is placed in `Intellibills\Review\`.
 
 **2026-07-24, code fix ships** — Unrelated to this receipt's actual problem, but the app restarts and automatically retries every needs_review/failed receipt once against the new code, this one included. It still comes back `needs_review`, same underlying issue, a new numbered copy appears in the Review folder, and the attempt is logged as an automatic retry, not a fresh receipt.
 
@@ -503,7 +590,7 @@ Columns:
 - Check `.env` has correct IMAP credentials
 - Verify mailbox address is correct (capture@lastingimpact.co.uk)
 - Run `python setup_auth.py` to test connection
-- Check logs in `logs/` folder
+- Check the logs under `config.LOGS_DIR`, `C:\Intellibills\logs` by default
 
 ### Receipts marked as "needs_review" or "failed"?
 - Run `python view_receipts.py` to see what's wrong, and how many times it's already been attempted
@@ -520,16 +607,23 @@ Columns:
 
 ### Can't find a receipt that should need review?
 - Check the database first (`python view_receipts.py`), not a folder, the folders are just a convenience copy and can lag behind or hold several copies from repeated retries
-- If it arrived via the Receipt Inbox folder rather than email, it will never appear in an email mailbox folder, check `Clients/[Client]/Review/` on disk instead
+- If it arrived through the Receipt Inbox rather than by email, it will never appear in an email mailbox folder. Check `Intellibills\Review\` on disk instead
 
 ### Wrong client assigned, or files landing under an unexpected folder name?
-- Check `clients.csv` has the correct email/client mapping, and that the `client_code` used matches exactly
-- Sender's email may not be in the list (defaults to UNKNOWN)
-- An unregistered or mistyped `client_code` won't error, it'll just file under a folder named after the raw code
-- Edit `clients.csv` to add or correct the mapping, then re-process
+- **Open the client in IntelliBooks Desktop and check the Email addresses field**, which writes the
+  `emails` array on that client's record in `Intellibills\clients.json`. An address on no record
+  resolves to `UNKNOWN`
+- **For an inbox item, the client comes from the item's sidecar**, so check the sidecar's `client_id`
+  rather than the folder the file was in
+- **Check the client has a `client_folder_name`.** Without one the receipt is held rather than filed,
+  and the reason is recorded
+- ~~An unregistered or mistyped `client_code` files under a folder named after the raw code~~ **That
+  cannot happen any more: there is no client code.** Corrected 2026-09-04
+- Fix the record in IntelliBooks Desktop, never by editing `clients.json` by hand, then re-process
 
 ### Can't find a filed receipt?
-- Check the folder structure: `Clients/[Client Name]/Tax Year [YYYY]/[Supplier Name]/`
+- Check the folder: `Clients\[client_folder_name]\IntelliBooks\Receipts\[2026-27]\`, and the file
+  name carries the date, the supplier and the amount
 - Or query the database: `python query_receipts.py | grep filename_part`
 
 ---
@@ -553,8 +647,12 @@ Columns:
 - `rules.py` — Checks extracted data for consistency and completeness
 
 **Categorisation Layer** (`worker/categorisation/`)
-- `engine.py` — 6-layer strategy: Rules → Client lookup → Firm lookup → Fuzzy → AI → Unmatched
-- `coa.py` — Chart of Accounts / GL code reference
+- `engine.py` — **six layers, 0 to 5**: rules 0, client 1, firm 2, fuzzy client 3, fuzzy firm 4,
+  AI 5. ~~Rules → Client lookup → Firm lookup → Fuzzy → AI → Unmatched~~ **Corrected 2026-09-04:
+  fuzzy is two layers and unmatched is not a layer**
+- `chart.py` — **the client's published chart, read from `Intellibills\Charts\`**, filtered to the
+  accounts marked `classifier_eligible`. ~~`coa.py` — Chart of Accounts / GL code reference~~
+  **Deleted 2026-09-04: its 21, 15 and 7 hardcoded codes belonged to no chart in the library**
 
 **Database Layer** (`worker/database/`)
 - `repository.py` — All database access and queries, including receipt locking and the version-gated retry query
@@ -581,7 +679,7 @@ Validate (gross ≈ net + VAT, dates, required fields)
     ↓
 Semantic duplicate check (supplier + date + amount, ref/time tiebreakers)
     ↓
-Categorise (6-layer lookup for GL code) — always attempted, never skipped
+Categorise (six layers, 0 to 5), always attempted, never skipped
     ↓
 File to disk (if ok) OR Review folder (if needs_review/failed/possible_duplicate)
     ↓

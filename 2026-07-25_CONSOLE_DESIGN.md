@@ -1,8 +1,9 @@
 # Intellitax Practice Console — Design
 
 **Date:** 2026-07-25
-**Version:** 1.68, amended 2026-09-04
+**Version:** 1.69, amended 2026-09-04
 **Date warning, and it matters more than the version. Amendments 158 to 160 and everything they changed were written on 2026-08-23**, and were first dated 2026-08-22 by a session that read the clock once at the start and ran eighteen hours. **Amendment 157 and the v1.23 header are dated 2026-08-22 and may belong to either day.** Which is not reconstructable and neither has been changed. See amendment 160.
+~~**Version:** 1.68, amended 2026-09-04~~ Superseded by v1.69.
 ~~**Version:** 1.67, amended 2026-09-04~~ Superseded by v1.68.
 ~~**Version:** 1.66, amended 2026-09-04~~ Superseded by v1.67.
 ~~**Version:** 1.65, amended 2026-09-04~~ Superseded by v1.66.
@@ -641,6 +642,12 @@ Grounded in a direct read of `app.py`, `resolve_receipt.py`, `worker/database/re
 | # | Section | Change | Why |
 |---|---|---|---|
 | 208 | 16 step 10h and its head-table row, `IntelliBooks\App\Docs\SETUP-v5.md` and `IntelliBooks\App\Docs\HANDOFF-Status.md` | **Step 10h is BUILT. All eight documents are reconciled with the code**, the first half having moved 85 spent files into `archive\` on 2026-09-03. The eight, with their amendments: `CATEGORISATION.md` 189, `CLAUDE.md` 201, `RECEIPT_CAPTURE_GUIDE.md` 203, `EMAIL_PROCESSING_MICROSTEPS.md` 204, `IntelliBooks-System-Specification.md` 206, `IntelliBooks-System-Overview.md` 207, and `SETUP-v5.md` and `HANDOFF-Status.md` here. **`SETUP-v5.md`, 6,538 to 10,279 bytes**: its own July note said sections 2 and 4 were stale and steps 1, 3 and 5 were unaffected; **all six sections needed correcting.** Section 1 told Paul to create `UPLOAD_KEY` in Netlify, which was deleted from Netlify on 2026-09-03, and section 2 told him to paste it into Practice Settings, which no longer holds it. **Section 6, the scheduled task, now leads with Paul's decision not to set it until go-live**, outstanding item 10, closed 2026-08-21 having been asked more than once. **`HANDOFF-Status.md`, 3,877 to 6,614 bytes, is marked SUPERSEDED rather than rewritten**, and it names what to hand a new session instead, in order. **Its "What the system is" paragraph is corrected in place** because it is the one part of a snapshot a reader takes as current. **Its working-conventions section is kept and marked live: it is the only place those are written down.** | **On `SETUP-v5.md`, and it is the most directly dangerous document of the eight.** It is a step-by-step Paul follows with a browser and a Netlify console open. **Two of its steps would have undone work done yesterday**: creating `UPLOAD_KEY` again, and entering it in a window that no longer has the field. **A stale reference document misleads; a stale instruction gets carried out.** **On its own staleness note, which is the lesson worth keeping.** It carried a note from 18 July saying which sections were out of date and which were unaffected. **The note was wrong about both halves**, and it is a fair guess it was written from memory of what had changed rather than by rereading the six sections. **A partial staleness warning is worse than none: it tells the reader which parts to trust.** **On marking a handover superseded instead of updating it.** A handover is a snapshot with a date on it, and rewriting one destroys the record of what was believed then while leaving something that still reads like a current briefing. **Marking it and naming the replacements keeps both.** The replacement list is deliberately ordered, `CLAUDE.md` first, because its induction section is what stops a new session guessing at the working method. **On the four things it listed as in flight, and three of the four had settled without the file ever being touched.** One was a decision recorded in two other places, one was done on 2026-09-03, one was overtaken by 35 change log items. **That is what an untouched status document does: it holds questions that have been answered elsewhere, and the next reader asks them again.** |
+
+### v1.69, 2026-09-04
+
+| # | Section | Change | Why |
+|---|---|---|---|
+| 209 | 16 step 10e, its sub-step 10e.6, and the folder tree under 18.2 | **Step 10e's own text is corrected before the step is worked, and one sub-step is cancelled. Paul's instruction, 2026-09-04.** **10e.6 is CANCELLED**: it required the Client Settings tab to show C1, C2 and C3 read-only "until the one registry exists", and **step 10d built the one registry**. `clients.csv` is renamed `.superseded-2026-08-20` and `IntelliBooks-Practice.json` is renamed `.superseded-2026-09-01`, both read off disk today, and every client field is one record in `Intellibills\clients.json`. **Cancelled rather than closed, because nothing was built for it and nothing should be.** **Three lines in the step body corrected**: the same registry sentence, "creating a client keeps the name, the code and the entity type" when the code appears nowhere since 10d.67, and "until `capture_token` replaces it, the upload key" when it has and the key was deleted from Netlify on 2026-09-03. **10e.14's storage note now names `firms.json` as the settings file it was asking for**, built at 10d.51 and 10d.52, holding `firm_id`, `name`, `email` and `phone_app_url`. **And the folder tree under 18.2 is redrawn from the folders themselves**, with the old drawing kept: every `{CODE}` in it was wrong, `Clients\{Client Name}\Receipts\` was missing the `IntelliBooks\` level amendment 170 inserted, and it listed `IntelliBooks-Practice.json`, `clients.csv` and `firms.csv`, none of which exists. **`Charts\` was missing from both product folders and the database is now stated as being in neither tree.** | **On correcting a step before working it, which is the point of doing this at all.** 10h spent the morning on eight documents that describe the system. **This is the document that instructs the build**, and a session handed 10e would have built 10e.6 exactly as written: two read-only fields on a new tab, to avoid writing across two files, one of which no longer exists. **The work would have been done, tested and reported as correct.** That is a worse outcome than a stale guide, because it reaches the code. **On cancelling rather than closing, and the distinction matters for the count.** A closed sub-step is work that happened. **10e.6's requirement was met by nobody: its premise was removed by a different step**, in the same way 10d.47 was cancelled rather than built. Recording it as BUILT would put a claim in the record that nothing supports. **On the folder tree, and why it is the most-read thing in this document.** It is the one picture of where everything lives, and it was drawn on 2026-08-21 before three of the four moves that changed it: the client folder's `IntelliBooks\` level, Review leaving the client folder, and the chart bundle arriving in both product folders. **A tree is read as a fact rather than as a claim**, which is why this one is redrawn from `ls` output and not from the amendments that changed it. |
 
 ## How to use this document
 
@@ -2228,9 +2235,9 @@ Commit after each step.
 
 10e. **OUTSTANDING.** **The Firm Settings page is filled. Added 2026-08-20 by amendment 117.** Paul's stated priority. **Every firm variable appears on it**, including the ones that cannot be changed from the app: `RECEIPTS_ROOT`, `ONEDRIVE_USER` and the Azure app registration live on Netlify, and they appear **displayed and labelled as external** rather than omitted, so the page is a complete statement of what a firm consists of. The engineering constants stay off it, per amendment 108: the extraction engine, the model, the poll interval and the validation tolerance are not settings and a page of things not to change is worse than no page.
 
-   **Client Settings gets its own tab, in the centre menu group, beside Client Data, named Client Settings. Decided 2026-08-21 by amendment 130, closing outstanding item 2.** Section 7 of `2026-08-20_LIST_settings_firm_and_client.md` carries the reasoning: every client setting is about whichever client is selected, which is what the centre group means, and ten of the seventeen that exist are reachable today only by leaving the client you are working on, through **Clients** then **Edit** on a row. **Two things it does not take.** Creating a client keeps the name, the code and the entity type in the Edit window, because `chartFor()` cannot build the books without the type. And **C16, the period lock date, stays on Client Data** in the **This Client's Data** card, because it is set once a quarter as part of closing a period and moving it would put the lock two clicks from the transactions it locks. **Until the one registry exists**, C1, C2 and C3 live in `clients.csv` and the rest in `IntelliBooks-Practice.json`, so the page shows those three read-only rather than writing across two files.
+   **Client Settings gets its own tab, in the centre menu group, beside Client Data, named Client Settings. Decided 2026-08-21 by amendment 130, closing outstanding item 2.** Section 7 of `2026-08-20_LIST_settings_firm_and_client.md` carries the reasoning: every client setting is about whichever client is selected, which is what the centre group means, and ten of the seventeen that exist are reachable today only by leaving the client you are working on, through **Clients** then **Edit** on a row. **Two things it does not take.** Creating a client keeps the name ~~, the code~~ and the entity type in the Edit window, because `chartFor()` cannot build the books without the type. **The client code came off that window at 10d.67 and appears nowhere; corrected here 2026-09-04.** And **C16, the period lock date, stays on Client Data** in the **This Client's Data** card, because it is set once a quarter as part of closing a period and moving it would put the lock two clicks from the transactions it locks. ~~**Until the one registry exists**, C1, C2 and C3 live in `clients.csv` and the rest in `IntelliBooks-Practice.json`, so the page shows those three read-only rather than writing across two files.~~ **The one registry exists. Corrected 2026-09-04: step 10d built it, `clients.csv` is gone, `IntelliBooks-Practice.json` is superseded, and every client field including C1, C2 and C3 is on the client's record in `Intellibills\clients.json`. Nothing on the new tab needs to be read-only and nothing writes across two files.** See 10e.6.
 
-   **The Practice Settings card moves here from the Clients tab**, with the capture app address and, until `capture_token` replaces it, the upload key. **Two toasts in `copyCaptureLink()` name that card and change with it**: "Set the capture app address in Practice Settings first (Clients tab)" and "Set the upload key in Practice Settings first (must match UPLOAD_KEY on Netlify)". This closes what the Desktop session flagged on 2026-08-20, that Practice Settings and Firm Settings are two names for practice-level settings in adjacent menu items.
+   **The Practice Settings card moves here from the Clients tab**, with the capture app address and ~~, until `capture_token` replaces it, the upload key~~. **`capture_token` has replaced it. Corrected 2026-09-04: sub-steps 10d.5 to 10d.7 retired the shared `UPLOAD_KEY`, it was deleted from Netlify on 2026-09-03, and there is no key field to move.** **Two toasts in `copyCaptureLink()` name that card and change with it**: "Set the capture app address in Practice Settings first (Clients tab)" and "Set the upload key in Practice Settings first (must match UPLOAD_KEY on Netlify)". This closes what the Desktop session flagged on 2026-08-20, that Practice Settings and Firm Settings are two names for practice-level settings in adjacent menu items.
 
    **`vatScheme` is deleted rather than carried onto the new tab. Added 2026-08-21 by amendment 142, on Paul's decision, closing outstanding item 23.** Five places in `IntelliBooks-Desktop-v3.html`: the input at `:348`, the clear at `:850`, the read at `:861`, the write at `:884` and the shape comment at `:572`. The field goes from `IntelliBooks-Practice.json` with it. **No data is lost: all six clients hold an empty string, read from the file.** **It is here rather than anywhere else because this step decides what a client setting is**, and a field nothing reads should not be the first thing carried onto a page built to hold client settings. **The accounting argument, and it was the consultant session's rather than Paul's:** the box looks like the system knows the scheme, and a client on flat rate generally cannot recover input VAT on purchases while their receipts are being given VAT the standard way. **Attribution corrected 2026-08-23. Paul wanted to keep the field even though nothing read it, and was argued out of it by this session on a risk it raised.** **Amendment 148 then established the opposite rule**, that an unused field is not a defect and whether it is a risk is Paul's call, so the argument that removed this field would not be made again. He will ask for it when he wants it, and it will need fixed values rather than free text.
 
@@ -2243,7 +2250,7 @@ Commit after each step.
    10e.3 **BUILT 2026-08-31.** A **Client Settings** tab sits in the centre menu group beside **Client Data** in `IntelliBooks-Desktop-v3.html`. It carries VAT registered, Confirm mode, PHV platforms, Year end, MTD client, MTD quarter basis and the Balance sheet tickbox, each saving on change. A second card names what is set elsewhere. ~~OUTSTANDING. **Client Settings** gets its own tab in the centre menu group beside **Client Data**. Amendment 130.~~
    10e.4 **BUILT 2026-08-31.** The **Edit Client** window now holds the business name, ~~the client code,~~ the client type and the partners, and nothing else. **`client_code` comes off this window at 10d.67, on Paul's ruling of 2026-09-02 that it goes completely and appears nowhere. This sub-step stays BUILT: it describes what was built on 2026-08-31 and step 10d changes it.** Everything a person changes afterwards moved to the new tab. ~~OUTSTANDING. Creating a client keeps the name, the code and the entity type in the **Edit** window, because `chartFor()` cannot build the books without the type.~~
    10e.5 **BUILT 2026-08-31. Nothing moved, which is the requirement.** C16, the period lock date, is still on **Client Data** in the **This Client's Data** card, and the new tab says so in words rather than leaving it to be searched for. ~~OUTSTANDING. **C16, the period lock date, stays on Client Data**, because it is set once a quarter as part of closing a period and moving it would put the lock two clicks from the transactions it locks.~~
-   10e.6 **OUTSTANDING.** Until the one registry exists, C1, C2 and C3 live in `clients.csv` and the rest in `IntelliBooks-Practice.json`, so the page shows those three **read-only** rather than writing across two files.
+   10e.6 **CANCELLED 2026-09-04.** ~~OUTSTANDING. Until the one registry exists, C1, C2 and C3 live in `clients.csv` and the rest in `IntelliBooks-Practice.json`, so the page shows those three **read-only** rather than writing across two files.~~ **Its premise is gone rather than its requirement being met: step 10d built the one registry.** `clients.csv` is renamed `clients.csv.superseded-2026-08-20` and `IntelliBooks-Practice.json` is renamed `IntelliBooks-Practice.json.superseded-2026-09-01`, both read off disk on 2026-09-04. **Every client field is one record in `Intellibills\clients.json`, which IntelliBooks writes and the pipeline only reads**, so C1, C2 and C3 are editable on the Client Settings tab like every other client field and no field is split across two files. **Cancelled rather than closed, because nothing was built for it and nothing should be.** If Paul wants any of the three shown read-only for a different reason, that is a new decision.
    10e.7 **BUILT 2026-08-31.** The **Practice Settings** card is gone from the **Clients** tab. The capture app address and the upload key are now in the **IntelliBooks Settings** card on **Firm Settings**, with the practice root line. The two toasts in `copyCaptureLink()` now name Firm Settings. ~~OUTSTANDING. **The Practice Settings card is removed from the Clients tab**, its capture app address and, until `capture_token` replaces it, its upload key moving to Firm Settings. **Two toasts in `copyCaptureLink()` name that card and change with it.**~~
    10e.8 **BUILT 2026-08-31.** `vatScheme` is deleted, not carried across. Gone from the **Edit Client** window, from `openNewClient()`, `openEditClient()` and `saveClientModal()`, and from the shape comment, which was rewritten to the true shape. Removed from `IntelliBooks-Practice.json` for all six clients, every one holding an empty string, backup `IntelliBooks-Practice.json.bak-before-vatscheme-removal`. ~~OUTSTANDING. `vatScheme` is deleted rather than carried onto the new tab. Amendment 142. Five places in `IntelliBooks-Desktop-v3.html`, being `:348`, `:850`, `:861`, `:884` and the shape comment at `:572`, plus the field in `IntelliBooks-Practice.json`. All six clients hold an empty string, so nothing is lost.~~
 
@@ -2257,7 +2264,7 @@ Commit after each step.
    10e.14 **OUTSTANDING.** **F17, the client top folder, is two stored fields: a name and an absolute path.** Not one value with the name derived. **The two are checked against each other**, so a mistake in either is visible; derive the name and a wrong path becomes the name by definition. It is an absolute path in its own right and **need not sit under the practice root**. `config.py:42`'s `CLIENTS_ROOT = PRACTICE_ROOT / "Clients"` stops composing it, and the literal `"Clients"` goes from seven places in `IntelliBooks-Desktop-v3.html`.
    10e.15 **OUTSTANDING.** **IntelliBooks takes a second folder grant, for the client top folder**, because the browser can only walk down from a folder it has been given and F17 may sit outside the practice root. **It is verified by name only**, against 10e.14's name field, because nothing of ours is written there to prove it. Two permissions on first run: our storage, and the firm's filing structure.
 
-   **F17 lives in a settings file in `Intellibills\`**, alongside `clients.csv` and `pipeline-status.json`, because that is somewhere the pipeline reaches by configuration and IntelliBooks already reaches through its grant. **Where the setting is stored and what its value points at are different questions**, and the value being an absolute path elsewhere does not change where it is recorded.
+   **F17 lives in a settings file in `Intellibills\`**, alongside `clients.json`, `firms.json` and `pipeline-status.json` (~~`clients.csv`~~ **corrected 2026-09-04**), because that is somewhere the pipeline reaches by configuration and IntelliBooks already reaches through its grant. **`Intellibills\firms.json` is that settings file**, built at sub-steps 10d.51 and 10d.52, and it holds four fields today: `firm_id`, `name`, `email` and `phone_app_url`. **Where the setting is stored and what its value points at are different questions**, and the value being an absolute path elsewhere does not change where it is recorded.
 
    **After 10d and not before**, because 10d changes where firm configuration is stored, and a page built first would be built twice.
 
@@ -2515,34 +2522,47 @@ Three top-level folders, one per owner. **No underscores and no namespacing**, b
 
 **The tree below is the common arrangement, not a constraint. Added 2026-08-21 by amendment 151.** `Clients\` is drawn inside the practice root because that is where Intellitax's own is, and **F17 records the client top folder as an absolute name and path which need not sit here at all.** A firm that already files clients on another share keeps them there. `IntelliBooks\` and `Intellibills\` are ours and do sit under the practice root.
 
+**Redrawn 2026-09-04 from the folders themselves. Every `{CODE}` in the old version was wrong, and
+so were four of its file names. The old drawing is kept below it.**
+
 ```
 {practice root}\
 ├── Clients\                      Intellitax's filing structure. Client-facing documents only.
-│   └── {Client Name}\
-│       ├── Receipts\{tax year}\        written by IntelliBooks at Post, see 18.2b
-│       ├── Statements\{tax year}\
-│       ├── Handover Pack\
-│       ├── HMRC Summaries\
+│   └── {client_folder_name}\           the record's folder name, never the display name, 10d.14
+│       ├── IntelliBooks\               amendment 170. Four children and no more
+│       │   ├── Receipts\{tax year}\        written by the pipeline and by IntelliBooks
+│       │   ├── Statements\{tax year}\{platform}\
+│       │   ├── HMRC Summaries\
+│       │   └── Handover Pack\
 │       └── (the firm's own: engagement letters, correspondence, anything else)
 ├── IntelliBooks\                 IntelliBooks only
-│   ├── App\
-│   ├── Books\{CODE}-books.json
-│   ├── Attachments\{CODE}\{year}\
-│   ├── Delivery\{CODE}.log             one per client, see 18.2b
-│   ├── Inbox\                          what Intellibills pushes to, per 18.3
+│   ├── App\                            the app and IntelliBooks\App\Docs\
+│   ├── Books\{client_id}-books.json
+│   ├── Charts\                         its copy of the published chart bundle
 │   ├── Backups\
-│   └── IntelliBooks-Practice.json
+│   ├── Attachments\{client_id}\{year}\   PLANNED, see 18.2b
+│   ├── Delivery\{client_id}.log         PLANNED, one per client, see 18.2b
+│   └── Inbox\                          PLANNED, what Intellibills pushes to, per 18.3
 └── Intellibills\                 Intellibills only. Documents, not the database: see below.
-    ├── Documents\{CODE}\{year}\{month}\  the archive of record, amendment 77
-    ├── Backups\                          where backup_db() writes
-    ├── Receipt Inbox\{CODE}\
-    ├── Review\{CODE}\
-    ├── Resolutions\
-    ├── clients.csv
-    ├── firms.csv
+    ├── Documents\{client_id}\{year}\{month}\  the archive of record, amendments 77 and 10d.53
+    ├── Receipt Inbox\{client folder}\      and a Processed\ inside each, per 3.13
+    ├── Review\{client_id}\                 out of the client folder, 10d.54
+    ├── Resolutions\                        with processed\ and failed\, per 12.3
+    ├── Charts\                             the pipeline's copy of the bundle
+    ├── Backups\                            where backup_db() writes
+    ├── PhoneApp\                           the Netlify deploy folder
+    ├── clients.json
+    ├── firms.json
     ├── pipeline-status.json
     └── pipeline.lock
 ```
+
+**And the database is not in either tree.** `C:\Intellibills\db\receipts.db`, with the logs beside
+it in `C:\Intellibills\logs\`, both outside OneDrive because sync corrupts a live SQLite file.
+
+*The drawing this replaced, kept rather than deleted:* `Clients\{Client Name}\Receipts\{tax year}\`
+with no `IntelliBooks\` level; `Books\{CODE}-books.json`; `IntelliBooks-Practice.json`;
+`Documents\{CODE}\`; `Receipt Inbox\{CODE}\`; `Review\{CODE}\`; `clients.csv`; `firms.csv`.
 
 **Three things about it worth stating.**
 

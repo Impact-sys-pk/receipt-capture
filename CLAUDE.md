@@ -945,14 +945,14 @@ If all pass → status = `ok`, receipt ready
 
 ## Testing
 
-- ~~Query receipts: `python query_receipts.py` (summary) or `python view_receipts.py` (detail)~~
-- ~~Schema info: `python schema_info.py`~~
-- **All three are broken and none of them has been fixed. Found 2026-09-04, step 10h, outstanding
-  item 158.** Each opens `Path("data/receipts.db")`, a path amendment 76 removed, so each reports an
-  empty or missing database rather than failing loudly. **Six scripts in the root do this**;
-  `schema_info.py` also lists four tables of the eleven. **To read the database, query
-  `config.DB_PATH` directly**, which is `C:\Intellibills\db\receipts.db` unless
-  `INTELLIBILLS_UNSYNCED_ROOT` says otherwise
+- Query receipts: `python query_receipts.py` (summary) or `python view_receipts.py` (detail)
+- Schema info: `python schema_info.py`, which lists all eleven tables
+- **All six root scripts read `config.DB_PATH` and stop with a message if the database is not there.
+  Fixed 2026-09-04, item 158.** ~~Each opened `Path("data/receipts.db")`~~, a path amendment 76
+  removed, **and an sqlite connection to a missing file succeeds and creates an empty one**, so each
+  reported no receipts rather than saying it could not find any. The other three are
+  `check_client_match.py`, `check_ids.py` and `export_bookkeeping.py`. **Never hardcode the database
+  path in a script: `config.DB_PATH` is the one place it lives**
 - Manual test: send an email with a PDF to `capture@lastingimpact.co.uk`, wait for the next poll
 - **The suite:** `.\.venv\Scripts\python.exe -m pytest -q`. 367 passed, 191 subtests on 2026-09-04
 

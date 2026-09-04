@@ -8,7 +8,8 @@ silently: the run printed "Client ID: Client_001" and reported success.
 
 Every test here redirects config.DB_PATH at a throwaway database. Repository()
 calls init_db(), which resolves config.DB_PATH at call time, so an unredirected
-run would create rows in data/receipts.db. tests/test_logs_isolation.py exists
+run would create rows in the live database at config.DB_PATH.
+tests/test_logs_isolation.py exists
 because that class of leak has already happened three times.
 """
 

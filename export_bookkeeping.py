@@ -1,9 +1,23 @@
 import csv
 import sqlite3
+import sys
 from pathlib import Path
 
-db = Path("data/receipts.db")
+import config
+
+# config.DB_PATH is the one place the database path lives. This script used to
+# open Path("data/receipts.db"), a path amendment 76 removed, and an sqlite
+# connection to a missing file SUCCEEDS and creates an empty database, so this
+# export wrote a CSV with a header and no rows rather than saying it could not
+# find the database. Outstanding item 158, fixed 2026-09-04.
+db = config.DB_PATH
+if not db.exists():
+    sys.exit(f"no database at {db}. Set INTELLIBILLS_UNSYNCED_ROOT if it has moved.")
+
+# Relative to the working directory, and the folder is created rather than
+# assumed: it is not in the repository and this script used to fail on open.
 output = Path("exports/bookkeeping_export.csv")
+output.parent.mkdir(parents=True, exist_ok=True)
 
 conn = sqlite3.connect(db)
 conn.row_factory = sqlite3.Row

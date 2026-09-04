@@ -1,7 +1,16 @@
 import sqlite3
-from pathlib import Path
+import sys
 
-db = Path("data/receipts.db")
+import config
+
+# config.DB_PATH is the one place the database path lives. This script used to
+# open Path("data/receipts.db"), a path amendment 76 removed, and an sqlite
+# connection to a missing file SUCCEEDS and creates an empty database, so it
+# reported no receipts instead of saying it could not find any. Outstanding item
+# 158, fixed 2026-09-04.
+db = config.DB_PATH
+if not db.exists():
+    sys.exit(f"no database at {db}. Set INTELLIBILLS_UNSYNCED_ROOT if it has moved.")
 conn = sqlite3.connect(db)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()

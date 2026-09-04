@@ -1,15 +1,34 @@
 import sqlite3
-from pathlib import Path
+import sys
 
-db = Path("data/receipts.db")
+import config
+
+# config.DB_PATH is the one place the database path lives. This script used to
+# open Path("data/receipts.db"), a path amendment 76 removed, and an sqlite
+# connection to a missing file SUCCEEDS and creates an empty database, so it
+# reported no receipts instead of saying it could not find any. Outstanding item
+# 158, fixed 2026-09-04.
+db = config.DB_PATH
+if not db.exists():
+    sys.exit(f"no database at {db}. Set INTELLIBILLS_UNSYNCED_ROOT if it has moved.")
 conn = sqlite3.connect(db)
 c = conn.cursor()
 
+# All eleven tables in worker/database/schema.py, which is the authority. This
+# list named four of them until 2026-09-04, so seven tables could be in the
+# database and absent from this script's output. Item 158.
 tables = [
-    ("receipts", "One record per attachment"),
-    ("extractions", "Extraction results (append-only, can have multiple per receipt)"),
-    ("processed_attachments", "Duplicate prevention tracking"),
-    ("email_delta", "State tracking (delta links, UIDs)"),
+    ("receipts", "One row per attachment or inbox file"),
+    ("extractions", "Extraction results, append-only, many per receipt"),
+    ("categorisations", "One row per categorisation, with the correction beside the suggestion"),
+    ("statements", "PHV platform statements: uber, bolt, freenow. Never a bank statement"),
+    ("processed_attachments", "Duplicate prevention, keyed (message_id, attachment_id)"),
+    ("resolution_events", "The audit trail: one row per resolution, whatever the entry point"),
+    ("email_delta", "delta_link and last_uid. The email path uses neither"),
+    ("email_alerts", "One row per alert sent, keyed (message_id, alert_type)"),
+    ("categorisations_client_vendors", "Layer 1: this client's learned mappings"),
+    ("categorisations_firm_vendors", "Layer 2: the firm's shared pool"),
+    ("categorisations_client_rules", "Layer 0: the rules a person authors by hand"),
 ]
 
 for table_name, desc in tables:

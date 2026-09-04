@@ -95,7 +95,7 @@ Add this policy so reviewers know the agent will propose commits and push/PR wor
 **Stop and ask, even under `AUTOMATIC task`.** This list is short on purpose. If it is not on it, proceed.
 
 1. Anything on the Destructive Git Operations list below. That list is unchanged and it outranks this section.
-2. Anything that writes, moves or deletes a file **outside** `C:\LastingImpact\receipt_capture`, in particular anything under `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`. Client folders, `clients.csv`, the books, the Review folders and `pipeline-status.json` are all out there.
+2. Anything that writes, moves or deletes a file **outside** `C:\LastingImpact\receipt_capture`, in particular anything under `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\`. Client folders, `clients.json`, `firms.json`, the books, the Review folders, `Charts\` and `pipeline-status.json` are all out there. ~~`clients.csv`~~ **Corrected 2026-09-04, step 10h.**
 3. Any `INSERT`, `UPDATE` or `DELETE` against `data/receipts.db`. Read-only is fine, and temp databases in tests are fine.
 4. Adding a dependency, or installing anything.
 5. A change that would alter behaviour the task did not ask you to change, including a change you believe is an obvious improvement.
@@ -488,19 +488,28 @@ It accepts receipts from either IMAP email attachments or files placed in the Re
 2. **File storage** — Original attachments saved locally, date-based folders, never overwritten
 3. **Extraction** — OpenAI Vision API (swappable interface)
 4. **Validation** — Gross ≈ net + VAT, required fields, valid dates
-5. **Categorisation** — 6-layer GL code lookup (see CATEGORISATION.md)
+5. **Categorisation** — six layers, 0 to 5 (see CATEGORISATION.md)
 6. **Storage** — SQLite, append-only for extractions, immutable receipts
 
 ### Categorisation Engine
 
-Automatic GL code assignment via 6-layer lookup strategy:
+**Six layers, numbered 0 to 5, and `unmatched` is not a layer.** Renumbered once and for all on
+2026-09-03 by amendment 189, after the module docstring, `categorise()`'s docstring and the inline
+comments had each numbered them differently. `worker\categorisation\engine.py` is the authority.
 
-1. **Rules** (highest priority) — Condition-based matching on vendor details
-2. **Client lookup** — Exact match in client-specific vendor mappings
-3. **Firm lookup** — Fallback to firm-level mappings by business_type
-4. **Fuzzy matching** — Similarity-based matching (70%+ threshold)
-5. **AI suggestion** — LLM-based categorisation (if enabled)
-6. **Unmatched** — Marked for manual review
+0. **Rules** — condition-based matching, the only layer a person authors by hand
+1. **Client lookup** — exact match in this client's vendor mappings
+2. **Firm lookup** — exact match in the firm's shared pool, by `business_type`
+3. **Fuzzy client** — similarity against this client's mappings, 0.70 threshold
+4. **Fuzzy firm** — similarity against the firm's pool, same threshold
+5. **AI suggestion** — only if `enable_ai_fallback` is on, and **it may suggest only from the
+   accounts the client's published chart marks `classifier_eligible`**, read by
+   `worker\categorisation\chart.py` from `Intellibills\Charts\`
+
+**No match is not a sixth layer**: it is `match_source unmatched`, `confidence none`,
+`needs_review 1`, which reports and files the receipt without claiming an account.
+
+**Codes are four digits.** Any three-digit code found anywhere is legacy, amendment 96.
 
 **Key features:**
 
@@ -520,7 +529,14 @@ Automatic GL code assignment via 6-layer lookup strategy:
 
 - Original files: never deleted, never overwritten
 - Extractions: append-only (one receipt can have multiple extraction attempts)
-- All operations logged to `data/run.log`
+- All operations logged under `config.LOGS_DIR`, which is `C:\Intellibills\logs` unless
+  `INTELLIBILLS_UNSYNCED_ROOT` says otherwise, and is deliberately outside OneDrive.
+  ~~`data/run.log`~~ **Corrected 2026-09-04, step 10h: `data\` has not existed since amendment 76.**
+  **Four process logs, one per entry point**, named by `attach_log_handler()` in
+  `worker\logging_setup.py`: `run.log` for the pipeline, `resolve.log`, `discard.log` and
+  `console.log`. **`runs.ndjson` is the run summary** and **`receipt_events_<firm_id>.ndjson` is the
+  per-firm event log**, with `receipt_events_UNATTRIBUTED.ndjson` for an event that belongs to no
+  firm, amendment 128
 
 ### 2. Duplicate Prevention
 
@@ -538,23 +554,28 @@ Automatic GL code assignment via 6-layer lookup strategy:
 
 ### 3. Firm & Client Tracking
 
-All receipts are automatically matched to a client via `clients.csv`:
+**Rewritten 2026-09-04, step 10h. Step 10d replaced everything this section used to say.**
+~~All receipts are automatically matched to a client via `clients.csv`.~~ **`clients.csv` is gone.**
+**The one client registry is `Intellibills\clients.json`, keyed on `client_id`**, sub-step 10d.3.
+IntelliBooks Desktop writes it and the pipeline only reads it, re-reading whenever its modification
+time moves, 10d.35. **There is no `client_code` anywhere**, 10d.23 and Paul's ruling of 2026-09-02.
 
-**For email receipts:**
+**For email receipts:** the sender's address is looked up in `config.CLIENTS`, which holds one entry
+per address in each record's `emails` array. Found: `client_id`, `firm_id` and `trade` come from that
+record.
 
-- Sender's email address is looked up in `clients.csv`
-- If found: `client_id`, `firm_id`, `business_type` assigned from CSV
-- If not found: defaults to `client_id=UNKNOWN`, `firm_id=FIRM001` (amendment 89; `config.DEFAULT_FIRM_ID` is the single source), `business_type=UNSPECIFIED`
+**For inbox items:** **the client comes from the item's own sidecar, not from the folder it sat in.**
+The phone app writes `client_id` into the sidecar and the desktop app writes one when it imports.
 
-**For folder intake:**
+**When it cannot be resolved:** `client_id` is `config.UNKNOWN_CLIENT_ID`, `UNKNOWN`, 10d.16, and
+`firm_id` is `config.DEFAULT_FIRM_ID`, `FIRM001`, which is the single source for it, amendment 89.
+`UNKNOWN` is a reserved id and not a client: it never reaches a client picker.
 
-- `client_code` from sidecar file is looked up in `clients.csv`
-- If found: `client_id`, `firm_id` assigned from CSV
-- If not found: defaults to `client_id=UNKNOWN`, `firm_id=FIRM001` (amendment 89; `config.DEFAULT_FIRM_ID` is the single source)
+**A record with no `firm_id` is refused by `config.load_clients()`** and the pipeline never sees that
+client, 10d.19. `firm_id` is not defaulted onto a record.
 
-**clients.csv format:** email, client_id, client_code, firm_id, business_type, name
-
-**After intake:** Client can be manually reassigned or updated via rules in categorisations_client_rules.
+**After intake:** the client can be reassigned in IntelliBooks Desktop, and categorisation can be
+steered by rules in `categorisations_client_rules`.
 
 ### 4. Extraction Results
 
@@ -595,7 +616,7 @@ Status assignment:
 - **Failed Processing** — Extraction error (AI couldn't read document)
 - **Unsupported Files** — File type not supported (not PDF/JPG/PNG/etc)
 - **No Attachments** — Email without attachment; alert sent to client
-- **Unknown Sender** — Sender not in clients.csv; alert sent requesting registration
+- **Unknown Sender** — Sender's address is on no client record in `Intellibills\clients.json`; alert sent requesting registration
 - **Duplicates** — Duplicate detected (same message_id, file_hash, or transaction)
 
 **Embedded image handling:**
@@ -610,13 +631,14 @@ Status assignment:
 
 - **No-attachment emails:** Alert includes firm name (from client resolution). Client recognizes their firm name, not "Lasting Impact".
 - **Unknown senders:** Alert asks them to contact support@lastingimpact.co.uk to register.
+- ~~Sender not in clients.csv~~ **Corrected 2026-09-04, step 10h: the registry is `Intellibills\clients.json`.**
 - Alert tracking prevents duplicate alerts for same email.
 
 **Configuration:**
 
 - IMAP: mail.lastingimpact.co.uk, port 993 (configured in .env)
 - SMTP: mail.lastingimpact.co.uk, port 465 (for sending alerts from alerts@lastingimpact.co.uk)
-- Firms: Loaded from IntelliBooks/firms.csv for alert display
+- Firms: loaded from `Intellibills\firms.json`, `config.FIRMS_JSON`, for alert display. ~~IntelliBooks/firms.csv~~ **Corrected 2026-09-04, step 10h**
 - Supports any IMAP server (currently Krystal.io, cloud-ready)
 
 ### Email Architecture Notes
@@ -631,101 +653,225 @@ Status assignment:
 
 ## Database Schema
 
+**`worker\database\schema.py` is the authority and this section is a reading of it.** Reconciled with
+it on 2026-09-04, step 10h of section 16 of `2026-07-25_CONSOLE_DESIGN.md`. **Eleven tables.** This
+section named seven and described five of those wrongly, which is what the step existed to fix.
+
+**There is no `client_code` on any table.** Removed by sub-step 10d.23 and Paul's ruling of
+2026-09-02: it appears nowhere, in either product. **There is no `coa_accounts` table and there will
+not be one**, cancelled by amendment 96 and confirmed by 124. The chart of accounts is the bundle
+IntelliCharts publishes into `Intellibills\Charts\`, read by `worker\categorisation\chart.py`.
+
 ### receipts
 
-| Field             | Type        | Notes                                                                            |
-| ----------------- | ----------- | -------------------------------------------------------------------------------- |
-| receipt_id        | TEXT (UUID) | Primary key, unique per attachment                                               |
-| firm_id           | TEXT        | Defaults to 'INTELLITAX', multi-firm ready                                       |
-| client_id         | TEXT        | Defaults to 'UNKNOWN'                                                            |
-| message_id        | TEXT        | Email message ID (for duplicate detection)                                       |
-| email_subject     | TEXT        | Subject line                                                                     |
-| email_from        | TEXT        | Sender address                                                                   |
-| email_received_at | TEXT        | ISO timestamp                                                                    |
-| filename          | TEXT        | Original attachment filename                                                     |
-| file_path         | TEXT        | Local storage path                                                               |
-| file_hash         | TEXT        | SHA256 hash (dedup)                                                              |
-| status            | TEXT        | pending \| ok \| needs_review \| failed \| possible_duplicate \| retry_exhausted |
-| created_at        | TEXT        | ISO timestamp                                                                    |
+Seventeen columns. **No column on this table carries a SQL default**, sub-steps 10d.23 to 10d.28:
+each default was a value arriving as a fallback rather than as a recorded conclusion, and
+`save_receipt()` states every one.
+
+| Field             | Type        | Notes                                                                                          |
+| ----------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| receipt_id        | TEXT (PK)   | UUID, one per attachment or inbox file                                                         |
+| firm_id           | TEXT NOT NULL | `config.DEFAULT_FIRM_ID`, `FIRM001`, is the single source. Not a column default             |
+| client_id         | TEXT NOT NULL | `config.UNKNOWN_CLIENT_ID`, `UNKNOWN`, when the client could not be resolved, 10d.16        |
+| source            | TEXT NOT NULL | `email` \| `phone` \| `desktop` \| `other`, and no other value, 10d.40                      |
+| message_id        | TEXT NOT NULL | Email message id, or a synthesised id for an inbox file. Duplicate detection                   |
+| email_subject     | TEXT        | Null off the email path                                                                        |
+| email_from        | TEXT        | Null off the email path                                                                        |
+| email_received_at | TEXT        | **ISO 8601 UTC, one format only, 10d.27**                                                      |
+| filename          | TEXT NOT NULL | Original attachment or file name                                                             |
+| file_path         | TEXT NOT NULL | **The copy in the Intellibills document store**                                              |
+| file_hash         | TEXT NOT NULL | SHA256, dedup                                                                                |
+| filed_path        | TEXT        | **The copy in the client folder.** Null until filed                                            |
+| filed_at          | TEXT        | ISO timestamp of filing                                                                        |
+| duplicate_of      | TEXT        | The `receipt_id` this one duplicates                                                           |
+| locked_at         | TEXT        | **TEXT, not INTEGER, 10d.28**, so it compares as a string against every other timestamp        |
+| status            | TEXT NOT NULL | See below                                                                                    |
+| created_at        | TEXT NOT NULL | ISO timestamp                                                                                |
+
+**The seven statuses, each verified at its write site.** `pending` is the SQL literal in
+`save_receipt()`; `ok` and `needs_review` and `failed` come from validation in
+`worker\extraction_pipeline.py`; `possible_duplicate` from the semantic duplicate check in the same
+file; `retry_exhausted` from `app.py:650`; `discarded` from
+`worker\resolution\service.py:832`. **`filed` is not a receipt status**: it is the default status of a
+`statements` row, `worker\database\repository.py:92`.
 
 ### extractions
 
-| Field             | Type        | Notes                           |
-| ----------------- | ----------- | ------------------------------- |
-| extraction_id     | TEXT (UUID) | Unique per extraction attempt   |
-| receipt_id        | TEXT (FK)   | Links to receipts               |
-| engine            | TEXT        | openai_vision, etc. (swappable) |
-| extracted_at      | TEXT        | ISO timestamp                   |
-| supplier_name     | TEXT        | Null if not found               |
-| invoice_date      | TEXT        | YYYY-MM-DD, null if not found   |
-| net_amount        | REAL        | Null if not found               |
-| vat_amount        | REAL        | Null if not found               |
-| gross_amount      | REAL        | Null if not found               |
-| currency          | TEXT        | Defaults to 'GBP'               |
-| raw_response      | TEXT        | Full OpenAI response (audit)    |
-| validation_status | TEXT        | ok \| needs_review \| failed    |
-| validation_notes  | TEXT        | Comma-separated, append-only    |
+Seventeen columns. **Append-only. One receipt can have many, and none is ever modified in place.**
+
+| Field              | Type        | Notes                                                                        |
+| ------------------ | ----------- | ---------------------------------------------------------------------------- |
+| extraction_id      | TEXT (PK)   | UUID, one per attempt                                                        |
+| receipt_id         | TEXT NOT NULL | FK to `receipts`                                                           |
+| engine             | TEXT NOT NULL | `openai_vision`, `manual_correction`, and swappable                        |
+| extracted_at       | TEXT NOT NULL | ISO timestamp                                                              |
+| supplier_name      | TEXT        | Null if not found                                                            |
+| invoice_date       | TEXT        | YYYY-MM-DD, null if not found                                                |
+| net_amount         | REAL        | Null if not found                                                            |
+| vat_amount         | REAL        | Null if not found                                                            |
+| gross_amount       | REAL        | Null if not found                                                            |
+| details            | TEXT        | **What post-processing changed on this extraction**, for example an amount read as net that was the gross. Design document 3.11. Deliberately not `validation_notes`: those are outcomes, these are changes the system made |
+| currency           | TEXT        | **No default, 10d.31.** `config.DEFAULT_CURRENCY` replaced twelve `"GBP"` literals |
+| raw_response       | TEXT        | Full OpenAI response, audit                                                  |
+| validation_status  | TEXT        | `ok` \| `needs_review` \| `failed`                                           |
+| validation_notes   | TEXT        | Comma-separated, append-only                                                 |
+| pipeline_version   | TEXT        | Which build produced this extraction                                         |
+| receipt_ref_number | TEXT        | The supplier's own reference off the document                                 |
+| receipt_time       | TEXT        | Time of day off the document, where there is one                             |
+
+### categorisations
+
+Seventeen columns. **One row per categorisation, with the correction beside the suggestion rather
+than over it.** Foreign keys to `receipts` and `extractions`.
+
+| Field             | Type        | Notes                                                                     |
+| ----------------- | ----------- | ------------------------------------------------------------------------- |
+| categorisation_id | TEXT (PK)   | UUID                                                                      |
+| receipt_id        | TEXT NOT NULL | FK                                                                      |
+| extraction_id     | TEXT NOT NULL | FK                                                                      |
+| client_id         | TEXT NOT NULL |                                                                         |
+| trade             | TEXT NOT NULL | The client's trade, `UNSPECIFIED` when unknown                          |
+| vendor_key        | TEXT        | The learned mapping that matched, where one did                           |
+| suggested_code    | TEXT        | **A master account code, four digits.** Any three-digit code is legacy    |
+| suggested_name    | TEXT        | The account name                                                          |
+| confidence        | TEXT NOT NULL | `high` \| `medium` \| `low` \| `none`                                   |
+| match_source      | TEXT NOT NULL | `rule` \| `client` \| `firm` \| `fuzzy_client` \| `fuzzy_firm` \| `ai` \| `unmatched`. **Seven values, and `unmatched` is not a layer** |
+| matched_vendor    | TEXT        | What the fuzzy layers matched against                                     |
+| needs_review      | INTEGER     | Defaults to 1                                                             |
+| categorised_at    | TEXT NOT NULL | ISO timestamp                                                           |
+| corrected_at      | TEXT        | Set when a person changes it                                              |
+| correction_code   | TEXT        | The account a person chose                                                |
+| correction_name   | TEXT        | The name a person chose or typed                                          |
+| correction_reason | TEXT        | Free text                                                                 |
+
+### statements
+
+Ten columns. **A statement here is a PHV platform statement**, uber, bolt or freenow, and never a
+bank statement. Indexed on `file_hash`.
+
+| Field        | Type        | Notes                                                       |
+| ------------ | ----------- | ----------------------------------------------------------- |
+| statement_id | TEXT (PK)   | UUID                                                        |
+| client_id    | TEXT NOT NULL |                                                           |
+| platform     | TEXT NOT NULL | uber \| bolt \| freenow                                   |
+| week_ending  | TEXT NOT NULL |                                                           |
+| source       | TEXT NOT NULL |                                                           |
+| file_hash    | TEXT NOT NULL | Indexed                                                   |
+| file_path    | TEXT NOT NULL | **The copy in the document store**, 10d.56                |
+| filed_path   | TEXT        | **The copy in the client folder**, 10d.56. One column name, one meaning, both tables |
+| status       | TEXT NOT NULL | `filed` is the default written by `save_statement()`       |
+| created_at   | TEXT NOT NULL |                                                           |
 
 ### processed_attachments
 
-| Field         | Type      | Notes                        |
-| ------------- | --------- | ---------------------------- |
-| message_id    | TEXT      | Email ID (composite PK)      |
-| attachment_id | TEXT      | Attachment ID (composite PK) |
-| file_hash     | TEXT      | For dedup detection          |
-| processed_at  | TEXT      | ISO timestamp                |
-| receipt_id    | TEXT (FK) | Which receipt was created    |
+Six columns. Composite primary key `(message_id, attachment_id)`.
+
+| Field         | Type      | Notes                                                                        |
+| ------------- | --------- | ---------------------------------------------------------------------------- |
+| message_id    | TEXT NOT NULL | Composite PK                                                             |
+| attachment_id | TEXT NOT NULL | Composite PK                                                             |
+| file_hash     | TEXT NOT NULL | Dedup                                                                    |
+| processed_at  | TEXT NOT NULL | ISO timestamp                                                            |
+| receipt_id    | TEXT NOT NULL | Which receipt was created                                                |
+| firm_id       | TEXT      | **Informational, written and never read**, 10d.32. **The key deliberately does not include it**: a `message_id` is generated by the sender's mail client and is unique by design, so adding `firm_id` would loosen the key rather than tighten it. Amendment 129 |
+
+### resolution_events
+
+Eleven columns. **The audit trail: one row per resolution, whatever the entry point.** Indexed on
+`(receipt_id, created_at)`. Design document 5.1.
+
+| Field            | Type        | Notes                                                                  |
+| ---------------- | ----------- | ---------------------------------------------------------------------- |
+| event_id         | TEXT (PK)   | UUID                                                                   |
+| receipt_id       | TEXT NOT NULL | **No foreign key, 10d.33**, and neither has `extraction_id`         |
+| extraction_id    | TEXT        | **No foreign key**                                                     |
+| actor            | TEXT NOT NULL | Who resolved it                                                      |
+| source           | TEXT NOT NULL | Which tool                                                           |
+| action           | TEXT NOT NULL |                                                                      |
+| corrections_json | TEXT        | What was changed                                                       |
+| gl_override_code | TEXT        |                                                                        |
+| outcome          | TEXT NOT NULL |                                                                      |
+| reason           | TEXT        |                                                                        |
+| created_at       | TEXT NOT NULL |                                                                      |
+
+**Why neither id carries a foreign key**, because the reason recorded here was once wrong and is
+corrected in `schema.py`: an audit row that cannot be written because the thing it describes has gone
+is worse than a dangling id. `receipt_id`'s key also made this table refuse a row about a receipt a
+rebuild had dropped, **which is exactly when somebody wants the history**.
 
 ### email_delta
 
-| Field      | Type      | Notes                          |
-| ---------- | --------- | ------------------------------ |
-| key        | TEXT (PK) | `last_uid` (IMAP UID tracking) |
-| value      | TEXT      | IMAP UID value                 |
-| updated_at | TEXT      | ISO timestamp                  |
+Three columns. `key` TEXT PK, `value` TEXT NOT NULL, `updated_at` TEXT NOT NULL.
+
+**Two keys are written by `worker\database\repository.py`, `delta_link` and `last_uid`, and the email
+path does not depend on either.** Polling fetches the whole inbox and deduplicates on the header
+`message_id`, per rule 6 below. **This table is state kept for a fetch strategy the pipeline does not
+use.** Flagged and not fixed 2026-09-04: whether it goes is a decision, not a tidy-up.
+
+### email_alerts
+
+Five columns. Composite primary key `(message_id, alert_type)`, which is what stops a second alert
+for the same email. Indexed on `message_id`.
+
+| Field           | Type        | Notes                                            |
+| --------------- | ----------- | ------------------------------------------------ |
+| message_id      | TEXT NOT NULL | Composite PK                                   |
+| alert_type      | TEXT NOT NULL | Composite PK                                   |
+| recipient_email | TEXT NOT NULL |                                                |
+| firm_name       | TEXT NOT NULL | The firm the client recognises, not the software |
+| alert_sent_at   | TEXT NOT NULL |                                                |
 
 ### categorisations_client_vendors
+
+Nine columns. `UNIQUE(client_id, vendor_code, vendor_name)`, indexed on `(client_id, vendor_code)`.
+**Layer 1, this client's learned mappings.**
 
 | Field        | Type      | Notes                                    |
 | ------------ | --------- | ---------------------------------------- |
 | vendor_key   | TEXT (PK) | UUID, unique per variant                 |
-| client_id    | TEXT      | Client identifier                        |
-| vendor_code  | TEXT      | Normalised merchant code (apcoa, amazon) |
-| vendor_name  | TEXT      | Original vendor name from import         |
-| detail       | TEXT      | Additional details (audit trail)         |
-| nominal_code | TEXT      | GL code mapping                          |
-| account_name | TEXT      | GL account name                          |
-| times_seen   | INTEGER   | Frequency count                          |
-| last_updated | TEXT      | ISO timestamp                            |
+| client_id    | TEXT NOT NULL |                                      |
+| vendor_code  | TEXT NOT NULL | Normalised merchant code, apcoa, amazon |
+| nominal_code | TEXT NOT NULL | The account code                     |
+| account_name | TEXT NOT NULL | The account name                     |
+| vendor_name  | TEXT      | As it was read or imported                |
+| detail       | TEXT      | Additional detail, audit trail            |
+| times_seen   | INTEGER   | Defaults to 1                             |
+| last_updated | TEXT NOT NULL |                                       |
 
 ### categorisations_firm_vendors
 
-| Field         | Type      | Notes                               |
-| ------------- | --------- | ----------------------------------- |
-| vendor_key    | TEXT (PK) | UUID, unique per variant            |
-| business_type | TEXT      | PHV_DRIVER, CONTRACTOR, UNSPECIFIED |
-| vendor_code   | TEXT      | Normalised merchant code            |
-| vendor_name   | TEXT      | Original vendor name                |
-| nominal_code  | TEXT      | GL code mapping                     |
-| account_name  | TEXT      | GL account name                     |
-| times_seen    | INTEGER   | Frequency count                     |
-| last_updated  | TEXT      | ISO timestamp                       |
+Nine columns. `UNIQUE(business_type, vendor_code, vendor_name)`, indexed on
+`(business_type, vendor_code)`. **Layer 2, the firm's shared pool.**
+
+| Field         | Type      | Notes                                                                     |
+| ------------- | --------- | ------------------------------------------------------------------------- |
+| vendor_key    | TEXT (PK) | UUID, unique per variant                                                  |
+| business_type | TEXT NOT NULL | PHV_DRIVER, CONTRACTOR, UNSPECIFIED                                   |
+| vendor_code   | TEXT NOT NULL |                                                                       |
+| nominal_code  | TEXT NOT NULL |                                                                       |
+| account_name  | TEXT NOT NULL |                                                                       |
+| vendor_name   | TEXT      |                                                                           |
+| times_seen    | INTEGER   | Defaults to 1                                                             |
+| last_updated  | TEXT NOT NULL |                                                                       |
+| firm_id       | TEXT      | **10d.39, closing outstanding items 17 and 47. Written and never read, and deliberately not in the UNIQUE key**, so the learned pool stays shared and behaviour does not change. The column exists so the provenance of a learned mapping is captured while it is still capturable |
 
 ### categorisations_client_rules
 
+Eleven columns. **Layer 0, and the only layer a person authors by hand.**
+
 | Field           | Type      | Notes                                    |
 | --------------- | --------- | ---------------------------------------- |
-| rule_id         | TEXT (PK) | UUID, unique rule identifier             |
-| client_id       | TEXT      | Which client this rule applies to        |
-| rule_name       | TEXT      | Human-readable rule name                 |
-| priority        | INTEGER   | Execution order (higher = first)         |
-| vendor_code     | TEXT      | Filter match (NULL = match any vendor)   |
-| condition_type  | TEXT      | contains, exact_match, startswith, regex |
-| condition_field | TEXT      | detail or vendor_code                    |
-| condition_value | TEXT      | Pattern to match                         |
-| nominal_code    | TEXT      | GL code if rule matches                  |
-| account_name    | TEXT      | GL account name                          |
-| created_at      | TEXT      | ISO timestamp                            |
+| rule_id         | TEXT (PK) | UUID                                     |
+| client_id       | TEXT NOT NULL | Which client the rule applies to     |
+| rule_name       | TEXT NOT NULL | Human-readable                       |
+| priority        | INTEGER NOT NULL | Defaults to 50, higher runs first  |
+| vendor_code     | TEXT      | NULL matches any vendor                  |
+| condition_type  | TEXT NOT NULL | contains, exact_match, startswith, regex |
+| condition_field | TEXT NOT NULL | detail or vendor_code                |
+| condition_value | TEXT NOT NULL | Pattern to match                     |
+| nominal_code    | TEXT NOT NULL | The account code if the rule matches |
+| account_name    | TEXT NOT NULL |                                      |
+| created_at      | TEXT NOT NULL |                                      |
 
 ---
 
@@ -741,7 +887,9 @@ Status assignment:
 ### Categorisation Engine
 
 - **Location**: `worker/categorisation/engine.py`
-- **6-layer architecture**: Rules → Client lookup → Firm lookup → Fuzzy → AI → Unmatched
+- **Six layers, 0 to 5**: rules 0, client 1, firm 2, fuzzy client 3, fuzzy firm 4, AI 5.
+  ~~Rules → Client lookup → Firm lookup → Fuzzy → AI → Unmatched~~ **Corrected 2026-09-04, step 10h:
+  fuzzy is two layers and unmatched is not a layer at all.** Amendment 189
 - **Vendor normalization**: Removes noise words and location codes for consistency
 - **UUID keys**: Both client_vendors and firm_vendors use UUID primary keys for variant tracking
 - **Rules system**: Supports conditions (contains, exact_match, startswith, regex)
@@ -750,13 +898,14 @@ Status assignment:
 ### File Storage
 
 - Never overwrite files
-- ~~Date-based folder structure: `data/files/YYYY/MM/DD/`~~ **Wrong, corrected 2026-08-01 by amendment 77.** The code writes **client code first, then year and month, with no day level**: `save_file()` and `save_inbox_file()` at `worker/storage/store.py:20` and `:34` both use `FILES_DIR / client_code / year / month`. The date is the date of arrival, not the document date, so a path never changes when an invoice date is corrected. Both shapes exist on disk today because the code changed and nothing migrated; the reset clears them. **After the move the store is `Intellibills\Documents\{CODE}\{year}\{month}\{receipt id}_{filename}`**, see 18.2a of the design document.
+- ~~Date-based folder structure: `data/files/YYYY/MM/DD/`~~ **Wrong, corrected 2026-08-01 by amendment 77.** ~~The code writes client code first, then year and month~~ **Corrected again 2026-09-04, step 10h: it writes `client_id` first, because the client code no longer exists.** `save_file()` and `save_inbox_file()` in `worker\storage\store.py` both use `FILES_DIR / client_id / year / month`, sub-step 10d.53. The year and month are the **arrival** date and deliberately stay: this runs before extraction, so there is no invoice date to file by, and an arrival date never needs correcting where an invoice date does, so **no file in the store ever has to move.** **The store is `Intellibills\Documents\{client_id}\{year}\{month}\{receipt_id}_{filename}`**, see 18.2a of the design document.
 - Filenames: `{receipt_id}_{original_filename}`
 - Supported: PDF, JPG, PNG, GIF, WebP, TIFF, BMP
 
 ### Logging
 
-- All actions logged to `data/run.log`
+- All actions logged under `config.LOGS_DIR`, one log per entry point: `run.log`, `resolve.log`,
+  `discard.log`, `console.log`. ~~`data/run.log`~~ **Corrected 2026-09-04, step 10h.** See rule 1
 - Log format: `timestamp LEVEL name — message`
 - Failures must be visible (ERROR level, not silent)
 - Do not log sensitive data (API keys, passwords)
@@ -780,7 +929,12 @@ Status assignment:
 3. **Attachments or inbox files** are saved locally
 4. **OpenAI Vision** extracts structured data
 5. **Validation** rules applied
-6. **Results stored** in SQLite (never modified after)
+6. **Results stored** in SQLite. **~~Never modified after.~~ Corrected 2026-09-04, step 10h,
+   because it was true of one table and read as true of all of them.** **`extractions` is
+   append-only** and a re-read appends a new row rather than changing one. **`receipts` rows are
+   updated in place**: `status`, `filed_path`, `filed_at`, `locked_at` and `duplicate_of` all move
+   after insert. **`categorisations` rows are updated in place too**, but only into the four
+   correction columns, so **a person's correction sits beside the suggestion and never over it**
 7. **Audit trail** shows all processing steps
 
 If extraction fails → status = `failed`, raw error stored
@@ -791,9 +945,16 @@ If all pass → status = `ok`, receipt ready
 
 ## Testing
 
-- Query receipts: `python query_receipts.py` (summary) or `python view_receipts.py` (detail)
-- Schema info: `python schema_info.py`
-- Manual test: send email with PDF to `capture@lastingimpact.co.uk`, wait 5 min for poll
+- ~~Query receipts: `python query_receipts.py` (summary) or `python view_receipts.py` (detail)~~
+- ~~Schema info: `python schema_info.py`~~
+- **All three are broken and none of them has been fixed. Found 2026-09-04, step 10h, outstanding
+  item 158.** Each opens `Path("data/receipts.db")`, a path amendment 76 removed, so each reports an
+  empty or missing database rather than failing loudly. **Six scripts in the root do this**;
+  `schema_info.py` also lists four tables of the eleven. **To read the database, query
+  `config.DB_PATH` directly**, which is `C:\Intellibills\db\receipts.db` unless
+  `INTELLIBILLS_UNSYNCED_ROOT` says otherwise
+- Manual test: send an email with a PDF to `capture@lastingimpact.co.uk`, wait for the next poll
+- **The suite:** `.\.venv\Scripts\python.exe -m pytest -q`. 367 passed, 191 subtests on 2026-09-04
 
 ---
 

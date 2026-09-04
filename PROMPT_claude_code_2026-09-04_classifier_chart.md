@@ -4,8 +4,9 @@
 
 ## What has already happened, outside this repository
 
-`IntelliCharts\publish_master.py` was run at 11:01 BST on 2026-09-04 and now drops a bundle into
-Intellibills' own folder:
+`IntelliCharts\publish_master.py` now writes one identical bundle for each product, in one
+action, from one source, with every file's size checked at both destinations. Paul's decision,
+2026-09-04. **This repository reads only its own, and never IntelliBooks':**
 
 ```
 C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\Charts\
@@ -34,8 +35,12 @@ vat_recoverability,sa103f_box,mtd_itsa_category,notes,classifier_eligible
 `publish_master.py` refuses to publish otherwise. It marks the accounts the classifier may propose.
 **It is not a rule about what a person may post**: a person may post a receipt to any active account and already can.
 
-**The flow is one way.** IntelliCharts publishes into `Intellibills\Charts\`. Nothing in this
-repository writes into that folder, ever.
+The other copy is `...\IntelliBooks\Charts\`, which IntelliBooks reads and this repository must
+ignore. Two copies because either product may one day be delivered without the other, and a
+product that stands alone reads a folder it owns.
+
+**The flow is one way.** IntelliCharts publishes in. Nothing in this repository writes into either
+bundle, ever.
 
 ## Task 1. `config.py` reads the bundle
 
@@ -88,6 +93,7 @@ Delete whatever in `tests/` tests `coa.py` and say what you deleted.
 ## Do not
 
 - Do not write into `Intellibills\Charts\`.
+- Do not read `IntelliBooks\Charts\`. It is the same content and it is not this repository's copy.
 - Do not add a `coa_accounts` table. Amendment 96 cancelled it and amendment 124 confirmed it.
 - Do not read `IntelliCharts\` directly. The bundle exists so this repository depends only on a
   folder it owns, which is section 12.4's concern.

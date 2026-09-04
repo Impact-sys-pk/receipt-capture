@@ -1,8 +1,9 @@
 # Intellitax Practice Console — Design
 
 **Date:** 2026-07-25
-**Version:** 1.72, amended 2026-09-04
+**Version:** 1.73, amended 2026-09-04
 **Date warning, and it matters more than the version. Amendments 158 to 160 and everything they changed were written on 2026-08-23**, and were first dated 2026-08-22 by a session that read the clock once at the start and ran eighteen hours. **Amendment 157 and the v1.23 header are dated 2026-08-22 and may belong to either day.** Which is not reconstructable and neither has been changed. See amendment 160.
+~~**Version:** 1.72, amended 2026-09-04~~ Superseded by v1.73.
 ~~**Version:** 1.71, amended 2026-09-04~~ Superseded by v1.72.
 ~~**Version:** 1.70, amended 2026-09-04~~ Superseded by v1.71.
 ~~**Version:** 1.69, amended 2026-09-04~~ Superseded by v1.70.
@@ -669,6 +670,12 @@ Grounded in a direct read of `app.py`, `resolve_receipt.py`, `worker/database/re
 | # | Section | Change | Why |
 |---|---|---|---|
 | 212 | `IntelliBooks-Desktop-v3.html`, and 10g.10's built entry | **Four changes on Paul's instruction, 2026-09-04, all built. Change log item 61.** **One** corrects 10g.10 the same day it was built: the SA103F cell appeared for income and expense accounts only, and **47 of Test Sole Trader's 48 other accounts carry a box the master assigned.** The cell now shows on 110 of its 111 accounts, and `sa103fCell()` reads both box lists, 15 to 30 and 83 to 99. **Three are new requirements.** **Switching client keeps the tab**: `selectClient()` called `showTab("bank")` every time, and it now returns to the tab the operator was on, except from Clients or Firm Settings, which are practice-level. **The Receipts tab hides Net and VAT for a client who is not VAT registered**, which is the specification's own rule in 5.4 item 5 and was already true of Bank Transactions. **And the Receipts tab's Tax year label becomes a Tax Year or Import Order dropdown**: Import Order shows `-` for the year, scans every tax year folder rather than one, and lists newest import first. **Thirteen checks in node, all passing.** | **On the SA103F gate, and it is a correction to work done ninety minutes earlier.** 10g.10 made the box read-only and the gate was left as it was, so the change looked complete and 47 accounts still showed nothing. **Paul found it by asking which box**, which is the second time today that a question about where something appears on screen found a defect behind it. `SA103F_BS_BOXES` had held the balance sheet boxes all along and the old dropdown was built from the other list, so **a balance sheet box could never have been displayed in that cell**, whichever way the gate was set. **On import order, and what it honestly is.** Nothing records when a receipt was imported, so the order is `books.receipts` reversed, which is the order they first arrived because the ingest appends. **A receipt deleted and re-added moves to the top**, and that is stated in the code rather than left to be discovered. **A mode called Import Order that silently meant something else would be worse than no mode.** **On scanning every year in that mode.** Scanning one year would have shown a third of Test Sole Trader's filed receipts, which sit in three different tax years. **The mode's whole purpose is to stop the year being the thing that decides what you can see.** **On the tab, which is the smallest change and the one Paul will notice most.** Choosing a client is something an operator does dozens of times in a session, and being thrown to Bank Transactions each time is a cost paid on every one of them. |
+
+### v1.73, 2026-09-04
+
+| # | Section | Change | Why |
+|---|---|---|---|
+| 213 | 18.4's two rate paragraphs, and item 161 of `2026-08-20_LIST_outstanding_items_and_decisions.md` new | **The VAT rate model is decided and part of 18.4 is superseded. Paul's decision, 2026-09-04.** **Four parts.** **One: the chart holds a VAT category and not a percentage** - `Standard`, `Reduced`, `Zero-rated`, `Exempt`, `Outside scope`, plus one category per temporary sector relief. **Two: a separate VAT rate table holds the percentage and the from-date for each rate**, it lives in IntelliCharts beside the master, and `publish_master.py` publishes it in the bundle like the charts. **Zero-rated is in the table because 0% is a rate; Exempt and Outside scope are not, having no percentage and no dates.** **Three: a transaction's rate is `Auto` or a rate, and `Auto` means that account's VAT category resolved through the table at the date of the transaction.** An operator's choice beats Auto and sticks. **Four: the resolved percentage is written onto the transaction at Post**, so nothing posted moves when the table or the account changes later. **18.4's "derived from the category and then stored on the transaction" is struck**, along with its list of six rate values. **Nothing is built.** Written in this document because Paul's instruction was to design it before any code. **Item 161 carries the two points not yet settled and the master half of the work.** | **On why the old rule had to go, and it is not a preference.** It stored the percentage the moment a category was chosen. **That cannot express a rate that changes by date, and there have been three such changes in six years**, all verified against GOV.UK on 2026-09-04: hospitality at 5% from 15 July 2020, 12.5% from 1 October 2021, standard again from 1 April 2022; and children's meals, children's admissions and family attraction tickets at 5% from 25 June 2026 to 1 September 2026 inclusive, **which ended three days ago.** **A system that cannot record last quarter's rate cannot produce last quarter's return.** **On the fourth part, and it is the one that makes the rest safe.** Storing the resolved percentage at Post means Auto is live only while a transaction is unposted. **So the concern this session raised, that changing an account's rate would move the VAT on a closed period, does not arise.** Paul's answer, and it is the right one: the actual percentage gets posted with the transaction. **On a temporary relief being its own category rather than a change to Standard.** The hospitality relief did not change the standard rate: standard-rated supplies in one sector were charged at 5%, while everything else stayed at 20%. **A table keyed on `Standard` alone cannot say that.** Paul's decision is a category per relief, so an account is assigned to the relief that covers it and the table carries that category's own dated rates. **On the table living in IntelliCharts.** A VAT rate is legislated, practice-wide and identical for every client, which is what the master already is. **Putting it anywhere else would give two products two copies to keep in step**, which is the fault the one-bundle arrangement of amendment 194 exists to prevent. |
 
 ## How to use this document
 
@@ -2702,9 +2709,27 @@ The pipeline **publishes**. It will eventually have three destinations, and Inte
 
 **The rate is primary where there is no document.** A bank line categorised by a rule has no evidence behind it, so the rate is the only basis for its VAT.
 
-**Where the rate comes from.** A category carries a **default rate**. A transaction rule may carry one. A choice made when categorising beats both. The rate is **derived from the category and then stored on the transaction**, so changing a category's default later does not rewrite the rate on transactions already posted.
+**Where the rate comes from. Rewritten 2026-09-04 by amendment 213, Paul's decision.** A category
+carries a **VAT category**, not a percentage. A separate **VAT rate table** holds the percentage and
+the date it applies from. A transaction's rate is **`Auto` or one of the rates**, and **`Auto` means
+that account's VAT category resolved through the rate table at the date of the transaction**. A
+choice made when categorising beats Auto and sticks. **The resolved percentage is written onto the
+transaction when it is posted**, so a later change to the table or to the account moves nothing that
+is posted.
 
-**Rate values.** `20%`, `5%`, `0% zero-rated`, `Exempt`, `Outside scope`, `Not set`. Zero-rated, exempt and outside scope all produce nil VAT and are not the same thing, so they must be distinct values. Blank is not zero.
+~~A category carries a **default rate**. A transaction rule may carry one. A choice made when
+categorising beats both. The rate is **derived from the category and then stored on the transaction**,
+so changing a category's default later does not rewrite the rate on transactions already posted.~~
+**Superseded.** The old rule stored the percentage the moment a category was chosen, which cannot
+express a rate that changes by date, and there have been three such changes in six years.
+
+**Rate values. Rewritten 2026-09-04 by amendment 213.** The chart holds a **VAT category**:
+`Standard`, `Reduced`, `Zero-rated`, `Exempt`, `Outside scope`, plus one category per temporary
+sector relief. **Zero-rated, exempt and outside scope all produce nil VAT and are not the same
+thing**, so they stay distinct. **Zero-rated is in the rate table, because 0% is a rate. Exempt and
+Outside scope are not in the table**, because they have no percentage and no dates. Blank is not zero.
+~~`20%`, `5%`, `0% zero-rated`, `Exempt`, `Outside scope`, `Not set`.~~ **The percentages leave the
+chart and live in the table.**
 
 **A default rate is all a category can carry, and this is not a nicety.** Many ordinary categories span two or three treatments: motor expenses covers fuel at 20%, road tax outside the scope and insurance exempt; travel covers zero-rated rail and 20% parking; subsistence covers hot food at 20% and cold at 0%; utilities covers 20% and 5%; rent is exempt unless the landlord has opted to tax. So the rate must be overridable at the transaction, and where one document genuinely carries two rates the answer is 18.4's split, not a second rate on one line.
 

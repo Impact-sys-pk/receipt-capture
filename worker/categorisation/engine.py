@@ -32,7 +32,7 @@ try:
     from openai import OpenAI
 except ImportError:
     OpenAI = None
-from .coa import get_coa_for_business_type
+from .chart import get_eligible_accounts_for_client
 
 logger = logging.getLogger(__name__)
 
@@ -308,7 +308,7 @@ class CategorisationEngine:
 
         # Layer 5: AI suggestion (if enabled)
         if self.enable_ai_fallback:
-            ai_result = self._ai_suggest(vendor_code, business_type)
+            ai_result = self._ai_suggest(vendor_code, client_id)
             if ai_result:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
@@ -326,13 +326,16 @@ class CategorisationEngine:
             vendor_code=vendor_code, confidence="none", match_source="unmatched", needs_review=True
         )
 
-    def _ai_suggest(self, vendor_key: str, business_type: str) -> Optional[dict]:
+    def _ai_suggest(self, vendor_key: str, client_id: str) -> Optional[dict]:
         """
         Call OpenAI with constrained output to categorise unmatched vendor.
 
         Args:
             vendor_key: Normalised vendor name
-            business_type: Client's business type for GL code selection
+            client_id: The client, whose published chart bounds what may be
+                suggested. Was business_type until 2026-09-04, which selected one
+                of three hardcoded lists in the deleted coa.py. The chart a
+                client is on is a property of the client, not of its trade.
 
         Returns:
             {code: str, name: str} or None if API fails
@@ -342,10 +345,11 @@ class CategorisationEngine:
             return None
 
         try:
-            # Get valid GL codes for this business type
-            coa = get_coa_for_business_type(business_type)
+            # The accounts this client's published chart marks
+            # classifier_eligible. Layer 5 is the only layer that reads a chart.
+            coa = get_eligible_accounts_for_client(client_id)
             if not coa:
-                logger.warning(f"No COA available for business_type={business_type}")
+                logger.warning(f"no classifier-eligible accounts for client_id={client_id}")
                 return None
 
             # Format COA as JSON schema for constrained output

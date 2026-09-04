@@ -71,6 +71,18 @@ FIRMS_JSON = INTELLIBILLS_ROOT / "firms.json"
 PIPELINE_STATUS_PATH = INTELLIBILLS_ROOT / "pipeline-status.json"
 PIPELINE_LOCKFILE = INTELLIBILLS_ROOT / "pipeline.lock"
 
+# The chart bundle IntelliCharts publishes for this product. Read only, and never
+# created here: `publish_master.py` in IntelliCharts\ writes it, so a missing
+# folder is a fault to report rather than one to paper over with a mkdir.
+# This is Intellibills' own copy. IntelliBooks\Charts\ holds the same content and
+# belongs to the other product; nothing here may read it. The flow is one way.
+CHARTS_DIR = INTELLIBILLS_ROOT / "Charts"
+# The chart every client falls back to while `chart_code` is absent from the
+# registry, and the one an unrecognised `chart_code` falls back to as well. Named
+# here because it is the only filename in the bundle that is not
+# "{chart_code}.csv": chart_library.csv calls the master chart MASTER.
+MASTER_CHART_FILENAME = "Master_COA.csv"
+
 # Local, outside any synced folder.
 DB_PATH = UNSYNCED_ROOT / "db" / "receipts.db"
 LOGS_DIR = UNSYNCED_ROOT / "logs"

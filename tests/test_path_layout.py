@@ -43,6 +43,10 @@ class PracticeRootTest(unittest.TestCase):
             "FIRMS_JSON": "firms.json",
             "PIPELINE_STATUS_PATH": "pipeline-status.json",
             "PIPELINE_LOCKFILE": "pipeline.lock",
+            # Read only, and created by IntelliCharts rather than here.
+            # Listed because the sweep below only proves it is not in
+            # IntelliBooks' folder, not that it is in ours.
+            "CHARTS_DIR": "Charts",
         }
         for name, leaf in expected.items():
             with self.subTest(constant=name):

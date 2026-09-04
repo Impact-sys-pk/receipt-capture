@@ -1,16 +1,41 @@
 # Email Attachment Processing — Detailed Micro-Steps
 
-This document shows exactly what happens when a receipt email arrives at `capture@lastingimpact.co.uk`.
+This document shows what happens when a receipt email arrives at `capture@lastingimpact.co.uk`.
 
-## Trigger: `process_once()` runs every 5 minutes
+**Reconciled with the code on 2026-09-04, step 10h. It was written on 2026-07-26 and nothing had
+updated it since.** What it used to say, so that anyone who has read the old version knows what to
+unlearn:
 
-The main app calls `process_once()` which handles all email processing.
+| It said | It is |
+|---|---|
+| Phase 1 gets `repo.get_last_uid()` and searches for emails after that UID | **There is no incremental fetch.** `fetch_new_messages()` searches `ALL` on every poll and identity comes from the `Message-ID` header. **An IMAP UID addresses the mailbox within one poll and is never a cross-poll key** |
+| `message_id` = IMAP UID | `message_id` is the email's own `Message-ID` header, resolved by `_resolve_message_id()` |
+| The unresolved firm is `INTELLITAX` | **`config.DEFAULT_FIRM_ID`, which is `FIRM001`**, sub-step 10d.20. `INTELLITAX` had already stopped being any firm's id in the data |
+| `client_code` throughout, from `clients.csv` | **There is no client code, anywhere.** Sub-step 10d.23 and Paul's ruling of 2026-09-02. The registry is `Intellibills\clients.json` |
+| Thirteen phases pinned to `app.py` line numbers | **Function names, below.** Every one of the thirteen was wrong, because `app.py` has roughly doubled since. **A line number is not a citation: it is a guess with a date on it** |
+| Validation, duplicate check, categorisation and filing happen inline in `app.py` | **They are one function, `process_extraction_result()` in `worker\extraction_pipeline.py`**, shared by fresh email intake, fresh inbox intake and the automatic retry |
+
+## Trigger: `process_once()` in `app.py`, once per poll
+
+**`POLL_INTERVAL_SECONDS`, 300 by default.** `process_once()` does these in order, and the order is
+load-bearing:
+
+0. `config.reload_clients_if_changed()`, **before anything reads the registry**, sub-step 10d.35
+1. `Repository()`, the extractor, and `CategorisationEngine(repo=repo, enable_ai_fallback=False)`.
+   **Layer 5, the AI, is off in the pipeline**, so it has never run against a real receipt
+2. `_consume_resolution_notes()`, the IntelliBooks Desktop back-feed, design document 12.3.
+   **Before the retry pass**, or a receipt a person just resolved gets re-extracted in the same cycle
+3. `_retry_failed_receipts()`, the version-gated automatic retry
+4. `_file_unfiled_ok_receipts()`
+5. `scan_inbox()`, the Receipt Inbox folder
+6. `fetch_emails_without_attachments()`, which is where embedded images and the two alerts happen
+7. `fetch_new_messages()`, the attachments path this document describes
 
 ---
 
 ## Phase 1: Fetch New Emails from IMAP
 
-**Function:** `fetch_new_messages(repo)` — [worker/email/reader.py:22]
+**Function:** `fetch_new_messages(repo)` in `worker\email\reader.py`
 
 ### Micro-steps:
 
@@ -20,43 +45,33 @@ The main app calls `process_once()` which handles all email processing.
    - Username: `config.IMAP_USERNAME` (from .env)
    - Password: `config.IMAP_PASSWORD` (from .env)
 
-2. **Get last processed UID from database**
-   - Query: `repo.get_last_uid()`
-   - Returns: The last email UID we've seen (or None if first run)
-   - This prevents reprocessing the same emails
+2. **Search the whole inbox**
+   - `imap.uid("search", None, "ALL")`. **Every poll, every message.**
+   - ~~Get `repo.get_last_uid()` and search for emails after that UID~~ **There is no incremental
+     fetch and there is no UID watermark.** The reason is in the function's own docstring: **an IMAP
+     UID is only valid for addressing the mailbox within one poll and must not be reused as a
+     cross-poll dedup key.** Deduplication is by `Message-ID` header and by file hash instead
 
-3. **Search IMAP inbox**
-   - If we have a last UID: search for emails after that UID
-   - If first run: fetch ALL emails
-   - This gives us a list of message UIDs
+3. **For each message**
+   - Fetch RFC822, parse it, and test `_has_attachments()`
+   - If it has attachments, add it with:
+     - `id` — **the email's own `Message-ID` header**, via `_resolve_message_id()`, which falls back
+       to a synthesised id built from the UID only when the header is missing. ~~IMAP UID~~
+     - `uid` — the IMAP UID, for `fetch`, `copy` and `store` **inside this poll only**
+     - `subject`, `from`, `receivedDateTime`, `msg`
 
-4. **Filter for new emails only**
-   - Remove UIDs we've already processed
-   - Result: only genuinely new messages
+4. **Return the list**
+   - **Nothing is saved.** ~~`repo.save_last_uid(last_uid)`~~ There is no watermark to save
 
-5. **For each new message:**
-   - Fetch the full email body (RFC822 format)
-   - Parse into Python email object
-   - Check: does it have attachments? (using `_has_attachments()`)
-   - If yes: add to messages list with metadata:
-     - `id` — IMAP UID
-     - `subject` — Email subject line
-     - `from` — Sender's email address (from From: header)
-     - `receivedDateTime` — When email arrived
-     - `msg` — The parsed email object (for later attachment extraction)
-
-6. **Save last processed UID**
-   - Update database: `repo.save_last_uid(last_uid)`
-   - Next run will start from this UID
-
-7. **Return messages**
-   - List of emails with attachments, ready for processing
+**Flagged, not fixed, 2026-09-04:** `fetch_new_messages(repo)` still takes `repo` and never uses it.
+`get_last_uid()` and `save_last_uid()` still exist on the repository, and `email_delta` still holds
+`last_uid` and `delta_link`, all of them written or read by nothing on this path.
 
 ---
 
 ## Phase 2: Loop Through Each Email
 
-**Location:** app.py line 517-740
+**Where:** `process_once()` in `app.py`
 
 ```python
 for msg in messages:
@@ -66,9 +81,9 @@ for msg in messages:
 ### For each email message:
 
 **Step A: Extract email metadata**
-- `message_id` = IMAP UID
+- `message_id` = **the email's `Message-ID` header**, not the UID. ~~IMAP UID~~ **Corrected 2026-09-04**, and it matters: the UID is only valid inside one poll, so using it as the key would have made every email new again after a mailbox rebuild
 - `subject` = Email subject line (e.g., "Receipt from Amazon")
-- `email_from` = Sender's email address (e.g., "paul.keating@intellitax.co.uk")
+- `email_from` = Sender's email address (e.g., "Paul Keating <pdk7@hotmail.co.uk>", which is the only address on any client record as at 2026-09-04)
 - `received_at` = Timestamp when email arrived
 
 **Step B: Extract all attachments from this email**
@@ -82,7 +97,7 @@ for msg in messages:
 
 ## Phase 3: Loop Through Each Attachment
 
-**Location:** app.py line 523-740
+**Where:** `process_once()` in `app.py`
 
 ```python
 for att in fetch_attachments(message_id, msg.get("msg")):
@@ -126,7 +141,7 @@ for att in fetch_attachments(message_id, msg.get("msg")):
 
 ## Phase 4: CLIENT ASSIGNMENT ← THIS IS WHAT YOU ASKED ABOUT
 
-**Location:** app.py lines 562-565
+**Where:** `process_once()` in `app.py`, calling `Repository.resolve_client_info()`
 
 This is where the system figures out which client sent the receipt.
 
@@ -135,13 +150,14 @@ This is where the system figures out which client sent the receipt.
 **Step 4a: Resolve client from sender's email**
 
 ```python
-client_id, firm_id = repo.resolve_client_id(email_from)
-_, _, client_code = repo.resolve_client_info(email_from)
+client_id, firm_id, client_folder_name = repo.resolve_client_info(email_from)
 ```
 
-This calls: `Repository.resolve_client_id(email_from)` [worker/database/repository.py:68]
+~~`_, _, client_code = repo.resolve_client_info(email_from)`~~ **The third element is
+`client_folder_name`, not a client code**, which is what every caller wanted it for: naming the
+folder under `Clients\`. `resolve_client_id()` still exists and returns the first two.
 
-**Inside `resolve_client_id()`:**
+**Inside `resolve_client_info()`:**
 
 1. Clean the email address:
    - Strip whitespace: `.strip()`
@@ -157,86 +173,101 @@ This calls: `Repository.resolve_client_id(email_from)` [worker/database/reposito
    ```python
    client = config.CLIENTS.get(email)
    ```
-   - `config.CLIENTS` is loaded from `IntelliBooks/clients.csv`
-   - Dictionary: `email_address (lowercase) → client_data`
-   - Example: `"paul.keating@intellitax.co.uk" → {client_id: "Client_002", firm_id: "FIRM001", ...}`
+   - **`config.CLIENTS` holds one entry per address in each client record's `emails` array**, built
+     by `config.load_clients()` from `Intellibills\clients.json`. ~~loaded from
+     `IntelliBooks/clients.csv`~~ **Corrected 2026-09-04.** One client can have several addresses
+   - Example, and it is the only address on any record as at 2026-09-04:
+     `"pdk7@hotmail.co.uk" → Client_004, Test Sole Trader`
 
-3. If found:
-   - Return the mapped values:
-     - `client_id` — e.g., "Client_002"
-     - `firm_id` — e.g., "FIRM001"
-     - `client_code` — e.g., "INTELLITAX"
+3. If found, return:
+     - `client_id` — e.g. `Client_004`
+     - `firm_id` — `FIRM001`
+     - `client_folder_name` — e.g. `Test Sole Trader`
 
-4. If NOT found:
-   - Return defaults:
-     - `client_id` = "UNKNOWN"
-     - `firm_id` = "INTELLITAX"
-     - `client_code` = "UNKNOWN"
+4. If NOT found, return:
+     - `client_id` = `config.UNKNOWN_CLIENT_ID`, `UNKNOWN`. **A recorded conclusion, not a
+       fallback**, sub-step 10d.16: the receipt is a review item, it reports, and it is never
+       `status = ok`
+     - `firm_id` = `config.DEFAULT_FIRM_ID`, **`FIRM001`**. ~~`INTELLITAX`~~ **Corrected by sub-step
+       10d.20: that string had already stopped being any firm's id in the data**
+     - `client_folder_name` = `""`, **empty rather than "UNKNOWN"**, because an unresolved client
+       files nothing into `Clients\` at all, sub-step 10d.18. **A plausible-looking folder name is
+       what created `Clients\TESTST\`**
 
-**Data source:** `IntelliBooks/clients.csv`
+**Data source:** `Intellibills\clients.json`, keyed on `client_id`, written by IntelliBooks Desktop
+and only read here:
+```json
+{"client_id": "Client_004", "client_name": "Test Sole Trader",
+ "client_folder_name": "Test Sole Trader", "firm_id": "FIRM001",
+ "emails": ["pdk7@hotmail.co.uk"], "trade": "UNSPECIFIED", "chart_code": "SALE_OF_SERVICES"}
 ```
-client_id,name,email,firm_id,business_type,client_code
-Client_001,Paul Keating,pdk7@hotmail.co.uk,FIRM001,PHV_DRIVER,PAUL
-Client_002,Intellitax,paul.keating@intellitax.co.uk,FIRM001,ACCOUNTANCY,INTELLITAX
-```
+**No `client_code` and no `business_type` field.** `trade` is the field.
 
 ### Example Scenarios:
 
-**Scenario A: Known client**
-- Email from: `paul.keating@intellitax.co.uk`
-- Lookup in clients.csv: FOUND
-- Result:
-  - `client_id` = "Client_002"
-  - `firm_id` = "FIRM001"
-  - `client_code` = "INTELLITAX"
-  - `business_type` = "ACCOUNTANCY"
+**Both scenarios rewritten 2026-09-04 and both now use values read out of the registry.**
 
-**Scenario B: Unknown sender**
-- Email from: `stranger@example.com`
-- Lookup in clients.csv: NOT FOUND
+**Scenario A: known client**
+- Email from: `pdk7@hotmail.co.uk`
+- Found on `Client_004`'s `emails` array in `Intellibills\clients.json`
 - Result:
-  - `client_id` = "UNKNOWN"
-  - `firm_id` = "INTELLITAX"
-  - `client_code` = "UNKNOWN"
-  - `business_type` = "UNSPECIFIED"
+  - `client_id` = `Client_004`
+  - `firm_id` = `FIRM001`
+  - `client_folder_name` = `Test Sole Trader`
+  - `trade` = `UNSPECIFIED`
+
+**Scenario B: unknown sender**
+- Email from: `stranger@example.com`
+- On no client record
+- Result:
+  - `client_id` = `UNKNOWN`, **a recorded conclusion and not a fallback**
+  - `firm_id` = `FIRM001`
+  - `client_folder_name` = `""`, **so nothing is filed into `Clients\` at all**
+  - `trade` = `UNSPECIFIED`
+- **An alert is sent once, tracked in `email_alerts`, and the email is moved to
+  `INBOX.Unknown Sender`**
 
 ---
 
 ## Phase 5: Save Receipt to Database
 
-**Location:** app.py lines 568-580
+**Where:** `process_once()` in `app.py`, calling `Repository.save_receipt()`
 
 Create a unique receipt ID and save to database:
 
 ```python
-receipt_id = str(uuid.uuid4())  # Generate unique ID
-file_path = save_file(receipt_id, client_code, filename, file_data)  # Save to disk
+receipt_id = str(uuid.uuid4())
+file_path = save_file(receipt_id, client_id, filename, file_data)
 ```
+~~`save_file(receipt_id, client_code, ...)`~~ **It keys on `client_id`**, sub-step 10d.53.
 
 Then save to database:
 
 ```python
 repo.save_receipt(
     receipt_id=receipt_id,              # Unique ID (UUID)
-    message_id=message_id,              # IMAP UID
+    message_id=message_id,              # the email's Message-ID header, not the UID
     email_subject=subject,              # "Receipt from Amazon"
-    email_from=email_from,              # "paul.keating@intellitax.co.uk"
+    email_from=email_from,              # "pdk7@hotmail.co.uk\"
     email_received_at=received_at,      # ISO timestamp
     filename=filename,                  # "receipt.pdf"
-    file_path=file_path,                # "data/files/2026/07/22/abc123_receipt.pdf"
+    file_path=file_path,                # Intellibills\Documents\Client_004\2026\09\...
     file_hash=file_hash,                # SHA256 hash
-    firm_id=firm_id,                    # "FIRM001" (from clients.csv)
-    client_id=client_id,                # "Client_002" (from clients.csv)
-    client_code=client_code,            # "INTELLITAX" (from clients.csv)
+    firm_id=firm_id,                    # "FIRM001", from clients.json
+    client_id=client_id,                # "Client_004", from clients.json
+    source=EMAIL_SOURCE,                # "email". One of four, sub-step 10d.40
 )
 ```
+~~`client_code=client_code`~~ **Gone.** **And `source` is not optional**: sub-step 10d.17 removed
+every keyword default from this method, so **every caller states every value**, because a default
+supplied in Python before the SQL is reached is a fallback dressed as a conclusion.
 
 ### Database insert (receipts table):
 ```sql
 INSERT INTO receipts (
-    receipt_id, firm_id, client_id, client_code, source, message_id, email_subject,
-    email_from, email_received_at, filename, file_path, file_hash, status, created_at
-) VALUES (...)
+    receipt_id, firm_id, client_id, source, message_id, email_subject, email_from,
+    email_received_at, filename, file_path, file_hash, filed_path, status, created_at
+) VALUES (..., 'pending', ...)
 ```
 
 Status is set to: `"pending"` (not yet extracted)
@@ -247,35 +278,39 @@ _log_receipt(receipt_id, message_id, filename, "created",
              firm_id=firm_id, client_id=client_id, run_id=run_id)
 ```
 
-Writes to: `logs/receipt_events_[firm_id].ndjson`
+Writes to `config.LOGS_DIR / receipt_events_[firm_id].ndjson`, which is
+`C:\Intellibills\logs\` by default, with `receipt_events_UNATTRIBUTED.ndjson` for an event that
+belongs to no firm.
 
 ---
 
 ## Phase 6: File Storage
 
-**Location:** app.py line 565
+**Where:** `process_once()` in `app.py`, calling `save_file()` in `worker\storage\store.py`
 
-Call: `save_file(receipt_id, client_code, filename, file_data)`
+Call: `save_file(receipt_id, client_id, filename, file_data)`
 
 ### What happens:
 
-1. Create date-based folder structure:
-   - Current date: `2026-07-22`
-   - Folder: `data/files/2026/07/22/`
-   - Create if doesn't exist
+1. Build the folder, **client first, then the arrival year and month, and no day level**:
+   - `Intellibills\Documents\Client_004\2026\09\`
+   - ~~`data/files/2026/07/22/`~~ **Wrong on all three counts until 2026-09-04:** `data\` was
+     removed by amendment 76, the first level is the `client_id` and not a client code, and there
+     is no day folder
+   - **The year and month are the arrival date, deliberately.** This runs before extraction, so
+     there is no invoice date yet, and an arrival date never needs correcting, so **no file in the
+     store ever has to move**
 
-2. Save file:
-   - Filename: `{receipt_id}_{original_filename}`
-   - Example: `abc123de-456f-7890-abcd_receipt.pdf`
-   - Full path: `data/files/2026/07/22/abc123de-456f-7890-abcd_receipt.pdf`
+2. Save the file as `{receipt_id}_{original_filename}`, and **never overwrite**: an existing
+   destination is logged as a warning and left alone
 
-3. Return file_path for database storage
+3. Return the path for the database
 
 ---
 
 ## Phase 7: Extract Data with AI
 
-**Location:** app.py lines 584-585
+**Where:** `process_once()` in `app.py`, calling the extractor from `worker\extraction\`
 
 Call: `extractor.extract(str(file_path), filename)`
 
@@ -310,7 +345,7 @@ This calls: `OpenAIVisionExtractor.extract()` [worker/extraction/openai_vision.p
 
 ## Phase 8: Validate Extracted Data
 
-**Location:** app.py line 585
+**Where:** `validate()` in `worker\validation\rules.py`
 
 Call: `validate(extraction)`
 
@@ -346,7 +381,7 @@ notes = ["VAT amount mismatch: expected 20.92, got 20.95"]
 
 ## Phase 9: Check for Semantic Duplicates
 
-**Location:** app.py lines 591-609
+**Where:** `process_extraction_result()` in `worker\extraction_pipeline.py`
 
 Check: Is this the same transaction we've already processed?
 
@@ -373,7 +408,7 @@ Receipt B is marked as duplicate of Receipt A.
 
 ## Phase 10: Save Extraction Result
 
-**Location:** app.py lines 611-625
+**Where:** `process_once()` in `app.py`, calling `Repository.save_extraction()`
 
 Save the extraction data to database:
 
@@ -404,7 +439,7 @@ Status updated to: `validation.status`
 
 ## Phase 11: Categorisation (if validation passed)
 
-**Location:** app.py lines 675-700
+**Where:** `process_extraction_result()` in `worker\extraction_pipeline.py`
 
 Only if `validation.status == "ok"`:
 
@@ -445,14 +480,21 @@ repo.save_categorisation(
 
 ## Phase 12: File Receipt (if validation "ok")
 
-**Location:** app.py lines 650-661
+**Where:** `process_extraction_result()` in `worker\extraction_pipeline.py`, calling `file_receipt()` in `worker\filing.py`
 
 If `validation.status == "ok"`:
 
-1. Get client name:
+1. Get the client's display name and its folder name, **two different things**:
    ```python
-   client_name = config.CLIENTS_BY_CODE.get(client_code, {}).get("client_name", client_code)
+   client = config.CLIENTS_BY_ID.get(client_id) or {}
+   client_name = client.get("client_name", "")
+   client_folder_name = client.get("client_folder_name")
    ```
+   ~~`config.CLIENTS_BY_CODE.get(client_code, ...)`~~ **`CLIENTS_BY_CODE` was deleted with the client
+   code.** **`client_name` goes in the sidecar and never into a path**: it is display only and freely
+   editable, and the folder is `client_folder_name`, fixed once the folder exists, sub-step 10d.14.
+   **A receipt whose client has no `client_folder_name` is not filed at all**, and the reason is
+   recorded rather than guessed at
 
 2. Calculate tax year:
    ```python
@@ -463,8 +505,8 @@ If `validation.status == "ok"`:
    ```python
    sidecar_payload = make_enriched_sidecar(
        receipt_id=receipt_id,
-       source="email",
-       client_code=client_code,
+       source=source,                      # "email" here. One of four, 10d.40
+       client_id=client_id,                # ~~client_code=client_code~~
        client_name=client_name,
        capture_date=now,
        invoice_date=invoice_date,
@@ -478,16 +520,24 @@ If `validation.status == "ok"`:
 
 4. Move file to permanent location:
    ```python
-   dest_path, sidecar_path = file_receipt(
-       source_path=file_path,              # From data/files/YYYY/MM/DD/
-       client_name=client_name,
-       tax_year=tax_year,
-       supplier=supplier_name,
-       gross=gross_amount,
-       filename=filename,
-       sidecar_payload=sidecar_payload
+   filed_path, sidecar_path = file_receipt(
+       file_path,                          # the copy in Intellibills\Documents\
+       client_folder_name,                 # ~~client_name~~ 10d.14
+       tax_year,
+       extraction.supplier_name or "unknown",
+       extraction.gross_amount or 0.0,
+       filename,
+       sidecar_payload
    )
+   repo.mark_receipt_filed(receipt_id, filed_path)
+   repo.update_receipt_status(receipt_id, "ok")
    ```
+   **It copies and never moves**, so the document-store original stays exactly where it was.
+   **The destination is
+   `Clients\[client_folder_name]\IntelliBooks\Receipts\[tax year]\[date]_[supplier]_[gross].[ext]`**,
+   with the sidecar beside it under the same name plus `.json`. **There is no `Tax Year` folder and
+   no per-supplier folder**, and the tax year reads `2026-27`. **`mark_receipt_filed()` is what
+   makes it genuinely done** and is what protects it from ever being filed twice
 
    Destination:
    ```
@@ -504,7 +554,7 @@ If `validation.status == "ok"`:
 
 ## Phase 13: Route to Review (if validation "needs_review")
 
-**Location:** app.py lines 663-672
+**Where:** `process_extraction_result()` in `worker\extraction_pipeline.py`, calling `file_review()` in `worker\filing.py`
 
 If `validation.status == "needs_review"`:
 
@@ -522,7 +572,7 @@ Sidecar includes all extracted data so reviewer can see what was found and what 
 
 ## Phase 14: Mark as Processed
 
-**Location:** app.py line 740
+**Where:** `process_once()` in `app.py`, calling `Repository.mark_processed()`
 
 At the very end:
 
@@ -556,14 +606,14 @@ This prevents the same email/attachment pair from being processed again.
            Check: Already processed (message_id + attachment_id)? NO
            Check: File hash seen before? NO
 
-10:05:02 — Resolve client from email: paul.keating@intellitax.co.uk
-           Lookup in clients.csv: FOUND
-           client_id = "Client_002"
+10:05:02 — Resolve client from email: pdk7@hotmail.co.uk
+           Found on Client_004's emails array in Intellibills\clients.json
+           client_id = "Client_004"
            firm_id = "FIRM001"
-           business_type = "ACCOUNTANCY"
+           trade = "UNSPECIFIED"
 
 10:05:03 — Save receipt record to database (status=pending)
-           Save file to disk: data/files/2026/07/22/abc123_receipt.pdf
+           Save file: Intellibills\Documents\Client_004\2026\09\abc123_receipt.pdf
 
 10:05:05 — Extract with OpenAI: Supplier="Amazon", Date="2026-07-22", Gross=125.50
 
@@ -575,11 +625,12 @@ This prevents the same email/attachment pair from being processed again.
 10:05:09 — Save extraction result to database
            Update receipt status to "ok"
 
-10:05:10 — Categorise: "Amazon" → GL code 5050 (Office Supplies)
+10:05:10 — Categorise: "Amazon" -> 7500 Printing, postage and stationery
+           Layer 1, this client's own mapping, confidence high
 
-10:05:12 — File receipt to permanent location:
-           Clients/Intellitax/Tax Year 2026/Amazon/abc123_receipt.pdf
-           Clients/Intellitax/Tax Year 2026/Amazon/abc123_receipt.json
+10:05:12 — File receipt to the client folder:
+           Clients\Test Sole Trader\IntelliBooks\Receipts\2026-27\2026-07-22_amazon_125.50.pdf
+           Clients\Test Sole Trader\IntelliBooks\Receipts\2026-27\2026-07-22_amazon_125.50.pdf.json
 
 10:05:13 — Mark message as processed in database
 
@@ -590,33 +641,31 @@ This prevents the same email/attachment pair from being processed again.
 
 ## Configuration Data Flow
 
-**clients.csv** (IntelliBooks folder) loads at app startup:
+**`Intellibills\clients.json`**, read by `config.load_clients()`. ~~clients.csv (IntelliBooks
+folder) loads at app startup~~ **Rewritten 2026-09-04: the file, the format and the reload are all
+different.**
 
 ```python
-def load_clients():
-    clients_by_email = {}
-    if CLIENTS_CSV.exists():
-        with CLIENTS_CSV.open("r") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                email = row.get("email", "").strip().lower()
-                client_data = {
-                    "client_id": row["client_id"],
-                    "firm_id": row["firm_id"],
-                    "business_type": row["business_type"],
-                    "client_code": row["client_code"],
-                    "client_name": row["name"]
-                }
-                if email:
-                    clients_by_email[email] = client_data
-    return clients_by_email
-
-CLIENTS = load_clients()  # Global dict: email → client data
+CLIENTS, CLIENTS_BY_ID = load_clients()
 ```
 
-When email arrives:
-1. Extract sender: `email_from = "paul.keating@intellitax.co.uk"`
-2. Clean it: `email = email_from.strip().lower()`
-3. Look up: `client = CLIENTS.get(email)`
-4. If found: Use client_id, firm_id, client_code from clients.csv
-5. If not: Default to UNKNOWN, INTELLITAX, UNKNOWN
+**Two indexes, both pointing at the same record**, sub-step 10d.4:
+- **`CLIENTS_BY_ID`** is the primary lookup, one entry per client, keyed on `client_id`
+- **`CLIENTS`** holds one entry per address in that record's `emails` array, all pointing at the
+  same record, **so there is no second index that can disagree with the first**
+- ~~`CLIENTS_BY_CODE`~~ **deleted with the client code**
+- **A record with no `firm_id` is refused** and the pipeline never sees that client, sub-step 10d.19
+- **A duplicate `client_id` is a registry fault**, not a supported arrangement: the last record
+  loaded wins and the earlier one is lost silently
+
+**It is re-read, not read once at startup.** `config.reload_clients_if_changed()` runs at the top of
+every poll and re-reads whenever the file's modification time moves, sub-step 10d.35. **Before that,
+a client registered while the pipeline was running stayed invisible to it until a restart.** A failed
+parse keeps what is already in memory and never ends the poll.
+
+When an email arrives:
+1. Extract the sender: `email_from = "Paul Keating <pdk7@hotmail.co.uk>"`
+2. Clean it: strip, lowercase, and take what is inside the angle brackets
+3. Look up: `client = config.CLIENTS.get(email)`
+4. If found: use `client_id`, `firm_id` and `client_folder_name`
+5. If not: `UNKNOWN`, `FIRM001` and an empty folder name. ~~UNKNOWN, INTELLITAX, UNKNOWN~~

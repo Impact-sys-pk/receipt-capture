@@ -7,6 +7,7 @@ from typing import Tuple
 from openai import OpenAI
 
 import config
+from worker import vat_rates
 from .base import BaseExtractor, ExtractionResult
 from .postprocess import establish_gross_from_vat, resolve_invoice_date
 
@@ -108,10 +109,12 @@ class OpenAIVisionExtractor(BaseExtractor):
 
         # Post-processing is provider-independent and lives in postprocess.py, so
         # a second provider inherits it rather than silently losing it.
-        # config.PREFER_DAYFIRST is read here, at call time, as it was before.
+        # config.PREFER_DAYFIRST is read here, at call time, as it was before, and
+        # so are the rates: vat_rates.impliable_rates() reads the table
+        # IntelliCharts publishes into CHARTS_DIR, item 163.
         net, vat, gross, details = establish_gross_from_vat(
             net, vat, gross, details,
-            config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE,
+            vat_rates.impliable_rates(), config.VAT_RATE_ROUNDING_ALLOWANCE,
         )
         invoice_date, details = resolve_invoice_date(
             invoice_date, invoice_date_raw, details, config.PREFER_DAYFIRST

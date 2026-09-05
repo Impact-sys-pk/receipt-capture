@@ -4,9 +4,13 @@ The column exists at schema.py:120, with a migration for older databases, but
 save_extraction() took no details parameter and its INSERT never listed it. So
 every automatic amendment the post-processing made went unrecorded.
 
-That matters most for establish_gross_from_vat(, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE), which rewrites net and gross on
+That matters most for establish_gross_from_vat(), which rewrites net and gross on
 the strength of an implied VAT rate. CLAUDE.md requires a full audit trail, and an
 unrecorded amendment to two financial figures is the gap that matters most here.
+
+The stray comma inside that call in this docstring, left by a replacement that ran
+through prose, was cleared on 2026-09-05 with the same change that moved the rates
+out of config.py.
 
 Every assertion below reads the column back out of a database. The whole defect
 was a value that existed in memory and never reached a row, so asserting on the
@@ -37,6 +41,10 @@ from worker.extraction.base import ExtractionResult
 from worker.extraction.postprocess import establish_gross_from_vat
 from worker.extraction_pipeline import process_extraction_result
 import resolve_receipt
+
+# See tests/test_postprocess.py for why this is stated rather than read from the
+# published bundle. It was config.VAT_RATES_IMPLIABLE until item 163, 2026-09-05.
+RECOGNISED_RATES = (0.05, 0.2)
 
 
 class TempEnvironment:
@@ -178,7 +186,7 @@ class PipelineDetailsTest(unittest.TestCase):
     def test_vat_amendment_is_recorded_against_the_receipt(self):
         # Build the note the way the pipeline does, so the test breaks if the
         # note text changes rather than asserting a string I typed.
-        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertIn("treated_amount_as_gross", details)
 
         with TempEnvironment() as env:

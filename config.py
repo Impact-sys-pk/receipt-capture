@@ -164,25 +164,19 @@ UNKNOWN_CLIENT_ID = "UNKNOWN"
 # DEFAULT as well, so a row could acquire a currency nobody wrote.
 DEFAULT_CURRENCY = "GBP"
 
-# Design document 18.4's rate vocabulary, as values rather than as a literal list
-# inside a post-processing function. Sub-step 10d.42.
+# VAT_RATES and VAT_RATES_IMPLIABLE were here until 2026-09-05. Item 163: the
+# rates are published into CHARTS_DIR as vat_rates.csv by publish_master.py, and
+# holding a second copy here was the two-copies fault the one-bundle arrangement
+# of amendment 194 exists to prevent. worker/vat_rates.py reads the published
+# table; impliable_rates() there is what VAT_RATES_IMPLIABLE was, and it returns
+# the same (0.05, 0.2) against the table published on 2026-09-05.
 #
-# 18.4: `20%`, `5%`, `0% zero-rated`, `Exempt`, `Outside scope`, `Not set`. The
-# last four all produce nil VAT and are deliberately distinct from each other;
-# only the first two can produce a VAT figure at all, which is why only those two
-# can ever be implied by dividing a VAT figure by a net.
-VAT_RATES = {
-    "20%": 0.20,
-    "5%": 0.05,
-    "0% zero-rated": 0.0,
-    "Exempt": 0.0,
-    "Outside scope": 0.0,
-}
-
-# The rates a positive VAT figure can imply. Derived from the vocabulary above so
-# that adding a rate to 18.4 adds it here, rather than to a second list that
-# somebody has to remember.
-VAT_RATES_IMPLIABLE = tuple(sorted({v for v in VAT_RATES.values() if v > 0}))
+# Kept as a comment rather than deleted silently, for the reason
+# worker/database/repository.py:317 was: the deleted dict's keys were design
+# document 18.4's old rate vocabulary, `20%`, `5%`, `0% zero-rated`, `Exempt`,
+# `Outside scope`, and the master stopped using those words at 08:39 on
+# 2026-09-05. A reader who finds them in git history should know they were
+# superseded rather than lost.
 
 # A rounding allowance and nothing wider. Sub-step 10d.42 replaces a 0.03
 # tolerance, which was three percentage points and would accept 17% or 23% as

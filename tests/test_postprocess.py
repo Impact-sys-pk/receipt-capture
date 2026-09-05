@@ -25,6 +25,19 @@ from worker.extraction.postprocess import (
     resolve_invoice_date,
 )
 
+# The rate set these tests hold fixed. It was config.VAT_RATES_IMPLIABLE until
+# 2026-09-05, when item 163 moved the rates into the published bundle.
+#
+# Stated here rather than read back through worker.vat_rates.impliable_rates(),
+# for the two reasons tests/test_chart_bundle.py gives for writing its own charts
+# instead of copying the real ones. These are direct tests of what
+# establish_gross_from_vat() does with a set of rates, so the set has to be fixed
+# or every expected percentage below moves the day IntelliCharts publishes; and a
+# test that reads OneDrive stops the suite running on a machine with no practice
+# root. That impliable_rates() returns this same tuple against the published
+# table is asserted separately, by RealBundleRatesTest in tests/test_vat_rates.py.
+RECOGNISED_RATES = (0.05, 0.2)
+
 
 class ParseAmbiguousDateTest(unittest.TestCase):
     def test_ambiguous_date_follows_prefer_dayfirst(self):
@@ -112,7 +125,7 @@ class EstablishGrossFromVatTest(unittest.TestCase):
         # 10d.42. Assume 8.00 is the gross. The implied rate is then
         # 1.33 / (8.00 - 1.33) = 19.94%, which is 20% within the rounding
         # allowance, so the assumption verifies and is accepted.
-        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertAlmostEqual(gross, 8.00)
         self.assertAlmostEqual(net, 6.67, places=2)
         self.assertAlmostEqual(vat, 1.33)
@@ -123,7 +136,7 @@ class EstablishGrossFromVatTest(unittest.TestCase):
         # 100.00 with 20.00 of VAT implies 20 / 80 = 25%, which is no rate 18.4
         # knows. 10d.42: change nothing, and put the implied percentage in the
         # note so a person can see what the figures actually said.
-        net, vat, gross, details = establish_gross_from_vat(100.0, 20.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        net, vat, gross, details = establish_gross_from_vat(100.0, 20.0, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertEqual(net, 100.0)
         self.assertEqual(vat, 20.0)
         self.assertIsNone(gross)
@@ -137,35 +150,35 @@ class EstablishGrossFromVatTest(unittest.TestCase):
             with self.subTest(amount=amount):
                 _, _, gross, details = establish_gross_from_vat(
                     amount, vat_figure, None, None,
-                    config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+                    RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
                 self.assertIsNone(gross)
                 self.assertIn("gross_not_established", details)
 
     def test_vat_not_less_than_the_amount_changes_nothing(self):
         # The assumption cannot even be stated: there is no net to imply a rate
         # against. Change nothing, and say which case it was.
-        net, vat, gross, details = establish_gross_from_vat(5.0, 5.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        net, vat, gross, details = establish_gross_from_vat(5.0, 5.0, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertEqual((net, vat, gross), (5.0, 5.0, None))
         self.assertIn("vat_not_less_than_amount", details)
 
     def test_note_is_appended_to_existing_details_not_replacing_them(self):
-        _, _, _, details = establish_gross_from_vat(8.0, 1.33, None, "model said something", config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        _, _, _, details = establish_gross_from_vat(8.0, 1.33, None, "model said something", RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertTrue(details.startswith("model said something; "))
         self.assertIn("treated_amount_as_gross", details)
 
     def test_untouched_when_gross_is_already_present(self):
-        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, 9.33, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        net, vat, gross, details = establish_gross_from_vat(8.0, 1.33, 9.33, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertEqual((net, vat, gross, details), (8.0, 1.33, 9.33, None))
 
     def test_untouched_when_net_or_vat_is_missing(self):
-        self.assertEqual(establish_gross_from_vat(None, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE), (None, 1.33, None, None))
-        self.assertEqual(establish_gross_from_vat(8.0, None, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE), (8.0, None, None, None))
+        self.assertEqual(establish_gross_from_vat(None, 1.33, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE), (None, 1.33, None, None))
+        self.assertEqual(establish_gross_from_vat(8.0, None, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE), (8.0, None, None, None))
 
     def test_non_numeric_values_are_left_alone_rather_than_raising(self):
         # The broad except is load-bearing: a coercion failure must leave the
         # values untouched, not fail the extraction.
         self.assertEqual(
-            establish_gross_from_vat("eight", "one", None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE),
+            establish_gross_from_vat("eight", "one", None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE),
             ("eight", "one", None, None),
         )
 
@@ -178,7 +191,7 @@ class EstablishGrossFromVatTest(unittest.TestCase):
         # like a net, and 5/105 = 4.76% was inside its three-point tolerance of
         # 5% as well, so it called the reading ambiguous and did nothing.
         # Assume-and-verify has no second test to fail.
-        net, vat, gross, details = establish_gross_from_vat(105.0, 5.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+        net, vat, gross, details = establish_gross_from_vat(105.0, 5.0, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertAlmostEqual(gross, 105.0)
         self.assertAlmostEqual(net, 100.0)
         self.assertIn("implied_rate=5.0%", details)
@@ -285,15 +298,15 @@ class SilentHandlerTest(unittest.TestCase):
     def test_happy_path_logs_nothing(self):
         logger = logging.getLogger("worker.extraction.postprocess")
         with self.assertNoLogs(logger, level="DEBUG"):
-            establish_gross_from_vat(8.0, 1.33, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
-            establish_gross_from_vat(100.0, 20.0, None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+            establish_gross_from_vat(8.0, 1.33, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
+            establish_gross_from_vat(100.0, 20.0, None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
             resolve_invoice_date("2026-09-05", "09/05/26", None, True)
             resolve_invoice_date("2026-09-05", None, None, True)
             parse_ambiguous_date("09/05/26", True)
 
     def test_vat_swap_warns_once_when_coercion_fails(self):
         with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
-            net, vat, gross, details = establish_gross_from_vat("eight", "one", None, None, config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+            net, vat, gross, details = establish_gross_from_vat("eight", "one", None, None, RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         # Still leaves the values untouched rather than failing the extraction.
         self.assertEqual((net, vat, gross, details), ("eight", "one", None, None))
         self.assertEqual(len(logs.records), 1)
@@ -317,7 +330,7 @@ class SilentHandlerTest(unittest.TestCase):
         # A receipt is client data. The exception and the field being processed
         # belong in the log; the payload does not.
         with self.assertLogs("worker.extraction.postprocess", level="WARNING") as logs:
-            establish_gross_from_vat("eight", "one", None, "supplier prose from the receipt", config.VAT_RATES_IMPLIABLE, config.VAT_RATE_ROUNDING_ALLOWANCE)
+            establish_gross_from_vat("eight", "one", None, "supplier prose from the receipt", RECOGNISED_RATES, config.VAT_RATE_ROUNDING_ALLOWANCE)
         self.assertNotIn("supplier prose from the receipt", logs.output[0])
 
 
@@ -327,13 +340,28 @@ class DependencyDirectionTest(unittest.TestCase):
 
         Imported in a subprocess so a module another test already loaded cannot
         make this pass by accident. Also proves postprocess needs neither the
-        openai package nor a populated .env.
+        openai package, nor a populated .env, nor a published bundle.
+
+        worker.vat_rates was added to the leak list on 2026-09-05, item 163, and
+        the reason is narrower than the brief that asked for it said.
+
+        The brief expected the old list, 'openai' or config, to be blind to
+        postprocess importing worker.vat_rates. It is not: worker/vat_rates.py
+        imports config itself, so that import leaks config and the old assertion
+        already went red. Verified by mutation on 2026-09-05, adding the import to
+        postprocess.py: the old list printed ['config'] and the test failed on it.
+
+        What naming the module buys is that the failure says which import leaked
+        rather than only 'config', and that the check survives worker/vat_rates.py
+        ever ceasing to import config, at which point the old list would have gone
+        quiet with nothing to say why.
         """
         repo_root = Path(__file__).resolve().parent.parent
         code = (
             "import sys\n"
             "import worker.extraction.postprocess\n"
-            "leaked = [m for m in sys.modules if 'openai' in m or m == 'config']\n"
+            "leaked = [m for m in sys.modules\n"
+            "          if 'openai' in m or m in ('config', 'worker.vat_rates')]\n"
             "print(','.join(sorted(leaked)))\n"
         )
         result = subprocess.run(

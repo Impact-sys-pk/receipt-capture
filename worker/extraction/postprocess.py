@@ -10,9 +10,10 @@ A pure move: the behaviour here is byte-for-byte the behaviour that was in
 parameter rather than a read of `config.PREFER_DAYFIRST` inside the function, so
 these functions are testable without patching module state. The same reasoning
 gives establish_gross_from_vat() its `recognised_rates` and `rate_allowance`
-parameters: design document 18.4's rate vocabulary lives in config.VAT_RATES and
-is read by the caller, not by this module, which imports config nowhere and must
-keep it that way. The caller passes
+parameters: the rates live in the VAT rate table IntelliCharts publishes into
+config.CHARTS_DIR, and the caller reads them from it. **This module imports
+neither `config` nor `worker.vat_rates`, and must keep it that way**, so it needs
+neither a populated .env nor a published bundle to be tested. The caller passes
 `config.PREFER_DAYFIRST`, read at call time, so behaviour is identical.
 
 No `ExtractionResult`, no provider client, and no logging of document content.
@@ -134,17 +135,18 @@ def establish_gross_from_vat(net, vat, gross, details, recognised_rates, rate_al
     There is no per-rate window and no minimum receipt size. Both were designed
     and then made unnecessary by the assume-and-verify shape.
 
-    And the recognised rates come from design document 18.4's vocabulary rather
-    than from a literal list here. The old code had `common_rates = [0.2, 0.05]`
-    and a `rate_tol = 0.03`, which is three percentage points: it would have
-    accepted an implied 17% or 23% as 20%.
+    And the recognised rates come from the published VAT rate table rather than
+    from a literal list here. The old code had `common_rates = [0.2, 0.05]` and a
+    `rate_tol = 0.03`, which is three percentage points: it would have accepted an
+    implied 17% or 23% as 20%.
 
     `recognised_rates` and `rate_allowance` are parameters for the same reason
     `prefer_dayfirst` is one, stated at the top of this module: this module
-    imports config nowhere, so it needs neither the openai package nor a
-    populated .env, and tests/test_postprocess.py proves that in a subprocess.
-    The caller passes config.VAT_RATES_IMPLIABLE and
-    config.VAT_RATE_ROUNDING_ALLOWANCE, read at call time.
+    imports neither config nor worker.vat_rates, so it needs neither the openai
+    package, nor a populated .env, nor a published bundle, and
+    tests/test_postprocess.py proves that in a subprocess. The caller passes
+    worker.vat_rates.impliable_rates(), which reads the table IntelliCharts
+    publishes, and config.VAT_RATE_ROUNDING_ALLOWANCE, both read at call time.
 
     Returns (net, vat, gross, details).
     """

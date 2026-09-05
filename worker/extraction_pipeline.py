@@ -220,7 +220,13 @@ def process_extraction_result(
             extraction_id=extraction_id,
             supplier_name=extraction.supplier_name,
             client_id=client_id,
-            business_type=client.get('trade', 'UNSPECIFIED')
+            business_type=client.get('trade', 'UNSPECIFIED'),
+            # The live path, and the only one of the five that can supply
+            # line_items: `extraction` is the ExtractionResult still in hand.
+            # The other four read a row back out of `extractions`, which has no
+            # column for them.
+            gross_amount=extraction.gross_amount,
+            line_items=extraction.line_items,
         )
 
         # Save categorisation

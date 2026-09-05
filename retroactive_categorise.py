@@ -135,7 +135,12 @@ def main():
                     extraction_id=extraction_id,
                     supplier_name=supplier_name,
                     client_id=receipt["client_id"],
-                    business_type=business_type
+                    business_type=business_type,
+                    # `extraction` here is a dict from
+                    # Repository.get_extraction_for_receipt(), which is
+                    # SELECT * FROM extractions, so gross_amount is a column and
+                    # is in scope. line_items is not a column, so it stays None.
+                    gross_amount=extraction.get("gross_amount"),
                 )
 
                 # Save categorisation

@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -24,9 +24,11 @@ _SYSTEM_PROMPT = """You are a receipt data extractor. Extract the following fiel
     "receipt_ref_number": "string or null (a visible transaction, ticket, or reference number on the receipt)",
     "receipt_time": "string or null (HH:MM time of day shown on the receipt, if any, 24-hour format)",
     "details": "string or null",
+    "line_items": ["array of strings, one per item line as it appears on the receipt, or null"],
     "currency": "GBP"
 }
-For amounts use numbers only, no currency symbols. Use null for any field that cannot be determined."""
+For amounts use numbers only, no currency symbols. Use null for any field that cannot be determined.
+For line_items, copy each item line as printed, keeping its description and its amount on one string, for example "MILK SEMI SKIMMED 2L 1.45". Do not include subtotal, VAT, total, change or payment lines. Where the document has no itemised lines, use null. List at most 40 lines; if there are more, list the first 40."""
 
 _IMAGE_MIME = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -34,6 +36,34 @@ _IMAGE_MIME = {
     ".webp": "image/webp", ".bmp": "image/bmp",
     ".tiff": "image/tiff",
 }
+
+
+def _normalise_line_items(value) -> Optional[List[str]]:
+    """Whatever the model returned for line_items, as a list of strings or None.
+
+    The prompt asks for an array of strings and a model will sometimes answer
+    with a list of objects, or with one newline-separated string, or with an
+    empty list. Normalising here rather than at the reader keeps the shape
+    promised by `ExtractionResult.line_items` true for every caller, and keeps
+    provider-shaped parsing inside the provider's own module. An empty result
+    is None rather than [], so "no item lines" has one representation.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = [line.strip() for line in value.splitlines()]
+    elif isinstance(value, list):
+        items = []
+        for entry in value:
+            if isinstance(entry, dict):
+                # e.g. {"description": "MILK 2L", "amount": 1.45}
+                items.append(" ".join(str(v) for v in entry.values() if v is not None).strip())
+            else:
+                items.append(str(entry).strip())
+    else:
+        return None
+    items = [i for i in items if i]
+    return items or None
 
 
 def _image_to_base64(path: Path) -> Tuple[str, str]:
@@ -81,7 +111,17 @@ class OpenAIVisionExtractor(BaseExtractor):
                     ],
                 },
             ],
-            max_tokens=500,
+            # Raised from 500 on 2026-09-05, when line_items was added to the
+            # prompt above. 500 fitted the nine scalar fields with room to spare
+            # and does not fit them plus up to 40 item lines: a supermarket
+            # receipt would have been truncated mid-JSON, json.loads() would
+            # have raised, and `parsed` would have fallen back to {}, so EVERY
+            # field would have come back null and the receipt would have failed
+            # validation. That is a regression this change would have caused, so
+            # the ceiling moves with it. It is a ceiling and not a spend: the
+            # reply is billed at the tokens actually generated, and a receipt
+            # with no item lines costs what it did before.
+            max_tokens=1500,
         )
 
         raw = response.choices[0].message.content
@@ -132,4 +172,5 @@ class OpenAIVisionExtractor(BaseExtractor):
             engine="openai_vision",
             receipt_ref_number=parsed.get("receipt_ref_number"),
             receipt_time=parsed.get("receipt_time"),
+            line_items=_normalise_line_items(parsed.get("line_items")),
         )

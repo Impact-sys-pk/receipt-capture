@@ -480,7 +480,12 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
                 extraction_id=extraction_id,
                 supplier_name=supplier,
                 client_id=receipt["client_id"],
-                business_type=trade
+                business_type=trade,
+                # extraction.get("gross_amount"), not the `gross` local above it:
+                # that one is coerced to 0.0 for the sidecar, and 0.0 would tell
+                # layer 5 the receipt was free. No line_items: this reads the
+                # extraction back out of the database and they are not stored.
+                gross_amount=extraction.get("gross_amount"),
             )
 
             # Save categorisation

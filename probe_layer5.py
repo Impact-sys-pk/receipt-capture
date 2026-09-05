@@ -37,7 +37,7 @@ from worker.database.repository import Repository
 
 
 def latest_extractions():
-    """(receipt_id, client_id, status, filename, supplier_name) for every receipt.
+    """(receipt_id, client_id, status, filename, supplier_name, gross_amount).
 
     The newest extraction per receipt by `extracted_at`, which is the row the
     pipeline would have categorised from. Opened read-only on config.DB_PATH:
@@ -50,7 +50,7 @@ def latest_extractions():
     rows = conn.execute(
         """
         SELECT r.receipt_id, r.client_id, r.status, r.filename,
-               e.supplier_name, e.extracted_at
+               e.supplier_name, e.gross_amount, e.extracted_at
         FROM receipts r
         LEFT JOIN extractions e ON e.receipt_id = r.receipt_id
         WHERE e.extracted_at = (
@@ -87,6 +87,7 @@ def main():
         print(f"status    {r['status']}")
         print(f"client    {r['client_id']}   trade={trade}   chart_code={chart_code}")
         print(f"supplier  {r['supplier_name']!r}")
+        print(f"gross     {r['gross_amount']!r}")
         print(f"pool      {len(pool)} classifier-eligible account(s) offered to layer 5")
 
         for label, engine in (("AI off", off), ("AI on ", on)):
@@ -96,6 +97,11 @@ def main():
                 supplier_name=r["supplier_name"] or "",
                 client_id=r["client_id"],
                 business_type=trade,
+                # Read out of the database, so the amount is available and the
+                # item lines are not: nothing stores them. This probe therefore
+                # measures the amount's effect and cannot measure the item
+                # lines'. Seeing those needs a receipt through the live pipeline.
+                gross_amount=r["gross_amount"],
             )
             print(
                 f"  {label}  vendor_code={res.vendor_code!r}  "

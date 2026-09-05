@@ -24,7 +24,7 @@ import logging
 from datetime import datetime
 from difflib import SequenceMatcher
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 from pathlib import Path
 
 import config
@@ -221,7 +221,9 @@ class CategorisationEngine:
         return False
 
     def categorise(self, receipt_id: str, extraction_id: str, supplier_name: str,
-                   client_id: str, business_type: str) -> CategorisationResult:
+                   client_id: str, business_type: str,
+                   gross_amount: Optional[float] = None,
+                   line_items: Optional[List[str]] = None) -> CategorisationResult:
         """
         Categorise a single receipt through the rules-first engine.
         Returns CategorisationResult with suggested code and confidence.
@@ -232,6 +234,12 @@ class CategorisationEngine:
         Layer 3: Fuzzy matching (client)
         Layer 4: Fuzzy matching (firm)
         Layer 5: AI suggestion (if enabled)
+
+        gross_amount and line_items reach layer 5 and no other layer. Layers 0
+        to 4 match on the vendor and are unchanged by either. Both default to
+        None and both are allowed to be None: a caller that reads an extraction
+        back out of the database has the amount but cannot have the item lines,
+        because line items are not stored.
         """
         if not supplier_name:
             return CategorisationResult(
@@ -332,7 +340,8 @@ class CategorisationEngine:
 
         # Layer 5: AI suggestion (if enabled)
         if self.enable_ai_fallback:
-            ai_result = self._ai_suggest(vendor_code, client_id, supplier_name)
+            ai_result = self._ai_suggest(vendor_code, client_id, supplier_name,
+                                         gross_amount, line_items)
             if ai_result:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
@@ -351,7 +360,9 @@ class CategorisationEngine:
         )
 
     def _ai_suggest(self, vendor_key: str, client_id: str,
-                    supplier_name: str = "") -> Optional[dict]:
+                    supplier_name: str = "",
+                    gross_amount: Optional[float] = None,
+                    line_items: Optional[List[str]] = None) -> Optional[dict]:
         """
         Call OpenAI with constrained output to categorise unmatched vendor.
 
@@ -372,6 +383,26 @@ class CategorisationEngine:
                 The key is kept in the prompt as well, because it is what the
                 learned tables are keyed on and what a later correction attaches
                 to. Empty is allowed: a receipt can yield a key and no name.
+            gross_amount: The total on the receipt, VAT included, where the
+                extraction established one. Added 2026-09-05 because the first
+                run of layer 5 answered "0081 Motor vehicles - cars - additions"
+                for a Halfords receipt: nothing in the prompt said how much had
+                been spent, so nothing stopped a small receipt becoming a
+                capitalised car. It is named as the gross in the prompt so the
+                model is not left to work out whether it is net or gross.
+                **This passes the amount and does nothing with it.** There is no
+                capitalisation threshold here and there must not be one: Paul's
+                ruling of 2026-09-05 is that the five asset accounts are gated on
+                amount, and the figure is outstanding item 33 and is not decided.
+                None is allowed and the line is then left out of the prompt.
+            line_items: The item lines as they appeared on the receipt. Added
+                2026-09-05 for the same run, which answered "7520 Stationery and
+                office supplies" for an Asda Wallington receipt: a supermarket
+                receipt cannot be read from the supplier name, and what was
+                bought is the only thing that distinguishes one from another.
+                They come off the extraction call that was already made and are
+                not stored anywhere, so a caller reading an extraction back out
+                of the database passes None and the line is left out.
 
         Returns:
             {code: str, name: str} or None if API fails
@@ -388,6 +419,25 @@ class CategorisationEngine:
                 logger.warning(f"no classifier-eligible accounts for client_id={client_id}")
                 return None
 
+            # What is known about the receipt, one line each, and a line is
+            # absent rather than empty where the value is None. An absent line
+            # says nothing; "Gross amount on the receipt: None" would be a
+            # sentence the model has to interpret.
+            facts = [
+                f'Supplier as it appeared on the receipt: "{supplier_name or vendor_key}"',
+                f'Normalised lookup key: "{vendor_key}"',
+            ]
+            if gross_amount is not None:
+                # Named as the gross so the model does not have to guess. No
+                # currency is stated because _ai_suggest() is not given one, and
+                # naming the wrong one is worse than naming none.
+                facts.append(
+                    f"Gross amount on the receipt, VAT included: {gross_amount}"
+                )
+            if line_items:
+                lines = chr(10).join(f"  {item}" for item in line_items)
+                facts.append(f"Item lines on the receipt:{chr(10)}{lines}")
+
             # Call OpenAI with constrained output
             client = OpenAI(api_key=config.OPENAI_API_KEY)
             response = client.beta.chat.completions.parse(
@@ -397,8 +447,7 @@ class CategorisationEngine:
                         "role": "user",
                         "content": f"""Categorise this supplier into the most appropriate GL code.
 
-Supplier as it appeared on the receipt: "{supplier_name or vendor_key}"
-Normalised lookup key: "{vendor_key}"
+{chr(10).join(facts)}
 
 Valid GL codes:
 {chr(10).join(f"- {code}: {name}" for code, name in coa)}

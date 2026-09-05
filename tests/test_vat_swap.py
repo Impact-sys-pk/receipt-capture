@@ -16,11 +16,17 @@ sys.modules['openai'] = fake_openai
 
 from worker.extraction.openai_vision import OpenAIVisionExtractor
 import config
+from tests.chart_fixtures import TempChartBundle
 
 class VatSwapTest(unittest.TestCase):
     def setUp(self):
         self._original_prefer_dayfirst = config.PREFER_DAYFIRST
         config.PREFER_DAYFIRST = True
+        # extract() reads the published VAT rate table per receipt, so without
+        # this the test reads config.CHARTS_DIR in OneDrive and its expected
+        # figures move whenever IntelliCharts republishes. The fixture's rows are
+        # the same values the live file gives, so nothing here changes.
+        self._bundle = TempChartBundle().__enter__()
         fd, path = tempfile.mkstemp(suffix='.jpg')
         os.close(fd)
         with open(path, 'wb') as f:
@@ -29,6 +35,7 @@ class VatSwapTest(unittest.TestCase):
 
     def tearDown(self):
         config.PREFER_DAYFIRST = self._original_prefer_dayfirst
+        self._bundle.__exit__(None, None, None)
         try:
             os.remove(self.path)
         except Exception:

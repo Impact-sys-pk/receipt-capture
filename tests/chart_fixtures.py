@@ -22,6 +22,7 @@ import tempfile
 from pathlib import Path
 
 import config
+from worker import vat_rates
 from worker.categorisation import chart, fallback
 
 # The master chart's 13 columns, in the published order. Written out rather than
@@ -41,6 +42,26 @@ DEFAULT_ACCOUNTS = (
     ("999", "Override account"),
 )
 
+# The VAT rate table as published on 2026-09-05, row for row, written by default.
+# **Added 2026-09-05 after the live-path sweep**, which found three more files
+# reading the real `vat_rates.csv` out of OneDrive: `test_date_disambiguation.py`
+# and `test_vat_swap.py` through the extraction path's
+# `establish_gross_from_vat()`, and `test_prefer_dayfirst_isolation.py`, which
+# re-runs both classes in process and inherited their reads.
+#
+# **These are the same values the live file gives**, so no test's expected
+# figures move. What changes is that a republished table can no longer move them,
+# and the suite stops depending on whether OneDrive has finished syncing.
+DEFAULT_VAT_RATES = (
+    "Standard,20,,",
+    "Reduced,5,,",
+    "Zero-rated,0,,",
+    "Hospitality (2020-21),5,2020-07-15,2021-09-30",
+    "Hospitality (2021-22),12.5,2021-10-01,2022-03-31",
+    "Family Attractions (2026),5,2026-06-25,2026-09-01",
+)
+VAT_RATE_HEADER = "name,rate,start,end"
+
 
 def _row(code, name, status="active", eligible="Yes"):
     return ",".join([
@@ -50,27 +71,41 @@ def _row(code, name, status="active", eligible="Yes"):
 
 
 class TempChartBundle:
-    """Pins CHARTS_DIR at a temp master chart, and empties the three caches.
+    """Pins CHARTS_DIR at a temp bundle, and empties the four parse caches.
 
     Nests inside a fixture that patches other config values: it touches
     `CHARTS_DIR` and nothing else. The caches are restored rather than only
     emptied, so this cannot leave the real bundle's entries missing for a test
     that runs afterwards.
+
+    Writes the master chart and the VAT rate table by default, and the fallback
+    table only when a test asks for one, because an absent fallback table is a
+    real state the reader has to survive.
+
+    Usable as a context manager or, for a `unittest` fixture with no `with` to
+    hang it on, by calling `__enter__()` in `setUp` and `__exit__()` in
+    `tearDown`. Both are in use.
     """
 
-    def __init__(self, accounts=DEFAULT_ACCOUNTS, fallbacks=()):
+    def __init__(self, accounts=DEFAULT_ACCOUNTS, fallbacks=(),
+                 vat_rate_rows=DEFAULT_VAT_RATES):
         self._accounts = list(accounts)
         self._fallbacks = list(fallbacks)
+        self._vat_rate_rows = list(vat_rate_rows)
 
     def __enter__(self):
         self._temp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.path = Path(self._temp.name)
         self._saved_charts_dir = config.CHARTS_DIR
         config.CHARTS_DIR = self.path
-        self._saved_caches = (
-            dict(chart._CACHE), dict(chart._ACCOUNT_CACHE), dict(fallback._CACHE),
-        )
-        for cache in (chart._CACHE, chart._ACCOUNT_CACHE, fallback._CACHE):
+        # Four modules cache a parse of a bundle file on its modification time.
+        # Named in one tuple so adding a fifth reader is one edit and cannot be
+        # half-done: an uncleared cache would hand a test the real bundle's
+        # contents from whatever ran before it.
+        self._caches = (chart._CACHE, chart._ACCOUNT_CACHE, fallback._CACHE,
+                        vat_rates._CACHE)
+        self._saved_caches = tuple(dict(c) for c in self._caches)
+        for cache in self._caches:
             cache.clear()
 
         rows = [_row(code, name) for code, name in self._accounts]
@@ -82,13 +117,16 @@ class TempChartBundle:
             (self.path / fallback.FALLBACK_ACCOUNTS_FILENAME).write_text(
                 "\n".join(["code,fallback_code", *lines]) + "\n", encoding="utf-8"
             )
+        if self._vat_rate_rows:
+            (self.path / vat_rates.VAT_RATES_FILENAME).write_text(
+                "\n".join([VAT_RATE_HEADER, *self._vat_rate_rows]) + "\n",
+                encoding="utf-8",
+            )
         return self
 
     def __exit__(self, *exc):
         config.CHARTS_DIR = self._saved_charts_dir
-        for cache, saved in zip(
-            (chart._CACHE, chart._ACCOUNT_CACHE, fallback._CACHE), self._saved_caches
-        ):
+        for cache, saved in zip(self._caches, self._saved_caches):
             cache.clear()
             cache.update(saved)
         self._temp.cleanup()

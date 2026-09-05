@@ -164,12 +164,21 @@ documented in `CATEGORISATION.md`. **They stop at the first that answers.**
    constructs the engine with it off**
 8. Nothing answered: `unmatched`, `needs_review`, and **no code is invented**
 
-Then the resolution, which is step 10j.8 and is not built:
+Then the resolution, step 10j.8, **BUILT 2026-09-05**, at all five `categorise()` call sites:
 
 1. The code is in the client's chart: use it
-2. Not in the chart, and the fallback table gives one that is: use the fallback, **and record that a
-   substitution happened**
-3. Neither: no code, `needs_review`, and the note says which account was suggested
+2. Not in the chart, and the fallback table gives one that is: use the fallback, **and record the
+   substitution as a `resolution_events` row with `actor` pipeline.** No column that means a person
+   changed it is written by a machine
+3. Neither: no code, the row is flagged, and the note says which account was suggested
+4. The chart could not be read at all: **the suggestion is left standing**, because an empty read
+   means the file was unreadable rather than the code being wrong, **and the row is flagged**
+
+**`needs_review` flags the row and does not move the file. It is written by four call sites and read
+by nothing**, enumerated from the syntax trees by Claude Code on 2026-09-05 and now held by two
+tests. **What routes a receipt to the Review folder is `validation.status`**, which is a different
+thing. Anything in this project that says a categorisation "goes to Review" is using the word
+loosely, this document included until it was corrected.
 
 ## 8. Where learning goes, and it is the point
 
@@ -181,8 +190,10 @@ read from `receipts.db` on 2026-09-05.**
   poison the table and layers 1 and 2 would then apply it confidently to every future receipt from
   that vendor
 - **Learning is an opt-in tick**, "Remember this code for future receipts from this supplier",
-  default off, and **none of the three parts exists**: the control, a field in the 12.2 back-feed
-  payload to carry it, and the write
+  default off. **Two of the three parts are missing, not three**: `worker\resolution\service.py:100`
+  carries `remember_gl_for_supplier` on the corrections record and `:756` acts on it. **What does not
+  exist is the control in IntelliBooks Desktop and a field in the 12.2 back-feed payload to carry it**,
+  so the flag is always false in practice and that is why the tables are empty
 
 **Step 10j.11.** Every other sub-step improves one answer at a time. **Only this one compounds, and
 it is the whole argument for owning the vocabulary.**

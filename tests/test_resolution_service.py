@@ -57,6 +57,19 @@ class TempEnvironment:
             "_CLIENTS_MTIME": config._CLIENTS_MTIME,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
+            # **Added 2026-09-05, and it was the one path in this fixture that
+            # could destroy real work.** The 13 tests in this file call
+            # apply_resolution_note() and resolve_receipt(), both of which call
+            # remove_review_pair() in worker/filing.py, which scans
+            # config.REVIEW_ROOT and unlinks what it matches. Unpinned, that is
+            # the live Intellibills\Review holding real clients' review items.
+            # The receipt-id match is exact and safe, ids being UUIDs, but
+            # _find_review_sidecar() falls back to the original filename for a
+            # sidecar carrying no receipt id, and this fixture's files are named
+            # parking.pdf. test_resolve_receipt_ordering.py and
+            # test_resolve_receipt_zero_and_types.py already carry the same
+            # warning in as many words; this file was simply missed.
+            "REVIEW_ROOT": config.REVIEW_ROOT,
         }
         config.DB_PATH = self.path / "receipts.db"
         config.CLIENTS_ROOT = self.path / "Clients"
@@ -64,6 +77,7 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
+        config.REVIEW_ROOT = self.path / "Review"
         config.CLIENTS_JSON = self.path / "clients-not-placed.json"
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {

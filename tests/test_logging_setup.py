@@ -20,6 +20,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import config
+from live_paths import live
 
 fake_openai = types.ModuleType("openai")
 class OpenAI:
@@ -164,24 +165,40 @@ class SuiteWritesNoLogsTest(unittest.TestCase):
     and asserts the write landed in the temp directory instead.
     """
 
-    def _sizes(self):
+    def _sizes(self, directory=None):
+        directory = config.LOGS_DIR if directory is None else directory
         return {
-            name: (config.LOGS_DIR / name).stat().st_size
+            name: (directory / name).stat().st_size
             for name in ENTRY_POINT_LOGS.values()
-            if (config.LOGS_DIR / name).exists()
+            if (directory / name).exists()
         }
+
+    def _live_sizes(self):
+        """The four process logs in the genuinely live logs directory.
+
+        tests/conftest.py redirects config.LOGS_DIR into a session temp folder,
+        so _sizes() alone now compares a temp folder with itself. That still
+        catches a leak inside the test; it no longer catches this class's
+        subject, which is the live resolve.log this suite once appended 5 KB per
+        run to. live() maps back to it. Paul's instruction, 2026-09-05.
+        """
+        return self._sizes(live(config.LOGS_DIR))
 
     def test_importing_the_entry_points_writes_nothing(self):
         before = self._sizes()
+        live_before = self._live_sizes()
 
         import app  # noqa: F401
         import discard_receipt  # noqa: F401
         import resolve_receipt  # noqa: F401
 
         self.assertEqual(self._sizes(), before)
+        self.assertEqual(self._live_sizes(), live_before,
+                         "an import must not touch the live process logs")
 
     def test_running_a_cli_writes_to_the_redirected_logs_dir_not_the_real_one(self):
         real_before = self._sizes()
+        live_before = self._live_sizes()
 
         with TempEnvironment() as env:
             repo = Repository()
@@ -202,7 +219,12 @@ class SuiteWritesNoLogsTest(unittest.TestCase):
 
         self.assertEqual(
             self._sizes(), real_before,
-            "a CLI run under test must not touch the live process log files",
+            "a CLI run under test must not touch the redirected process logs",
+        )
+        self.assertEqual(
+            self._live_sizes(), live_before,
+            f"a CLI run under test must not touch the LIVE process log files at "
+            f"{live(config.LOGS_DIR)}",
         )
 
 

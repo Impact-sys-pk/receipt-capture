@@ -36,6 +36,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import config
+from live_paths import LiveBundle
 from tests.chart_fixtures import MASTER_HEADER, _row
 from worker.categorisation import chart, fallback
 from worker.categorisation.engine import CategorisationResult
@@ -687,6 +688,11 @@ class RealBundleFallbackTest(unittest.TestCase):
     with no practice root."""
 
     def setUp(self):
+        # LiveBundle, not config.CHARTS_DIR: conftest redirects it into temp and
+        # this class would otherwise skip, which reports success. Paul's
+        # instruction, 2026-09-05.
+        self._live = LiveBundle().__enter__()
+        self.addCleanup(self._live.__exit__, None, None, None)
         if not (config.CHARTS_DIR / fallback.FALLBACK_ACCOUNTS_FILENAME).is_file():
             self.skipTest(f"no fallback table at {config.CHARTS_DIR}")
 

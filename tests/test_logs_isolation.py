@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import config
+from live_paths import live
 
 fake_openai = types.ModuleType("openai")
 class OpenAI:
@@ -36,6 +37,16 @@ class LogsIsolationTest(unittest.TestCase):
     def test_event_log_write_lands_in_temp_and_not_in_the_real_logs_dir(self):
         real_logs_dir = config.LOGS_DIR
         before = _snapshot(real_logs_dir)
+        # **And the genuinely live one.** tests/conftest.py redirects
+        # config.LOGS_DIR into a session temp directory, so the snapshot above
+        # now guards a temp folder against a temp folder. That is still worth
+        # asserting, because it catches a leak inside the test, but it is no
+        # longer this class's stated subject: section 8.6 has the console's
+        # intake panel reading the live files. live() maps back to them. Paul's
+        # instruction, 2026-09-05: a check that quietly stops checking its
+        # subject is a check that cannot fail.
+        live_logs_dir = live(config.LOGS_DIR)
+        live_before = _snapshot(live_logs_dir)
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             temp_path = Path(temp_dir)
@@ -67,8 +78,13 @@ class LogsIsolationTest(unittest.TestCase):
         after = _snapshot(real_logs_dir)
         self.assertEqual(
             before, after,
-            "the real logs directory must be byte-for-byte unchanged: "
+            "the redirected logs directory must be byte-for-byte unchanged: "
             "no file created, none grown",
+        )
+        self.assertEqual(
+            live_before, _snapshot(live_logs_dir),
+            f"the LIVE logs directory at {live_logs_dir} must be byte-for-byte "
+            "unchanged: no file created, none grown",
         )
 
     def test_config_is_restored_after_redirection(self):

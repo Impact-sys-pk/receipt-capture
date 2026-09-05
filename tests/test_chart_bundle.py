@@ -23,6 +23,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import config
+from live_paths import LiveBundle
 from worker.categorisation import chart
 
 CHART_HEADER = (
@@ -286,11 +287,19 @@ class RealBundleTest(unittest.TestCase):
     """The two counts the brief of 2026-09-04 asks for, read from the published
     bundle itself.
 
-    Skipped where the bundle is not present, so the suite still runs on a machine
-    that has no practice root.
+    **Reads the real bundle through LiveBundle, not config.CHARTS_DIR.** Since
+    tests/conftest.py redirects every config path into a session temp directory,
+    the plain constant points at an empty folder and this class would skip, and a
+    skipped test reports success. Paul's instruction, 2026-09-05: a test that
+    silently skips under the redirect is a check that cannot fail.
+
+    Still skipped where the bundle is genuinely not on the machine, which is the
+    condition it always had.
     """
 
     def setUp(self):
+        self._live = LiveBundle().__enter__()
+        self.addCleanup(self._live.__exit__, None, None, None)
         if not (config.CHARTS_DIR / config.MASTER_CHART_FILENAME).is_file():
             self.skipTest(f"no chart bundle at {config.CHARTS_DIR}")
 

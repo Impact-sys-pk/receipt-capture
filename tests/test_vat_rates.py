@@ -25,6 +25,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import config
+from live_paths import LiveBundle
 from worker import vat_rates
 from worker.extraction.postprocess import establish_gross_from_vat
 
@@ -288,11 +289,16 @@ class DeletedConstantsTest(unittest.TestCase):
 class RealBundleRatesTest(unittest.TestCase):
     """The value the brief asks for, read from the published file itself.
 
-    Skipped where the bundle is not present, so the suite still runs on a machine
-    that has no practice root.
+    **Reads the real bundle through LiveBundle**, for the reason RealBundleTest
+    in tests/test_chart_bundle.py gives: conftest redirects config.CHARTS_DIR
+    into temp, and without this the class would skip and report success.
+
+    Still skipped where the bundle is genuinely not on the machine.
     """
 
     def setUp(self):
+        self._live = LiveBundle().__enter__()
+        self.addCleanup(self._live.__exit__, None, None, None)
         if not (config.CHARTS_DIR / vat_rates.VAT_RATES_FILENAME).is_file():
             self.skipTest(f"no VAT rate table at {config.CHARTS_DIR}")
 

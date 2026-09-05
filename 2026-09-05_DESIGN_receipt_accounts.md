@@ -216,15 +216,28 @@ does this one work.**
 
 ## 10. What is built, as at 2026-09-05
 
+**Corrected 2026-09-05 17:22 BST by the consultant session, and the correction is the point of the
+table.** Three rows sat in the wrong column: **10j.6 and 10j.8 were built by amendment 227** and
+**10j.10 by amendment 229**, and this table was written between them and not moved with either.
+**Ten of the eleven sub-steps are built. Only 10j.11 is not.** The superseded table is kept below
+rather than deleted.
+
 | Built | Not built |
 |---|---|
-| Layer 5 works at all, 10j.1 | The two `service.py` call sites, 10j.6 |
-| Supplier name reaches it, 10j.2 | The pipeline reads the fallback, 10j.8 |
-| Gross amount reaches it, 10j.3 | Layer 5 chooses from the 66, 10j.10 |
-| Line items extracted, 10j.4 | Learning, 10j.11 |
+| Layer 5 works at all, 10j.1 | Learning, 10j.11 |
+| Supplier name reaches it, 10j.2 | |
+| Gross amount reaches it, 10j.3 | |
+| Line items extracted, 10j.4 | |
 | Layer 5 uses all three, 10j.5 | |
+| The two `service.py` call sites, 10j.6 | |
 | The fallback column and its publish, 10j.7 | |
+| The pipeline reads the fallback, 10j.8 | |
 | `receipt_accounts.csv` placed, 10j.9 | |
+| Layer 5 chooses from the 66, 10j.10 | |
+
+*The table this replaced, kept rather than deleted:* Built held 10j.1 to 10j.5, 10j.7 and 10j.9.
+Not built held ~~the two `service.py` call sites, 10j.6~~, ~~the pipeline reads the fallback,
+10j.8~~, ~~layer 5 chooses from the 66, 10j.10~~, and learning, 10j.11.
 
 **Layer 5 had never returned an answer before 2026-09-05.** `_ai_suggest()` passed
 `response_format` as a dict, and `client.beta.chat.completions.parse()` only parses the reply when

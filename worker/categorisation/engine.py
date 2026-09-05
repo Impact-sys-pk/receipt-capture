@@ -33,7 +33,8 @@ try:
 except ImportError:
     OpenAI = None
 from pydantic import BaseModel, Field
-from .chart import get_eligible_accounts_for_client
+from . import receipt_accounts
+from .receipt_accounts import load_receipt_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -383,10 +384,19 @@ class CategorisationEngine:
                 stable for the exact and fuzzy layers, and it is lossy: rule 8 of
                 extract_vendor_key() keeps only the first word once more than two
                 remain, so "Canary Hand Car Wash" arrives here as "canary".
-            client_id: The client, whose published chart bounds what may be
-                suggested. Was business_type until 2026-09-04, which selected one
-                of three hardcoded lists in the deleted coa.py. The chart a
-                client is on is a property of the client, not of its trade.
+            client_id: The client. **Not read here since sub-step 10j.10 on
+                2026-09-05**, when layer 5 stopped choosing from this client's
+                published chart and started choosing from the 66 accounts
+                Intellibills owns and ships. Kept in the signature because it is
+                what a later step keys learning on, and because removing it would
+                churn five call sites for nothing.
+                ~~The client, whose published chart bounds what may be
+                suggested.~~ It was business_type until 2026-09-04, which
+                selected one of three hardcoded lists in the deleted coa.py, and
+                then the client id, because the chart a client is on is a
+                property of the client and not of its trade. **The chart is now
+                what the answer is checked against afterwards rather than what it
+                is chosen from**, which is fallback.resolve_against_chart().
             supplier_name: The supplier as it appeared on the receipt. Added
                 2026-09-05, on the first run of layer 5 this project has ever
                 made. Given "canary" alone the model returned "Software and
@@ -424,11 +434,33 @@ class CategorisationEngine:
             return None
 
         try:
-            # The accounts this client's published chart marks
-            # classifier_eligible. Layer 5 is the only layer that reads a chart.
-            coa = get_eligible_accounts_for_client(client_id)
+            # **The accounts a receipt can be, which Intellibills owns and ships,
+            # and not this client's published chart.** Sub-step 10j.10, Paul's
+            # decision of 2026-09-05, item 152.
+            #
+            # It was get_eligible_accounts_for_client(client_id) until then, and
+            # the reason it is not is one line: a learned vendor mapping is only
+            # worth anything in a vocabulary its owner controls. "Halfords is
+            # vehicle repairs and servicing" learned against one client's chart
+            # is worth nothing to the next client, whose chart is numbered and
+            # named differently.
+            #
+            # **chart.py is not deleted and is not unused.** Its consumer moved:
+            # it is now what the chart check in fallback.py tests membership
+            # against after this returns, rather than what layer 5 chooses from.
+            # That check is what makes an account this client does not hold
+            # resolve to its published fallback or reach Review, and until this
+            # change it could never fire, because layer 5's answer was always
+            # already in the client's chart.
+            #
+            # client_id is no longer read here and is kept in the signature: it
+            # is what a later step keys learning on, and the callers all pass it.
+            coa = load_receipt_accounts()
             if not coa:
-                logger.warning(f"no classifier-eligible accounts for client_id={client_id}")
+                logger.warning(
+                    "no receipt accounts to suggest from; "
+                    f"{receipt_accounts.RECEIPT_ACCOUNTS_PATH.name} could not be read"
+                )
                 return None
 
             # What is known about the receipt, one line each, and a line is

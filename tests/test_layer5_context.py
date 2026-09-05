@@ -66,6 +66,12 @@ class _PromptRecorder:
         return _FakeResponse(engine_module.AiAccountSuggestion(code="7391", name="Car wash"))
 
 
+# Two accounts, and both are deliberate. 7391 Car wash is one of the 66 and is
+# absent from most library charts, which is the case the fallback exists for.
+# 0081 is a capital addition and is NOT one of the 66: Paul removed the five
+# capital additions on 2026-09-05, so a real pool cannot offer it. It is kept
+# here because these tests are about context reaching the model rather than
+# about the pool's membership, and a pool of one would not show a list.
 POOL = [("7391", "Car wash"), ("0081", "Motor vehicles - cars - additions")]
 
 
@@ -113,7 +119,7 @@ class TheyReachThePromptTest(unittest.TestCase):
     def _prompt(self, **kwargs):
         instance = engine_module.CategorisationEngine(repo=None, enable_ai_fallback=True)
         with patch.object(engine_module, "OpenAI", _PromptRecorder), \
-             patch.object(engine_module, "get_eligible_accounts_for_client",
+             patch.object(engine_module, "load_receipt_accounts",
                           return_value=POOL):
             result = instance._ai_suggest("halfords", "CLIENT001", "Halfords Autocentre",
                                           **kwargs)

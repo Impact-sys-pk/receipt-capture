@@ -247,9 +247,19 @@ class ChartCodeToFilenameTest(unittest.TestCase):
 
 
 class EngineWiringTest(unittest.TestCase):
-    """Layer 5 asks for the client's list, not for a business type's."""
+    """Layer 5 asks for the accounts Intellibills ships, and not for a chart.
 
-    def test_ai_suggest_asks_the_loader_for_this_client(self):
+    **Rewritten at sub-step 10j.10 on 2026-09-05**, and the replacement is the
+    inverse of what was here. `test_ai_suggest_asks_the_loader_for_this_client`
+    asserted layer 5 called `get_eligible_accounts_for_client(client_id)`; that
+    is now false by design, so it is replaced rather than deleted, and a test
+    that layer 5 does **not** reach the chart loader is added beside it. The
+    chart is still read, by `fallback.resolve_against_chart()` after
+    `categorise()` returns, which is a different question covered in
+    tests/test_fallback_accounts.py.
+    """
+
+    def test_ai_suggest_asks_for_the_shipped_receipt_accounts(self):
         from worker.categorisation import engine as engine_module
 
         instance = engine_module.CategorisationEngine(repo=None, enable_ai_fallback=True)
@@ -257,26 +267,54 @@ class EngineWiringTest(unittest.TestCase):
         # be what makes this pass, and the loader returns nothing so no API call
         # is ever reached. Nothing here costs money.
         with patch.object(engine_module, "OpenAI", object()), \
-             patch.object(engine_module, "get_eligible_accounts_for_client",
+             patch.object(engine_module, "load_receipt_accounts",
                           return_value=[]) as loader:
             self.assertIsNone(instance._ai_suggest("somevendor", "CLIENT001"))
-        loader.assert_called_once_with("CLIENT001")
+        loader.assert_called_once_with()
 
-    def test_categorise_passes_the_client_and_not_the_business_type(self):
-        # The test above calls _ai_suggest() directly, so it says nothing about
-        # the call site in categorise(). Found by mutation: putting business_type
-        # back at that call site left the whole suite green until this was added.
+    def test_ai_suggest_does_not_read_a_chart_at_all(self):
+        """The half a rename could not have given us.
+
+        Swapping the loader in the test without swapping it in the engine would
+        leave this class green while layer 5 still chose from the client's
+        chart: the new loader would simply never be called and the old one
+        still would. This asserts the chart loader is untouched."""
+        from worker.categorisation import chart as chart_module
         from worker.categorisation import engine as engine_module
 
         instance = engine_module.CategorisationEngine(repo=None, enable_ai_fallback=True)
         with patch.object(engine_module, "OpenAI", object()), \
-             patch.object(engine_module, "get_eligible_accounts_for_client",
+             patch.object(engine_module, "load_receipt_accounts", return_value=[]), \
+             patch.object(chart_module, "get_eligible_accounts_for_client") as chart_loader:
+            instance._ai_suggest("somevendor", "CLIENT001")
+        chart_loader.assert_not_called()
+
+    def test_the_engine_module_no_longer_holds_the_chart_loader(self):
+        # The sharper form of the test above: a name the engine does not hold
+        # cannot be called by accident later. If layer 5 ever needs a chart
+        # again that is a decision, and this goes red to make it one.
+        from worker.categorisation import engine as engine_module
+
+        self.assertFalse(hasattr(engine_module, "get_eligible_accounts_for_client"))
+        self.assertTrue(hasattr(engine_module, "load_receipt_accounts"))
+
+    def test_categorise_reaches_the_receipt_accounts_through_its_call_site(self):
+        # The test above calls _ai_suggest() directly, so it says nothing about
+        # the call site in categorise(). Found by mutation on 2026-09-04: putting
+        # business_type back at that call site left the whole suite green until a
+        # test like this was added. Kept for the same reason with the new loader,
+        # because the call site is still the untested half.
+        from worker.categorisation import engine as engine_module
+
+        instance = engine_module.CategorisationEngine(repo=None, enable_ai_fallback=True)
+        with patch.object(engine_module, "OpenAI", object()), \
+             patch.object(engine_module, "load_receipt_accounts",
                           return_value=[]) as loader:
             instance.categorise(
                 receipt_id="r-1", extraction_id="e-1", supplier_name="Some Vendor",
                 client_id="CLIENT001", business_type="PHV_DRIVER",
             )
-        loader.assert_called_once_with("CLIENT001")
+        loader.assert_called_once_with()
 
     def test_the_deleted_module_is_gone(self):
         with self.assertRaises(ImportError):
@@ -284,8 +322,21 @@ class EngineWiringTest(unittest.TestCase):
 
 
 class RealBundleTest(unittest.TestCase):
-    """The two counts the brief of 2026-09-04 asks for, read from the published
-    bundle itself.
+    """What `load_chart()` returns from the published bundle itself.
+
+    **Renamed in place at sub-step 10j.10, rather than re-pointed or deleted, and
+    what changed is what the numbers describe.** Until 2026-09-05 these two
+    counts were the size of the pool layer 5 was offered, because layer 5 chose
+    from `get_eligible_accounts_for_client()`. It now chooses from the 66
+    accounts Intellibills ships, so **95 and 39 no longer describe layer 5 at
+    all.** They still describe `load_chart()`'s `classifier_eligible` filter,
+    which is still needed and is still the only reader of that column, so the
+    assertions stand and the test method says what it is counting.
+
+    The brief of 2026-09-05 asked for a re-point or a rename and for a note of
+    which was done: **renamed, with the docstring and the method name changed and
+    the numbers untouched.** Nothing was re-pointed, because nothing about what
+    this class reads has moved.
 
     **Reads the real bundle through LiveBundle, not config.CHARTS_DIR.** Since
     tests/conftest.py redirects every config path into a session temp directory,
@@ -303,13 +354,26 @@ class RealBundleTest(unittest.TestCase):
         if not (config.CHARTS_DIR / config.MASTER_CHART_FILENAME).is_file():
             self.skipTest(f"no chart bundle at {config.CHARTS_DIR}")
 
-    def test_the_real_bundle_returns_the_published_counts(self):
+    def test_load_chart_returns_the_published_eligible_counts(self):
+        # Not "the pool layer 5 is offered" any more. That is 66 for every
+        # client and is asserted in tests/test_receipt_accounts.py.
         for filename, expected in (
             (config.MASTER_CHART_FILENAME, 95),
             ("PHV_DRIVER.csv", 39),
         ):
             with self.subTest(chart=filename):
                 self.assertEqual(len(chart.load_chart(filename)), expected)
+
+    def test_these_counts_are_no_longer_what_layer_5_sees(self):
+        # The half that makes the rename mean something. Without it the class
+        # reads as though nothing changed on 2026-09-05.
+        from worker.categorisation.receipt_accounts import load_receipt_accounts
+
+        eligible = len(chart.load_chart(config.MASTER_CHART_FILENAME))
+        offered = len(load_receipt_accounts())
+        self.assertNotEqual(eligible, offered)
+        self.assertEqual(offered, len(load_receipt_accounts()),
+                         "the shipped list does not depend on any chart")
 
 
 if __name__ == "__main__":

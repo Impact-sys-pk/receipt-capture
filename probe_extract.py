@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
-"""Probe: extract a receipt, then categorise it with everything the extraction found.
+"""Probe: extract a receipt, categorise it, and resolve the answer to the chart.
 
-Two stages in one run, so the whole chain is measured rather than half of it.
+**Three stages since sub-step 10j.10 on 2026-09-05**, so the whole chain is
+measured rather than two thirds of it. The third stage is the point of the
+change: **the chart check and the fallback run at the five `categorise()` call
+sites and not inside `categorise()`**, so a probe that stopped at stage two
+printed an answer that may not be in the client's chart and was not what the
+pipeline would have posted.
+
+Stage three calls `worker.categorisation.fallback.resolve_against_chart()`, the
+same shared helper all five call sites use, with `repo=None` so it writes no
+`resolution_events` row.
 
 READ ONLY. It calls the extractor and prints. It writes no database row, no
 sidecar and no file, and it does not move or rename the receipt.
@@ -33,8 +42,10 @@ import sys
 from pathlib import Path
 
 import config
-from worker.categorisation.chart import get_eligible_accounts_for_client
+from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.categorisation.engine import CategorisationEngine
+from worker.categorisation.fallback import resolve_against_chart
+from worker.categorisation.receipt_accounts import load_receipt_accounts
 from worker.database.repository import Repository
 from worker.extraction.factory import get_extractor
 
@@ -54,6 +65,17 @@ def recent_receipt_paths(limit: int = 6):
 
 
 def main():
+    # **Pre-existing defect, hit on 2026-09-05 and fixed here because it stops
+    # the probe finishing.** Windows gives this a cp1252 stdout, and one of the
+    # six test receipts is named with U+25A0, a black square. Printing it raised
+    # UnicodeEncodeError three receipts in, after four OpenAI calls had been paid
+    # for. errors="replace" rather than a strict encoding: a probe that prints a
+    # filename wrongly is better than one that stops.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
     if len(sys.argv) > 1:
         targets = [(p, Path(p).name, "probe", "UNKNOWN") for p in sys.argv[1:]]
     else:
@@ -93,7 +115,8 @@ def main():
 
         # Stage two. The same result through the engine, AI layer on.
         client = config.CLIENTS_BY_ID.get(client_id) or {}
-        pool = get_eligible_accounts_for_client(client_id)
+        pool = load_receipt_accounts()
+        chart_accounts = get_chart_accounts_for_client(client_id)
         cat = engine.categorise(
             receipt_id=receipt_id,
             extraction_id="probe",
@@ -104,9 +127,26 @@ def main():
             line_items=items if isinstance(items, list) else None,
         )
         print(f"  client        {client_id}  chart_code={client.get('chart_code') or '(none)'}  "
-              f"pool={len(pool)}")
-        print(f"  CATEGORISED   source={cat.match_source}  code={cat.suggested_code!r}  "
+              f"pool={len(pool)} (shipped receipt accounts)  "
+              f"chart={len(chart_accounts)} accounts")
+        print(f"  LAYER 5 CHOSE source={cat.match_source}  code={cat.suggested_code!r}  "
               f"name={cat.suggested_name!r}  confidence={cat.confidence}")
+
+        # Stage three, added at sub-step 10j.10. **The chart check and the
+        # fallback run at the five categorise() call sites, not inside
+        # categorise()**, so without this the probe prints an answer that may not
+        # be in the client's chart and is not what the pipeline would post.
+        #
+        # This is the same shared helper the pipeline uses,
+        # worker.categorisation.fallback.resolve_against_chart(), called with no
+        # repo so it writes no resolution_events row. READ ONLY is still true.
+        chosen_code, chosen_name = cat.suggested_code, cat.suggested_name
+        cat = resolve_against_chart(cat, repo=None)
+        arrow = "unchanged" if cat.suggested_code == chosen_code else "CHANGED"
+        print(f"  RESOLVED TO   code={cat.suggested_code!r}  name={cat.suggested_name!r}  "
+              f"outcome={cat.chart_outcome}  [{arrow}]")
+        if cat.chart_note:
+            print(f"                {cat.chart_note}")
 
     repo.close()
     print("-" * 78)

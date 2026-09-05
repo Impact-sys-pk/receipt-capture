@@ -89,7 +89,12 @@ LOCATION_WORDS = {
 
 @dataclass
 class CategorisationResult:
-    """Result of attempting to categorise a transaction."""
+    """Result of attempting to categorise a transaction.
+
+    The last four fields are filled by `fallback.resolve_against_chart()` after
+    categorise() has returned, not by any layer. They carry what the chart check
+    did, so a caller can see a substitution without querying the audit row.
+    """
     receipt_id: str
     extraction_id: str
     client_id: str
@@ -102,6 +107,13 @@ class CategorisationResult:
     match_source: str = "unmatched"
     matched_vendor: Optional[str] = None
     needs_review: bool = True
+    # "not_checked" until resolve_against_chart() has run, then one of
+    # "no_code", "unreadable_chart", "in_chart", "substituted", "unusable".
+    chart_outcome: str = "not_checked"
+    # What the layer said, kept only where suggested_code no longer says it.
+    original_code: Optional[str] = None
+    original_name: Optional[str] = None
+    chart_note: Optional[str] = None
 
 
 def normalise_description(raw: str) -> str:

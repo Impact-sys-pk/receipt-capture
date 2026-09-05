@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import config
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
+from worker.categorisation.fallback import resolve_against_chart
 from worker.filing import file_receipt, file_review, make_enriched_sidecar, determine_tax_year
 from worker.validation.rules import validate
 
@@ -66,8 +67,18 @@ def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
 
 def _log_receipt(receipt_id, message_id, filename, action, firm_id, client_id=None, extraction_status=None,
                 supplier_name=None, invoice_date=None, gross_amount=None, review_reason=None,
-                duplicate_of=None, duplicate_reason=None, run_id=None):
-    """Log receipt processing event to audit trail."""
+                duplicate_of=None, duplicate_reason=None, run_id=None, chart_outcome=None):
+    """Log receipt processing event to audit trail.
+
+    `chart_outcome` is what resolve_against_chart() did with the suggested code:
+    "substituted" where the published fallback was used, "unusable" where the
+    receipt lost its code, and omitted for the ordinary "in_chart". It is written
+    only here and not in app.py's near-identical copy of this function, because
+    app.py has no _log_receipt() call in scope of a categorisation. **The two
+    copies are a pre-existing duplication and they already differ**: this one
+    writes client_id whenever it has one, app.py's writes it only when the action
+    is "created". Flagged 2026-09-05 and deliberately not repaired here.
+    """
     entry = {
         "receipt_id": receipt_id,
         "message_id": message_id,
@@ -92,6 +103,8 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, client_id=No
         entry["duplicate_of"] = duplicate_of
     if duplicate_reason:
         entry["duplicate_reason"] = duplicate_reason
+    if chart_outcome:
+        entry["chart_outcome"] = chart_outcome
 
     log_path = config.LOGS_DIR / f"receipt_events_{firm_id or config.UNATTRIBUTED_FIRM_ID}.ndjson"
     with log_path.open("a", encoding="utf-8") as f:
@@ -191,6 +204,9 @@ def process_extraction_result(
 
     filed_path = None
     review_path = None
+    # What the chart check did, for the event log at the end. None on every path
+    # that never categorises, which is every path but the ok one.
+    chart_outcome = None
 
     # 10d.16 and 10d.18. An unresolved client files nothing into Clients and the
     # item goes to Review, so a clean extraction for a client nobody can name is
@@ -228,6 +244,16 @@ def process_extraction_result(
             gross_amount=extraction.gross_amount,
             line_items=extraction.line_items,
         )
+        # The suggested code has to be one the client's chart holds, whichever
+        # layer produced it. Substitutes the published fallback where there is
+        # one and the chart has it, and otherwise leaves no code and sends the
+        # receipt to Review. Runs before the code reaches either the
+        # categorisations row or the sidecar, both of which are below.
+        categorisation = resolve_against_chart(categorisation, repo=repo)
+        # "in_chart" is the ordinary case and is left out of the event log; the
+        # other two are what a reader of the log is looking for.
+        if categorisation.chart_outcome in ("substituted", "unusable"):
+            chart_outcome = categorisation.chart_outcome
 
         # Save categorisation
         cat_id = str(uuid.uuid4())
@@ -359,7 +385,8 @@ def process_extraction_result(
         invoice_date=extraction.invoice_date,
         gross_amount=extraction.gross_amount,
         duplicate_of=duplicate_of,
-        run_id=run_id
+        run_id=run_id,
+        chart_outcome=chart_outcome,
     )
 
     return (validation.status, filed_path or review_path)

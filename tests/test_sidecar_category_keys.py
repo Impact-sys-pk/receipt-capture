@@ -23,6 +23,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import config
+from tests.chart_fixtures import TempChartBundle
 
 fake_openai = types.ModuleType("openai")
 class OpenAI:
@@ -76,9 +77,14 @@ class TempEnvironment:
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
                           "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
         }
+        # A chart holding the codes this file seeds, so the fallback check has
+        # something to check against and the test does not read the real bundle
+        # out of OneDrive. See tests/chart_fixtures.py for why it was needed.
+        self._chart = TempChartBundle().__enter__()
         return self
 
     def __exit__(self, *exc):
+        self._chart.__exit__(*exc)
         for name, value in self._saved.items():
             setattr(config, name, value)
         self._temp.cleanup()
@@ -362,6 +368,85 @@ class MakeEnrichedSidecarTest(unittest.TestCase):
         self.assertIsNone(payload["category_code"])
         self.assertIsNone(payload["category_name"])
         self.assertIsNone(payload["category"])
+
+
+class ChartFallbackThroughThePipelineTest(unittest.TestCase):
+    """The whole of Task 2, through process_extraction_result() rather than
+    against resolve_against_chart() on its own.
+
+    tests/test_fallback_accounts.py covers the check in isolation. This is the
+    other half: the substituted code reaching the sidecar on disk, the audit row
+    reaching the database, and the event log naming the outcome. Without it the
+    unit tests would pass for a check that was never called.
+    """
+
+    def _run(self, mapping_code, mapping_name, accounts, fallbacks):
+        with TempEnvironment() as env:
+            with TempChartBundle(accounts=accounts, fallbacks=fallbacks):
+                repo = Repository()
+                try:
+                    env.seed_mapping(repo, code=mapping_code, name=mapping_name)
+                    file_path = env.seed_receipt(repo, "r-fb")
+                    _run_pipeline(env, repo, "r-fb", _extraction(), file_path)
+                    events = repo.list_resolution_events("r-fb")
+                finally:
+                    repo.close()
+                sidecar = env.filed_sidecar()
+                log = config.LOGS_DIR / "receipt_events_INTELLITAX.ndjson"
+                entries = [json.loads(line) for line in
+                           log.read_text(encoding="utf-8").splitlines() if line.strip()]
+        return sidecar, events, entries
+
+    def test_a_substitution_reaches_the_sidecar_the_database_and_the_log(self):
+        sidecar, events, entries = self._run(
+            "7391", "Car wash",
+            accounts=[("7310", "Vehicle repairs and servicing")],
+            fallbacks=[("7391", "7310")],
+        )
+        # The sidecar carries an account the client's chart actually holds.
+        self.assertEqual(sidecar["category_code"], "7310")
+        self.assertEqual(sidecar["category_name"], "Vehicle repairs and servicing")
+        self.assertEqual(sidecar["category"], "Vehicle repairs and servicing")
+        # And the swap is not silent.
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["actor"], "pipeline")
+        self.assertEqual(events[0]["outcome"], "substituted")
+        self.assertEqual(
+            [e.get("chart_outcome") for e in entries if e["action"] == "extracted"],
+            ["substituted"],
+        )
+
+    def test_an_unusable_code_files_the_receipt_with_no_account(self):
+        sidecar, events, entries = self._run(
+            "7391", "Car wash",
+            accounts=[("7500", "Printing and postage")],
+            fallbacks=[],
+        )
+        # Three nulls, not the string "unmatched": Desktop cannot match that and
+        # someone then posts it to the cashbook.
+        self.assertIsNone(sidecar["category_code"])
+        self.assertIsNone(sidecar["category_name"])
+        self.assertIsNone(sidecar["category"])
+        self.assertEqual(events[0]["outcome"], "unusable")
+        self.assertEqual(
+            [e.get("chart_outcome") for e in entries if e["action"] == "extracted"],
+            ["unusable"],
+        )
+
+    def test_the_ordinary_case_leaves_no_event_and_no_log_key(self):
+        # The other half. Without it both tests above would pass for a check that
+        # fired on every receipt, which would bury the two that matter.
+        sidecar, events, entries = self._run(
+            "7310", "Vehicle repairs and servicing",
+            accounts=[("7310", "Vehicle repairs and servicing")],
+            fallbacks=[("7391", "7310")],
+        )
+        self.assertEqual(sidecar["category_code"], "7310")
+        self.assertEqual(events, [])
+        self.assertEqual(
+            [e.get("chart_outcome") for e in entries if e["action"] == "extracted"],
+            [None],
+        )
 
 
 if __name__ == "__main__":

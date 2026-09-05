@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
+from worker.categorisation.fallback import resolve_against_chart
 from worker.extraction.base import ExtractionResult
 from worker.filing import (
     determine_tax_year,
@@ -673,7 +674,22 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             supplier_name=merged["supplier_name"],
             client_id=receipt["client_id"],
             business_type=business_type,
+            # merged["gross_amount"] is the corrected figure written to the
+            # extraction row twenty lines above. Layer 5 is the only reader; it
+            # was the only one of the five call sites on this path not passing
+            # it, so a Halfords receipt resolved here could still be answered
+            # "0081 Motor vehicles - cars - additions" with nothing in the
+            # prompt saying how much had been spent. No line_items: they are not
+            # stored, and this path has no extraction call in hand.
+            gross_amount=merged["gross_amount"],
         )
+        # The suggested code has to be one the client's chart holds, whichever
+        # layer produced it. See resolve_against_chart() in
+        # worker/categorisation/fallback.py. It runs before save_categorisation()
+        # below and before the sidecar at step 10, and it does not touch the
+        # operator's own GL override at step 9: that is applied afterwards and
+        # still wins.
+        categorisation = resolve_against_chart(categorisation, repo=repo)
         categorisation_id = str(uuid.uuid4())
         repo.save_categorisation(
             categorisation_id=categorisation_id,
@@ -1072,7 +1088,13 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             supplier_name=merged["supplier_name"],
             client_id=receipt["client_id"],
             business_type=business_type,
+            # As at 4.3 step 8 above, and for the same reason. No line_items.
+            gross_amount=merged["gross_amount"],
         )
+        # The suggested code has to be one the client's chart holds, whichever
+        # layer produced it. Desktop's own category is applied below, into the
+        # correction columns, and is unaffected.
+        categorisation = resolve_against_chart(categorisation, repo=repo)
         categorisation_id = str(uuid.uuid4())
         repo.save_categorisation(
             categorisation_id=categorisation_id,

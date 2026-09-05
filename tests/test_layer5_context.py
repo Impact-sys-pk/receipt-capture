@@ -16,6 +16,7 @@ engine and there must not be one until outstanding item 33 is decided.
 
 import inspect
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from worker.categorisation import engine as engine_module
@@ -203,6 +204,86 @@ class ExtractionCarriesLineItemsTest(unittest.TestCase):
         # if somebody adds the column without the decision behind it.
         from worker.database import schema
         self.assertNotIn("line_items", inspect.getsource(schema))
+
+
+class EveryCallSitePassesTheAmountTest(unittest.TestCase):
+    """The set is enumerated, not listed.
+
+    The previous brief said there were three call sites and there are five. The
+    two it missed were `worker/resolution/service.py`, once on the console
+    resolution path and once on the Desktop resolution-note path, and both were
+    found by grepping rather than by reading the brief. So this walks the
+    repository's own syntax trees and asserts a property of every call it finds,
+    which is the habit CLAUDE.md asks for in front of the word "the" and a
+    plural: a sixth call site added tomorrow is checked without anyone editing a
+    list here.
+    """
+
+    # Read-only measurement scripts. They call categorise() to print what it
+    # says and write no database row, so passing the amount is a property of
+    # what they measure rather than of the pipeline. probe_extract.py does pass
+    # it; probe_layer5.py reads the database and passes what it has.
+    PROBES = {"probe_layer5.py", "probe_extract.py"}
+
+    def _call_sites(self):
+        import ast
+        import config
+
+        root = Path(config.__file__).resolve().parent
+        skip = {".venv", ".history", "tests", "docs", "__pycache__", "archive"}
+        found = []
+        for path in root.rglob("*.py"):
+            parts = set(path.relative_to(root).parts)
+            if parts & skip or path.name in self.PROBES:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                if name != "categorise":
+                    continue
+                found.append((
+                    str(path.relative_to(root)).replace("\\", "/"),
+                    node.lineno,
+                    {kw.arg for kw in node.keywords},
+                ))
+        return sorted(found)
+
+    def test_there_are_five_of_them_and_the_files_are_named(self):
+        # The files and their counts, not the line numbers. A line number moves
+        # whenever anything above it is edited, and a test that fails for that
+        # is a test nobody trusts by the third time.
+        sites = self._call_sites()
+        counted = {}
+        for filename, _line, _kws in sites:
+            counted[filename] = counted.get(filename, 0) + 1
+        self.assertEqual(
+            counted,
+            {
+                "app.py": 1,
+                "retroactive_categorise.py": 1,
+                "worker/extraction_pipeline.py": 1,
+                "worker/resolution/service.py": 2,
+            },
+            "the set moved; here it is in full: "
+            + "; ".join(f"{f}:{line}" for f, line, _ in sites),
+        )
+        self.assertEqual(len(sites), 5)
+
+    def test_every_one_of_them_passes_the_gross_amount(self):
+        missing = [f"{f}:{line}" for f, line, kws in self._call_sites()
+                   if "gross_amount" not in kws]
+        self.assertEqual(missing, [], f"these call sites do not pass it: {missing}")
+
+    def test_only_the_live_path_can_pass_line_items(self):
+        # The other four read an extraction row back out of the database, and
+        # `extractions` has no column for line items. A call site that started
+        # passing them would be passing None dressed up as a value.
+        passing = sorted({f for f, _line, kws in self._call_sites()
+                          if "line_items" in kws})
+        self.assertEqual(passing, ["worker/extraction_pipeline.py"])
 
 
 if __name__ == "__main__":

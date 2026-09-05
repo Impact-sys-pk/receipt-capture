@@ -12,6 +12,7 @@ import config
 from worker.database.schema import init_db
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
+from worker.categorisation.fallback import resolve_against_chart
 
 logging.basicConfig(
     level=logging.INFO,
@@ -142,6 +143,10 @@ def main():
                     # is in scope. line_items is not a column, so it stays None.
                     gross_amount=extraction.get("gross_amount"),
                 )
+                # The suggested code has to be one the client's chart holds,
+                # whichever layer produced it. See resolve_against_chart() in
+                # worker/categorisation/fallback.py.
+                categorisation = resolve_against_chart(categorisation, repo=repo)
 
                 # Save categorisation
                 cat_id = str(uuid4())

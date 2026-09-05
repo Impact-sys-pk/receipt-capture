@@ -14,6 +14,7 @@ from pathlib import Path
 
 import config
 from worker.categorisation.engine import CategorisationEngine
+from worker.categorisation.fallback import resolve_against_chart
 from worker.database.repository import Repository
 from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
@@ -487,6 +488,11 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
                 # extraction back out of the database and they are not stored.
                 gross_amount=extraction.get("gross_amount"),
             )
+            # The suggested code has to be one the client's chart holds, whichever
+            # layer produced it. Runs before the code reaches either the
+            # categorisations row or the sidecar, both of which are below. See
+            # resolve_against_chart() in worker/categorisation/fallback.py.
+            categorisation = resolve_against_chart(categorisation, repo=repo)
 
             # Save categorisation
             cat_id = str(uuid.uuid4())

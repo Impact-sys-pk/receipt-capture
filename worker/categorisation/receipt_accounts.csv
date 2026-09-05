@@ -1,0 +1,67 @@
+﻿code,name,fallback_code,synonyms,vat_default,vat_variable,vat_recoverability,sa103f_box,mtd_itsa_category,vat_explanation
+5000,Purchases,,,Standard,No,,17,Cost of goods bought for resale or goods used,
+5001,Materials and consumables,,,Standard,No,,17,Cost of goods bought for resale or goods used,
+5002,Subcontractor costs,,,Standard,Yes,,18,Construction industry - payments to subcontractors,"Subcontractor services are normally standard-rated, but construction reverse charge and qualifying reduced or zero-rated construction work can alter the VAT treatment."
+5110,Carriage and freight inwards,,,Standard,Yes,,17,Cost of goods bought for resale or goods used,UK freight is normally standard-rated; qualifying international freight and certain import/export-related transport can be zero-rated or outside scope.
+5120,Carriage and freight outwards,,,Standard,Yes,,30,Other business expenses,UK freight is normally standard-rated; qualifying international freight and certain import/export-related transport can be zero-rated or outside scope.
+6130,Commissions payable,,,Standard,Yes,,30,Other business expenses,"Commission is normally standard-rated, but exempt financial intermediation or place-of-supply rules can alter the treatment."
+6200,Sales promotion,,,Standard,No,,24,Advertising,
+7001,Temporary and agency staff,,,Standard,No,,19,"Wages, salaries, and other staff costs",
+7002,Subcontracted staff,,,Standard,No,,19,"Wages, salaries, and other staff costs",
+7010,Staff training,,,Standard,No,,19,"Wages, salaries, and other staff costs",
+7011,Staff welfare,,,Standard,No,,19,"Wages, salaries, and other staff costs",
+7100,Rent,,,Exempt,Yes,,21,"Rent, rates, power, and insurance costs","Property rent is normally exempt, but an option to tax or specific property rules can make it taxable."
+7105,Insurance,,,Exempt,No,,21,"Rent, rates, power, and insurance costs",
+7106,Service charges,,,Not set,No,,21,"Rent, rates, power, and insurance costs",Service charges can follow the VAT treatment of the associated property rent; separately supplied property services are normally standard-rated.
+7107,Premises insurance,,,Exempt,No,,21,"Rent, rates, power, and insurance costs",
+7110,Rates,,,Outside scope,No,,21,"Rent, rates, power, and insurance costs",
+7113,Business rates,,,Outside scope,No,,21,"Rent, rates, power, and insurance costs",
+7114,Water rates,,,Zero-rated,Yes,,21,"Rent, rates, power, and insurance costs","Water and sewerage are commonly zero-rated, but supplies to certain industrial activities can be standard-rated."
+7200,"Light, heating and power",,,Standard,Yes,,21,"Rent, rates, power, and insurance costs","Business fuel and power are normally standard-rated; qualifying domestic, charity non-business or de minimis supplies can be reduced-rated."
+7210,Gas,,,Standard,Yes,,21,"Rent, rates, power, and insurance costs","Business gas is normally standard-rated; qualifying domestic, charity non-business or de minimis supplies can be reduced-rated."
+7220,Electricity,,,Standard,Yes,,21,"Rent, rates, power, and insurance costs","Business electricity is normally standard-rated; qualifying domestic, charity non-business or de minimis supplies can be reduced-rated."
+7300,Motor expenses,,,Standard,Yes,,20,"Car, van, and travel expenses",This is a broad motor-expense account; the VAT treatment depends on the underlying cost.
+7301,Fuel and oil,,,Standard,No,"Private use of road fuel can require a specific input-tax method, including restriction of input tax or use of the fuel scale charge.",20,"Car, van, and travel expenses",
+7302,EV charging,,,Standard,Yes,,20,"Car, van, and travel expenses",Public charging is standard-rated. Charging at home is at the domestic rate and the business proportion has to be worked out.
+7310,Vehicle repairs and servicing,,,Standard,No,,20,"Car, van, and travel expenses",
+7320,Vehicle licences,,,Outside scope,No,,20,"Car, van, and travel expenses",
+7330,Vehicle insurance,,,Exempt,No,,20,"Car, van, and travel expenses",
+7340,Parking and tolls,,,Standard,Yes,,20,"Car, van, and travel expenses","Commercial parking is normally standard-rated; statutory on-street parking, congestion charges and some public tolls can be outside scope."
+7380,Vehicle hire and leasing,,,Standard,No,Input VAT on leased cars is normally subject to a 50% block where private use is available; separately identified maintenance may be recoverable under the normal rules.,20,"Car, van, and travel expenses",
+7390,Other Vehicle expenses,,,Standard,Yes,,20,"Car, van, and travel expenses",This is a broad motor-expense account; VAT treatment depends on the underlying cost.
+7391,Car wash,7310,,Standard,Yes,,20,"Car, van, and travel expenses","Hand car washes are often not VAT registered, so there is frequently nothing to recover."
+7392,"Water, tissues and newspapers for passengers",,,Zero-rated,Yes,,20,"Car, van, and travel expenses",Bottled water and newspapers are zero-rated. Tissues are standard-rated.
+7400,Travelling,,,Zero-rated,Yes,,20,"Car, van, and travel expenses","Travel can include zero-rated passenger transport, standard-rated taxis, hotels and other costs, so the treatment depends on the underlying supply."
+7401,Travel - rail air and sea,,,Zero-rated,Yes,,20,"Car, van, and travel expenses","Qualifying passenger transport by rail, air and sea is generally zero-rated, but ancillary or non-qualifying services can have a different treatment."
+7402,Taxi and private hire,,,Standard,Yes,,20,"Car, van, and travel expenses",Taxi and private-hire services are normally standard-rated when supplied by a VAT-registered operator; other supplier circumstances can result in no VAT being charged.
+7403,Hotels and accommodation,,,Standard,Yes,,20,"Car, van, and travel expenses",UK hotel accommodation is normally standard-rated; overseas accommodation and certain long-stay or specialist arrangements can have a different UK VAT treatment.
+7404,Overseas travel,,,Outside scope,Yes,,20,"Car, van, and travel expenses","Overseas travel commonly includes supplies outside the scope of UK VAT or foreign VAT, while UK legs, booking fees or other components can have a different treatment."
+7406,Subsistence,,,Standard,Yes,,20,"Car, van, and travel expenses",Subsistence can include standard-rated restaurant and hot takeaway food as well as qualifying zero-rated food.
+7415,Business entertainment,,,Standard,Yes,"Input VAT is normally blocked on business entertainment of UK clients and other non-employees; specific exceptions can apply, including qualifying overseas-customer entertainment.",24,Business entertainment costs,"The underlying food, drink or entertainment can have different VAT liabilities."
+7416,Staff entertainment,,,Standard,Yes,,19,"Wages, salaries, and other staff costs","The underlying food, drink or entertainment can have different VAT liabilities."
+7500,"Printing, postage and stationery",,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs",This combined account can contain standard-rated stationery/postage and qualifying zero-rated printed matter.
+7505,Printing,,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs","Printing is normally standard-rated, but qualifying books, brochures, leaflets and similar printed matter can be zero-rated."
+7510,Postage & Courier Services,,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs","Commercial courier and delivery services are normally standard-rated, while qualifying Royal Mail universal postal services are exempt."
+7520,Stationery and office supplies,,,Standard,No,,23,"Phone, fax, stationery, and other office costs",
+7550,Telephone,,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs",UK telecoms are normally standard-rated; overseas or bundled services can have a different UK VAT treatment.
+7551,Telephone and mobile,,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs",UK telephone and mobile services are normally standard-rated; overseas or bundled services can have a different UK VAT treatment.
+7552,Internet and broadband,,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs",UK internet services are normally standard-rated; overseas or bundled services can have a different UK VAT treatment.
+7560,Computer costs,,,Standard,No,,23,"Phone, fax, stationery, and other office costs",
+7561,Software and subscriptions,,,Standard,Yes,,23,"Phone, fax, stationery, and other office costs",UK software and subscriptions are normally standard-rated; overseas SaaS commonly gives rise to reverse-charge treatment instead.
+7562,Website and hosting,,,Standard,Yes,,24,Advertising,UK website and hosting services are normally standard-rated; overseas suppliers commonly give rise to reverse-charge treatment instead.
+7600,Legal fees,,,Standard,No,,28,"Accountancy, legal and other professional fees",
+7601,Accountancy fees,,,Standard,No,,28,"Accountancy, legal and other professional fees",
+7602,Consultancy fees,,,Standard,No,,28,"Accountancy, legal and other professional fees",
+7603,Professional subscriptions,,,Standard,Yes,,30,Other business expenses,Qualifying subscriptions to certain non-profit professional or trade bodies can be exempt; other memberships and services can be standard-rated or mixed.
+7604,Management charges payable,,,Standard,No,,30,Other business expenses,
+7700,Equipment hire,,,Standard,No,,30,Other business expenses,
+7701,Operating lease rentals,,,Standard,No,,30,Other business expenses,
+7800,Repairs and maintenance,,,Standard,No,,22,Repairs and maintenance of property and equipment,
+7801,Cleaning,,,Standard,No,,22,Repairs and maintenance of property and equipment,
+7802,Repairs and maintenance - equipment,,,Standard,No,,22,Repairs and maintenance of property and equipment,
+7803,Repairs and maintenance - premises,,,Standard,No,,22,Repairs and maintenance of property and equipment,
+7942,Card processing fees,,,Exempt,Yes,,26,"Bank, credit card and other financial charges",Payment-processing charges can be exempt financial services or standard-rated technology/administration services depending on the supply.
+8200,Advertising and marketing,,,Standard,No,,24,Advertising,
+8202,Charitable donations,,,Outside scope,No,,30,Other business expenses,
+8240,Licences and statutory fees,,,Outside scope,No,,30,Other business expenses,
+8250,Sundry expenses,,,Not set,Yes,,30,Other business expenses,VAT treatment depends on the nature of the underlying goods or services.

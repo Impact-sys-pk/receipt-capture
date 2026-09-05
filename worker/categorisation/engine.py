@@ -32,9 +32,33 @@ try:
     from openai import OpenAI
 except ImportError:
     OpenAI = None
+from pydantic import BaseModel, Field
 from .chart import get_eligible_accounts_for_client
 
 logger = logging.getLogger(__name__)
+
+
+class AiAccountSuggestion(BaseModel):
+    """The shape of layer 5's answer, as a class rather than as a schema dict.
+
+    Fixed 2026-09-05, and layer 5 had never once returned an answer before it.
+    `client.beta.chat.completions.parse()` parses the reply for the caller ONLY
+    when `response_format` is a model class. `openai/lib/_parsing/_completions.py`
+    decides that in `has_rich_response_format()`, which returns False for a dict,
+    so `maybe_parse_content()` returned None and `message.parsed` was always None.
+    The old code passed a dict holding a JSON schema, tested `message.parsed`,
+    found nothing every time, and logged "AI response invalid" while the model's
+    answer sat unread in `message.content`. Every call was paid for.
+
+    The two descriptions are carried across unchanged from that schema, including
+    the deliberate absence of an example code: amendment 198 removed "e.g., 103,
+    281" because it contradicted the four-digit list in the same prompt, and an
+    example taken from one chart is absent from another client's. The list of
+    valid codes in the prompt is the only thing that names a code.
+    """
+
+    code: str = Field(description="The account code, taken exactly from the list of valid codes above")
+    name: str = Field(description="The account name shown beside that code in the list above")
 
 
 NOISE_WORDS = {
@@ -308,7 +332,7 @@ class CategorisationEngine:
 
         # Layer 5: AI suggestion (if enabled)
         if self.enable_ai_fallback:
-            ai_result = self._ai_suggest(vendor_code, client_id)
+            ai_result = self._ai_suggest(vendor_code, client_id, supplier_name)
             if ai_result:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
@@ -326,16 +350,28 @@ class CategorisationEngine:
             vendor_code=vendor_code, confidence="none", match_source="unmatched", needs_review=True
         )
 
-    def _ai_suggest(self, vendor_key: str, client_id: str) -> Optional[dict]:
+    def _ai_suggest(self, vendor_key: str, client_id: str,
+                    supplier_name: str = "") -> Optional[dict]:
         """
         Call OpenAI with constrained output to categorise unmatched vendor.
 
         Args:
-            vendor_key: Normalised vendor name
+            vendor_key: Normalised vendor name. It is a lookup key, built to be
+                stable for the exact and fuzzy layers, and it is lossy: rule 8 of
+                extract_vendor_key() keeps only the first word once more than two
+                remain, so "Canary Hand Car Wash" arrives here as "canary".
             client_id: The client, whose published chart bounds what may be
                 suggested. Was business_type until 2026-09-04, which selected one
                 of three hardcoded lists in the deleted coa.py. The chart a
                 client is on is a property of the client, not of its trade.
+            supplier_name: The supplier as it appeared on the receipt. Added
+                2026-09-05, on the first run of layer 5 this project has ever
+                made. Given "canary" alone the model returned "Software and
+                subscriptions", and given "berkeley" it returned "Consultancy
+                fees"; both are reasonable readings of the input they were sent.
+                The key is kept in the prompt as well, because it is what the
+                learned tables are keyed on and what a later correction attaches
+                to. Empty is allowed: a receipt can yield a key and no name.
 
         Returns:
             {code: str, name: str} or None if API fails
@@ -359,7 +395,10 @@ class CategorisationEngine:
                 messages=[
                     {
                         "role": "user",
-                        "content": f"""Categorise the vendor "{vendor_key}" into the most appropriate GL code.
+                        "content": f"""Categorise this supplier into the most appropriate GL code.
+
+Supplier as it appeared on the receipt: "{supplier_name or vendor_key}"
+Normalised lookup key: "{vendor_key}"
 
 Valid GL codes:
 {chr(10).join(f"- {code}: {name}" for code, name in coa)}
@@ -367,34 +406,11 @@ Valid GL codes:
 Return the best matching GL code and name."""
                     }
                 ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "categorisation",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "code": {
-                                    "type": "string",
-                                    # No example here. Every account code on this project is
-                                    # four digits, and this description read "e.g., 103, 281"
-                                    # until 2026-09-04, contradicting the list of valid codes
-                                    # in the prompt above it. Outstanding item 156. An example
-                                    # taken from one chart would be absent from another
-                                    # client's, so the list is the only thing that names a code.
-                                    "description": ("The account code, taken exactly from the "
-                                                    "list of valid codes above")
-                                },
-                                "name": {
-                                    "type": "string",
-                                    "description": ("The account name shown beside that code "
-                                                    "in the list above")
-                                }
-                            },
-                            "required": ["code", "name"]
-                        }
-                    }
-                }
+                # A model class, not a schema dict. The library only parses the
+                # reply when this is a class; a dict means "the caller will parse
+                # it", and message.parsed is then always None. See
+                # AiAccountSuggestion's docstring for the defect this fixed.
+                response_format=AiAccountSuggestion,
             )
 
             # Parse and validate response

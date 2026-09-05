@@ -11,13 +11,24 @@ with a suggested code the client's chart does not hold.
 **Why a fallback exists at all.** A library chart is a subset of the master, so
 the account a layer returns is often not in the client's chart. Counted from the
 eight library charts on 2026-09-05, against the 66 accounts a receipt can be:
-PHV_DRIVER holds 30, FIN_ADVISER 40, SALE_OF_SERVICES 44, SALE_OF_GOODS 49. **An
+PHV_DRIVER holds 29, FIN_ADVISER 38, SALE_OF_SERVICES 41, SALE_OF_GOODS 45. **An
 absent account is the ordinary case, not the edge one.**
+
+~~PHV_DRIVER holds 30, FIN_ADVISER 40, SALE_OF_SERVICES 44, SALE_OF_GOODS 49.~~
+**Corrected 2026-09-05 by amendment 227.** The struck figures were counted
+against a 71-account cut and then quoted after Paul removed the five capital
+additions and made it 66. They had reached a validator docstring, a step body and
+a brief before anyone re-counted, and this module took them from the brief.
 
 Paul's ruling, 2026-09-05: a car wash goes to `7310 Vehicle repairs and
 servicing` where the client's chart does not hold `7391 Car wash`. That is an
 accounting fact about the account, so it is recorded per account in the published
 table rather than guessed at run time.
+
+**The table held one row when this module was written and holds 26 as at
+2026-09-05 15:09 BST**, amendment 227. Nothing here depends on its size; the
+figure is recorded because a module that quotes a count should say when it
+counted.
 
 **Nothing here re-validates the file.** `validate_fallbacks()` in
 `publish_master.py` blocks the publish unless every non-blank target exists in the
@@ -189,10 +200,12 @@ def resolve_against_chart(result, repo=None):
     - `no_code`. Nothing was suggested, so there is nothing to check. This is the
       `unmatched` case and it already reaches Review on its own.
     - `unreadable_chart`. The client's chart came back empty, which means it
-      could not be read and **not that the chart holds nothing**. The suggestion
-      is left exactly as it was. Stripping every code on an unpublished bundle
-      would put every receipt in the practice into Review at once, and an empty
-      read is not evidence of absence.
+      could not be read and **not that the chart holds nothing**. The code is
+      left standing, because stripping every code on an unpublished bundle would
+      put every receipt in the practice into Review at once and an empty read is
+      not evidence of absence, **but `needs_review` is forced True**: an
+      unchecked code from a layer 1 exact match would otherwise carry
+      confidence `high` and needs_review False straight to the books.
     - `in_chart`. The ordinary case. Untouched.
     - `substituted`. The chart does not hold the code, the published table gives
       a fallback, and the chart holds the fallback. The fallback becomes the
@@ -203,6 +216,16 @@ def resolve_against_chart(result, repo=None):
       hold the fallback either. **No code, `needs_review`, confidence `none`**,
       and the note names the account that was suggested and why it could not be
       used.
+
+    **What `needs_review` does today, so nothing here overstates it.**
+    `categorisations.needs_review` is written by all four `save_categorisation()`
+    call sites and **read by nothing in this repository**, checked by grepping
+    every production `.py` on 2026-09-05. Routing a receipt into
+    `Intellibills/Review/` is decided by `validation.status` in
+    `worker/validation/rules.py`, which is a different thing and is not touched
+    here. So setting it flags the categorisation row; it does not move a file.
+    The notes below say "flagged for review" and deliberately not "goes to
+    Review", which is what an earlier draft of them said and it was wrong.
 
     **`match_source` is left alone in every case, including `unusable`.** It says
     which layer answered, and a layer did answer; overwriting it with `unmatched`
@@ -226,9 +249,24 @@ def resolve_against_chart(result, repo=None):
         # because the consequence belongs with the decision: the check did not
         # run, so the code stands unchecked rather than being stripped.
         result.chart_outcome = "unreadable_chart"
+        # **And a person looks at it. Paul's instruction, 2026-09-05, and it
+        # closes a hole the first version had.** Leaving the code standing is
+        # only half an answer: layer 1 returns confidence `high` with
+        # needs_review False, so an unchecked code from an exact vendor match
+        # would have gone straight through to the books with nothing on screen
+        # saying the chart had not been read. The code survives, because an
+        # empty read is not evidence the account is absent, but it survives as
+        # a suggestion for a person rather than as a verified answer.
+        #
+        # `confidence` is deliberately left as the layer set it. The layer was
+        # confident about the vendor and it was right to be; what could not be
+        # established is whether the client's chart holds the account, and that
+        # is what needs_review and the note carry.
+        result.needs_review = True
         result.chart_note = (
             f"{code} was not checked against client {result.client_id}'s chart: "
-            "the chart could not be read, so the suggestion stands unchecked."
+            "the chart could not be read, so the suggestion stands unchecked and "
+            "the categorisation is flagged for review."
         )
         logger.error(result.chart_note)
         return result
@@ -272,7 +310,8 @@ def resolve_against_chart(result, repo=None):
     result.chart_note = (
         f"{code} {result.original_name or ''}".strip()
         + f" is not in client {result.client_id}'s chart and {why}, "
-        "so the receipt has no account and goes to Review."
+        "so the receipt is filed with no account and the categorisation is "
+        "flagged for review."
     )
     logger.warning(f"receipt {result.receipt_id}: {result.chart_note}")
     _record_substitution(repo, result, "unusable", None, result.chart_note)

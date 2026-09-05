@@ -350,7 +350,12 @@ class UnusableTest(unittest.TestCase):
         self.assertIn("7600", result.chart_note)
         self.assertIn("Some other account", result.chart_note)
         self.assertIn("no fallback", result.chart_note)
-        self.assertIn("Review", result.chart_note)
+        # "flagged for review", not "goes to Review". categorisations.needs_review
+        # is written by all four save_categorisation() call sites and read by
+        # nothing; what routes a receipt into Intellibills/Review/ is
+        # validation.status, which this module does not touch.
+        self.assertIn("flagged for review", result.chart_note)
+        self.assertNotIn("goes to Review", result.chart_note)
         self.assertEqual(result.original_code, "7600")
 
     def test_a_fallback_that_is_not_in_the_chart_either_is_also_unusable(self):
@@ -384,6 +389,98 @@ class NothingToCheckTest(unittest.TestCase):
         self.assertIsNone(result.chart_note)
 
 
+class NeedsReviewIsAFlagNotARouteTest(unittest.TestCase):
+    """`categorisations.needs_review` is written and read by nothing.
+
+    Recorded as a test because the module's notes make a claim about it, and a
+    claim in a docstring goes stale silently. If a reader appears, this goes red
+    and the notes need rewriting rather than quietly becoming true.
+
+    **The first version of this test was too crude and it is disclosed because
+    the correction is the useful part.** It flagged every SQL line containing
+    `needs_review` and a `WHERE`, which caught `query_receipts.py:46`,
+    `WHERE e.validation_status = 'needs_review'`. That is the *status value* on
+    `extractions`, a different column entirely that happens to take a string of
+    the same name. **The discriminator is that the column is named as a bare
+    identifier inside a statement that also names `categorisations`**, while the
+    status is a quoted value, so the check is now on statements rather than on
+    lines."""
+
+    SKIP = {".venv", ".history", "tests", "docs", "__pycache__", "archive"}
+
+    def _statements_naming_both(self):
+        """Every string literal in production code naming the table and column."""
+        import ast
+        from pathlib import Path
+
+        root = Path(config.__file__).resolve().parent
+        found = []
+        for path in root.rglob("*.py"):
+            if set(path.relative_to(root).parts) & self.SKIP:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            # Docstrings dropped first. fallback.py's own notes name the table
+            # and the column in the same paragraph, explaining why nothing reads
+            # it, so a scan over every string constant finds the explanation and
+            # calls it a reader. Found by writing it that way.
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                     ast.AsyncFunctionDef)) and ast.get_docstring(node):
+                    node.body = node.body[1:]
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                    continue
+                text = node.value
+                if "categorisations" in text and "needs_review" in text:
+                    found.append((path.relative_to(root).as_posix(), node.lineno, text))
+        return found
+
+    def test_the_column_is_only_ever_created_and_inserted(self):
+        statements = self._statements_naming_both()
+        self.assertTrue(statements, "no statement names both, so this check "
+                        "would pass whatever the schema did")
+        offenders = [
+            f"{f}:{line}" for f, line, text in statements
+            if "CREATE TABLE" not in text.upper() and "INSERT INTO" not in text.upper()
+        ]
+        self.assertEqual(offenders, [],
+                         f"a statement now reads the column: {offenders}")
+
+    def test_the_two_statements_are_where_they_should_be(self):
+        # The other half. Without it the test above would also pass for a schema
+        # that had lost the column, or a repository that had stopped writing it.
+        places = sorted({f for f, _line, _text in self._statements_naming_both()})
+        self.assertEqual(places, ["worker/database/repository.py",
+                                  "worker/database/schema.py"])
+
+    def test_nothing_branches_on_the_value_off_a_result_object(self):
+        # The five attribute loads of .needs_review in production are all
+        # `needs_review=categorisation.needs_review` inside a save_categorisation
+        # call. A load anywhere else would be code acting on the flag.
+        import ast
+        from pathlib import Path
+
+        root = Path(config.__file__).resolve().parent
+        stray = []
+        for path in root.rglob("*.py"):
+            if set(path.relative_to(root).parts) & self.SKIP:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            passed = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    for kw in node.keywords:
+                        if kw.arg == "needs_review":
+                            for sub in ast.walk(kw.value):
+                                if isinstance(sub, ast.Attribute):
+                                    passed.add(id(sub))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Attribute) and node.attr == "needs_review"
+                        and isinstance(node.ctx, ast.Load) and id(node) not in passed):
+                    stray.append(f"{path.relative_to(root).as_posix()}:{node.lineno}")
+        self.assertEqual(stray, [], f"something now acts on the flag: {stray}")
+
+
 class UnreadableChartTest(unittest.TestCase):
     """An empty read is not evidence of absence, and the difference is large.
 
@@ -398,6 +495,56 @@ class UnreadableChartTest(unittest.TestCase):
         self.assertEqual(result.suggested_code, "7391")
         self.assertEqual(result.suggested_name, "Car wash")
         self.assertIn("could not be read", result.chart_note)
+
+    def test_an_unchecked_code_is_forced_to_review(self):
+        """Paul's instruction, 2026-09-05, and it closes a real hole.
+
+        The first version left the code standing and left `needs_review` alone.
+        `_result()`'s defaults are a layer 1 exact vendor match: confidence
+        `high`, needs_review False. So an account nobody could check against a
+        chart would have gone to the books looking verified. It survives as a
+        suggestion for a person instead."""
+        source = _result()
+        self.assertFalse(source.needs_review, "the fixture must start False or "
+                         "this test cannot discriminate")
+        with FallbackEnvironment(write_chart=False):
+            with self.assertLogs("worker.categorisation", level=logging.ERROR):
+                result = fallback.resolve_against_chart(source)
+        self.assertTrue(result.needs_review)
+        self.assertIn("flagged for review", result.chart_note)
+
+    def test_the_confidence_is_left_as_the_layer_set_it(self):
+        # Deliberate, and the reason is in the module. The layer was confident
+        # about the vendor and was right to be; what could not be established is
+        # whether the client's chart holds the account, and needs_review carries
+        # that. Asserted so a later change to confidence is a decision rather
+        # than a side effect.
+        with FallbackEnvironment(write_chart=False):
+            with self.assertLogs("worker.categorisation", level=logging.ERROR):
+                result = fallback.resolve_against_chart(_result())
+        self.assertEqual(result.confidence, "high")
+        self.assertEqual(result.match_source, "client")
+
+    def test_no_audit_row_is_written_because_the_answer_did_not_change(self):
+        # The code was not swapped and was not cleared, so there is nothing to
+        # record as a substitution. The ERROR in the log is the record.
+        import tempfile as _tempfile
+        temp = _tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        saved = config.DB_PATH
+        config.DB_PATH = Path(temp.name) / "receipts.db"
+        try:
+            from worker.database.repository import Repository
+            repo = Repository()
+            try:
+                with FallbackEnvironment(write_chart=False):
+                    with self.assertLogs("worker.categorisation", level=logging.ERROR):
+                        fallback.resolve_against_chart(_result(), repo=repo)
+                self.assertEqual(repo.list_resolution_events("r-1"), [])
+            finally:
+                repo.close()
+        finally:
+            config.DB_PATH = saved
+            temp.cleanup()
 
     def test_a_missing_fallback_table_still_sends_an_absent_code_to_review(self):
         # The chart is readable and the fallback table is not, which is a

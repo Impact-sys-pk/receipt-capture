@@ -10,3 +10,10 @@ venv/
 logs/
 .claude/settings.local.json
 Backups/
+
+# Generated output, not source. exports/ is written by export_bookkeeping.py
+# and "Claude outputs/" holds working CSVs from the chart of accounts sessions.
+# Both were untracked and both trip config.check_git_status_on_startup()'s
+# clean-tree warning before every run, which is the only reason it fires.
+exports/
+Claude outputs/

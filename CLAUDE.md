@@ -958,7 +958,7 @@ If all pass → status = `ok`, receipt ready
   `check_client_match.py`, `check_ids.py` and `export_bookkeeping.py`. **Never hardcode the database
   path in a script: `config.DB_PATH` is the one place it lives**
 - Manual test: send an email with a PDF to `capture@lastingimpact.co.uk`, wait for the next poll
-- **The suite:** `.\.venv\Scripts\python.exe -m pytest -q`. 367 passed, 191 subtests on 2026-09-04
+- **The suite:** `.\.venv\Scripts\python.exe -m pytest -q`. **389 passed, 190 subtests on 2026-09-05**, after item 163 added `tests\test_vat_rates.py`. ~~367 passed, 191 subtests on 2026-09-04~~ **Corrected 2026-09-05, amendment 220.** That line was written at 13:32 on 2026-09-04 and went stale at 14:00 the same day: removing the `email_delta` table took the subtest count from 191 to 190, because `test_no_table_carries_a_client_code` subtests every table `schema.py` creates. **A figure in a document that a run has since moved is the shape of staleness this section is most likely to carry, so quote the run and its date, and expect to move it.**
 
 ---
 

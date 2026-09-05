@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
+from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.categorisation.fallback import resolve_against_chart
 from worker.extraction.base import ExtractionResult
 from worker.filing import (
@@ -61,6 +62,18 @@ NOTE_RESOLVED_AT_KEY = "note_resolved_at"
 DESKTOP_ACTOR = "desktop"
 DESKTOP_SOURCE = "desktop"
 
+# The audit row one learned mapping leaves, sub-step 10j.11. `actor` is the
+# operator and not the machine, because a person ticked the box; contrast
+# fallback.py's `chart_fallback` row, whose actor is "pipeline" precisely because
+# no person did it. That row, amendment 227, is the precedent for recording this
+# as an event of its own rather than in the correction columns of
+# `categorisations`, which mean "a person changed the category" and would make a
+# learned mapping indistinguishable from a correction. 11.3 asks for the choice
+# to be recorded in `resolution_events.corrections_json`, and this row is where
+# it is: the tick, the vendor and both codes are in that blob.
+LEARN_ACTION = "learn_vendor"
+LEARN_OUTCOME = "learned"
+
 # Plain decimal only. No thousands separators, no currency symbols, no more
 # than two decimal places. Rejecting is deliberate: stripping a "£" or a comma
 # would be guessing at an operator's intent on a financial figure.
@@ -68,6 +81,11 @@ _AMOUNT_RE = re.compile(r"^-?(\d+(\.\d{1,2})?|\.\d{1,2})$")
 
 # YYYY-MM-DD, zero-padded. strptime alone accepts "2026-7-5", which we do not.
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# A master account code is four digits, and any three-digit code is legacy per
+# amendment 96. Used in one place only, to read a note written before Desktop
+# gained `category_code`; see the older-note rule in parse_resolution_note().
+_ACCOUNT_CODE_RE = re.compile(r"^\d{4}$")
 
 
 @dataclass
@@ -203,9 +221,15 @@ class ResolutionNote:
     resolved_by: Optional[str] = None
     values: Dict[str, Any] = field(default_factory=dict)
     category_name: Optional[str] = None
+    category_code: Optional[str] = None
     filed_path: Optional[str] = None
     original_review_files: List[str] = field(default_factory=list)
     reason: Optional[str] = None
+    # 11.3's opt-in tick, carried at the top level of the note rather than inside
+    # `values`: it is not something read off the receipt, it is what the operator
+    # asked the pipeline to do with one. Absent means False, which is what every
+    # note written before 2026-09-05 means.
+    remember_gl_for_supplier: bool = False
 
 
 def _note_text(raw: Dict[str, Any], key: str) -> Optional[str]:
@@ -268,6 +292,18 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     if not isinstance(review_files, list) or not all(isinstance(f, str) for f in review_files):
         raise ResolutionNoteError("'original_review_files' must be a list of filenames")
 
+    # 11.3's opt-in tick, sub-step 10j.11. Top level, not inside `values`, and
+    # absent means False, so a note written before this field existed parses
+    # exactly as it did before. A non-boolean is refused rather than coerced:
+    # this flag decides a durable write into the client's mapping table, and
+    # "false" is a true string in every language that would send one.
+    remember = raw.get("remember_gl_for_supplier", False)
+    if not isinstance(remember, bool):
+        raise ResolutionNoteError(
+            "'remember_gl_for_supplier' must be true or false, got "
+            f"{type(remember).__name__}"
+        )
+
     note = ResolutionNote(
         action=action,
         resolved_at=resolved_at,
@@ -276,6 +312,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         resolved_by=_note_text(raw, "resolved_by"),
         original_review_files=list(review_files),
         reason=_note_text(raw, "reason"),
+        remember_gl_for_supplier=remember,
     )
 
     if action == "discarded":
@@ -337,13 +374,45 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         raise ResolutionNoteError("'values.currency' must be text")
     values["currency"] = (currency or config.DEFAULT_CURRENCY).strip() or config.DEFAULT_CURRENCY
 
-    # A name, never a code: Desktop has no codes. An empty string is the common
-    # case, because Desktop does not require a category before filing, and it means
-    # "no category" rather than a name to look up. See the 12.4 amendment.
+    # 12.2 as amended 2026-09-05 by amendment 231. **Desktop sends the code in
+    # `values.category_code` and the name in `values.category_name`**, and both
+    # are optional. An empty string is the common case, because Desktop does not
+    # require a category before filing, and it means "no category".
+    #
+    # ~~A name, never a code: Desktop has no codes.~~ **Struck.** `catOptions()`
+    # at IntelliBooks-Desktop-v3.html:2610 builds each option with the code as
+    # its value and `fileReviewReceipt()` at :3392 writes that value into
+    # `category_name`, so **every note written before the Desktop half of 10j.11
+    # ships carries a four-digit code in `category_name` and no `category_code`
+    # at all.** That is the older-note rule below, and it exists because the two
+    # halves of this contract are built by sessions that cannot see each other
+    # and neither can be made to ship first.
+    #
+    # **When it can be removed:** once no unapplied note predates the Desktop
+    # change. That is checkable rather than a matter of judgement, because
+    # nothing in `Resolutions\` is ever deleted: when the oldest file in
+    # `Intellibills\Resolutions\` postdates the Desktop release, no note that
+    # needs the rule can still arrive, and the four lines go. Until then,
+    # dropping it would file a real account code as if it were a caption.
     category = raw_values.get("category_name")
     if category is not None and not isinstance(category, str):
         raise ResolutionNoteError("'values.category_name' must be text")
     note.category_name = (category or "").strip() or None
+
+    code = raw_values.get("category_code")
+    if code is not None and not isinstance(code, str):
+        raise ResolutionNoteError("'values.category_code' must be text")
+    note.category_code = (code or "").strip() or None
+
+    if (not note.category_code and note.category_name
+            and _ACCOUNT_CODE_RE.match(note.category_name)):
+        note.category_code = note.category_name
+        note.category_name = None
+        logger.info(
+            f"note for {note.receipt_id} carries {note.category_code!r} in "
+            "category_name and no category_code, so it was written before Desktop "
+            "gained the field and the value is read as the code it is"
+        )
 
     note.values = values
     return note
@@ -469,6 +538,57 @@ def _record_event(repo, receipt_id, actor, source, action, outcome,
         corrections_json=corrections_json,
         gl_override_code=gl_override_code,
         reason=reason,
+    )
+
+
+def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_code,
+                           vendor_name, code, account_name, note_resolved_at) -> None:
+    """One audit row per mapping learned from a back-feed note. Sub-step 10j.11.
+
+    Its own row rather than a field on the filing's row, so a filing that taught
+    something is distinguishable from one that did not by a query and not by
+    reading a blob: `action = 'learn_vendor'`. The precedent is amendment 227,
+    which made the chart substitution an event of its own for the same reason and
+    for one more that applies here: the `categorisations` correction columns mean
+    "a person changed the category", and a mapping written into them would be
+    indistinguishable from a correction except by reading the reason text.
+
+    **`actor` is the operator, not the machine.** fallback.py's substitution row
+    writes actor "pipeline" precisely because no person decided it; here a person
+    ticked a box, and the whole point of 11.3's opt-in is that a human is on the
+    record for it.
+
+    11.3 says "record the choice in `resolution_events.corrections_json`", and
+    this is where it is recorded: the tick, the vendor, and both codes.
+
+    Written directly rather than through `_record_event()`, which is documented as
+    one row per resolution outcome and is what writes the `filed` row beside this
+    one. Learning is not an outcome of the resolution; it is a second thing the
+    same note asked for, and it can fail to happen while the filing succeeds.
+    """
+    repo.save_resolution_event(
+        event_id=str(uuid.uuid4()),
+        receipt_id=receipt_id,
+        extraction_id=extraction_id,
+        actor=DESKTOP_ACTOR,
+        source=DESKTOP_SOURCE,
+        action=LEARN_ACTION,
+        outcome=LEARN_OUTCOME,
+        corrections_json=json.dumps({
+            "remember_gl_for_supplier": True,
+            "client_id": client_id,
+            "vendor_code": vendor_code,
+            "vendor_name": vendor_name,
+            "nominal_code": code,
+            "account_name": account_name,
+            NOTE_RESOLVED_AT_KEY: note_resolved_at,
+        }, sort_keys=True, default=str),
+        gl_override_code=code,
+        reason=(
+            f"the operator ticked remember this supplier, and {vendor_code} now maps "
+            f"to {code} {account_name} for client {client_id}"
+        ),
+        created_at=_now(),
     )
 
 
@@ -936,34 +1056,111 @@ def _receipt_for_note(repo, note: ResolutionNote) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _resolve_category(note: ResolutionNote) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """12.3 step 6. Returns (code, name, validation_note), and the code is always None.
+@dataclass
+class _CategoryDecision:
+    """What 12.3 step 6 decided about one note's category.
 
-    **A resolution note's category name is not resolved to a code at all.** The name
-    is stored, no vendor mapping is learned, and a validation note records it. 12.3
-    says that is expected and not an error.
+    `chart_confirmed` is a separate field from `code` because there are two ways
+    to come out of the check holding a code and only one of them may teach: the
+    client's chart holds it, or the chart could not be read and the code stands
+    unchecked. A caller that learned from the second would write a mapping
+    nothing has confirmed, and a mapping is read back by layer 1 as an exact
+    match with confidence `high`.
+    """
+    code: Optional[str] = None
+    name: Optional[str] = None
+    validation_note: Optional[str] = None
+    chart_confirmed: bool = False
+
+
+def _resolve_category(note: ResolutionNote, client_id: Optional[str]) -> _CategoryDecision:
+    """12.3 step 6, reversed as that step predicted it would be on 2026-08-17.
+
+    ~~Returns (code, name, validation_note), and the code is always None.~~
+    ~~A resolution note's category name is not resolved to a code at all.~~
+    **Struck 2026-09-05, sub-step 10j.11 and amendment 231.** Desktop sends the
+    code, so this step stops being name-to-code and becomes a validation that the
+    code exists in the client's chart. Five outcomes:
+
+    - **No code and no name.** Nothing to check. The common case, because Desktop
+      does not require a category before filing, so `""` means "no category".
+    - **A code the client's chart holds.** The code is stored, and **the name
+      comes from the chart rather than from the note**, so the stored pair cannot
+      disagree. This is the only outcome that may teach a mapping.
+    - **A code the chart does not hold.** **No code, the note's name if it has
+      one, and a validation note naming the code that was rejected.** The
+      published fallback table is deliberately NOT applied: `fallback_accounts.csv`
+      substitutes for an account the *classifier* proposed, and Paul chose this
+      code himself out of his own chart. If it has since left that chart, that is
+      an inconsistency for a person to see rather than one to substitute away.
+      Paul's decision, 2026-09-05.
+    - **The chart could not be read.** `get_chart_accounts_for_client()` returns
+      an empty mapping both when the chart is empty and when the bundle is
+      missing, and **an empty read is not evidence that the account is absent**.
+      `resolve_against_chart()` in fallback.py already rules on this exact
+      situation, and this follows it: the code stands, unchecked, with a
+      validation note. It is not confirmed, so nothing is learned from it.
+    - **A name and no code.** Unchanged. The name is stored, no code, and the
+      validation note says why. 12.3 says that is expected and not an error.
 
     ~~It looked up `repo.find_coa_account_by_name()`, which queried `coa_accounts`.~~
     **That table was cancelled by amendment 96 and the cancellation confirmed by 124**,
     so the lookup returned None for every name ever asked and the found branch was
-    unreachable. Both are deleted, outstanding item 155, 2026-09-04. Deleted rather
-    than repointed: the chart now lives in the bundle IntelliCharts publishes and
-    could be read here through worker/categorisation/chart.py, and whether a caption
-    typed in IntelliBooks may be matched to an account by name, with or without
-    `coa_alt_names.csv`, is a decision nobody has taken. **A dead lookup is not a
-    place to keep that question.**
+    unreachable. Both were deleted, outstanding item 155, 2026-09-04, and what
+    replaces them is not the same lookup repointed: **the note is matched on the
+    code, never on the name.** Whether a caption typed in IntelliBooks may be
+    matched to an account by name, with or without `coa_alt_names.csv`, is still a
+    decision nobody has taken, and the name-only branch still declines to take it.
 
-    A blank category is not a lookup at all. Desktop does not require a category
-    before filing, so `""` is the common case and it means "no category".
+    `get_chart_accounts_for_client()` is the production reader here and
+    `get_eligible_accounts_for_client()` is deliberately not: `classifier_eligible`
+    marks what layer 5 may propose and is not a rule about what a person may post,
+    per the module docstring of worker/categorisation/chart.py. An account marked
+    `No` is still in the chart and still postable, so an operator who picked one
+    must not have it rejected here.
     """
-    if not note.category_name:
-        return None, None, None
+    if not note.category_code:
+        if not note.category_name:
+            return _CategoryDecision()
+        return _CategoryDecision(
+            name=note.category_name,
+            validation_note=(
+                f"category '{note.category_name}' was stored as a name without a code, "
+                "because a note's category is not matched against the chart of accounts"
+            ),
+        )
 
-    return (
-        None,
-        note.category_name,
-        f"category '{note.category_name}' was stored as a name without a code, "
-        "because a note's category is not matched against the chart of accounts",
+    code = note.category_code
+    accounts = get_chart_accounts_for_client(client_id or "")
+
+    if not accounts:
+        # Already logged at ERROR by chart.load_accounts(). Said again on the row
+        # because the consequence belongs with the decision: the check did not
+        # run, so the code stands rather than being stripped, and it stands
+        # unconfirmed so nothing learns from it.
+        return _CategoryDecision(
+            code=code,
+            name=note.category_name,
+            validation_note=(
+                f"category code {code} was stored unchecked: client {client_id}'s chart "
+                "could not be read, so nothing confirms the account exists and no "
+                "vendor mapping was learned from it"
+            ),
+        )
+
+    if code in accounts:
+        return _CategoryDecision(code=code, name=accounts[code], chart_confirmed=True)
+
+    kept = (
+        f" The name '{note.category_name}' was stored instead."
+        if note.category_name else " The note carried no name either, so none was stored."
+    )
+    return _CategoryDecision(
+        name=note.category_name,
+        validation_note=(
+            f"category code {code} was rejected: it is not in client {client_id}'s "
+            "chart of accounts." + kept
+        ),
     )
 
 
@@ -1055,9 +1252,10 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                 "filed by decision in Desktop despite: " + ", ".join(validation.notes)
             )
 
-        code, category_name, category_note = _resolve_category(note)
-        if category_note:
-            validation_notes.append(category_note)
+        category = _resolve_category(note, receipt.get("client_id"))
+        code, category_name = category.code, category.name
+        if category.validation_note:
+            validation_notes.append(category.validation_note)
 
         extraction_id = str(uuid.uuid4())
         repo.save_extraction(
@@ -1117,15 +1315,63 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                 "category from the IntelliBooks Desktop resolution note",
             )
 
-        # 12.3 step 6 says learn the vendor mapping from a Desktop resolution. 11.3
-        # says never learn automatically, because one correction against a misread
-        # supplier name poisons the mapping table and the exact-match layer then
+        # Learn the mapping, on the tick and to the client table only.
+        #
+        # ~~12.3 step 6 says learn the vendor mapping from a Desktop resolution.
+        # The two sections disagree and nothing here decides it.~~ **Struck
+        # 2026-09-05 by amendment 231: they do not disagree and have not since
+        # 2026-07-28.** 12.3 step 6's learning clause was struck that day and the
+        # correction beneath it reads "11.3 wins: a back-feed note never learns a
+        # mapping" and "learning stays opt-in from an operator who ticked a box".
+        # This comment said the question was open, and amendment 230 took its word
+        # for what the design document says rather than opening 12.3, which is why
+        # the wording is replaced here rather than deleted.
+        #
+        # So: never automatically, because one correction against a misread
+        # supplier name poisons the mapping table and layer 1's exact match then
         # applies the wrong code confidently to every future receipt from that
-        # vendor. **The two sections disagree and nothing here decides it.**
-        # There is no code to learn from in any case: _resolve_category() returns
-        # None for every note, so this was an `if code:` branch that logged a
-        # warning and could never run. Removed with item 155 on 2026-09-04, and the
-        # disagreement is recorded here rather than inside unreachable code.
+        # vendor. Only on `remember_gl_for_supplier`, and only against a code the
+        # client's chart confirmed, per _CategoryDecision.
+        #
+        # **`upsert_firm_vendor()` is not called here and must not be.** Paul's
+        # decision, 2026-09-05, amendment 231: a Desktop correction writes the
+        # client table only. The only code Desktop can offer is one from the
+        # client's own adopted chart, and the client table is scoped to that
+        # client, so it can never reach another. The firm pool is shared across a
+        # business_type and needs the receipt account rather than this one, which
+        # is a separate decision: item 166, deferred.
+        if note.remember_gl_for_supplier and code and category.chart_confirmed:
+            # `vendor_code` and not `vendor_key`. The column this writes holds the
+            # normalised merchant code that layer 1 looks up; `vendor_key` is the
+            # UUID primary key of a mapping that already exists, and is None on
+            # exactly the receipts worth learning from, the ones nothing matched.
+            vendor_code = categorisation.vendor_code
+            if vendor_code:
+                repo.upsert_client_vendor(
+                    client_id=receipt["client_id"],
+                    vendor_code=vendor_code,
+                    nominal_code=code,
+                    account_name=category_name,
+                    last_updated=_now(),
+                    vendor_name=merged["supplier_name"],
+                )
+                _record_vendor_learned(
+                    repo, receipt_id, extraction_id,
+                    client_id=receipt["client_id"],
+                    vendor_code=vendor_code,
+                    vendor_name=merged["supplier_name"],
+                    code=code, account_name=category_name,
+                    note_resolved_at=note.resolved_at,
+                )
+                logger.info(
+                    f"learned {vendor_code} -> {code} {category_name} for client "
+                    f"{receipt['client_id']} from the Desktop note for {receipt_id}"
+                )
+            else:
+                logger.warning(
+                    f"remember_gl_for_supplier requested for {receipt_id} but the engine "
+                    "returned no vendor_code, so nothing was learned"
+                )
 
         repo.mark_receipt_filed(receipt_id, str(target))
         repo.update_receipt_status(receipt_id, "ok")

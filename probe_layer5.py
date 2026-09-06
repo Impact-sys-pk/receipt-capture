@@ -104,7 +104,7 @@ def main():
                 gross_amount=r["gross_amount"],
             )
             print(
-                f"  {label}  vendor_code={res.vendor_code!r}  "
+                f"  {label}  vendor_key={res.vendor_key!r}  "
                 f"source={res.match_source}  code={res.suggested_code!r}  "
                 f"name={res.suggested_name!r}  confidence={res.confidence}"
             )

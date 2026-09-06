@@ -27,6 +27,10 @@ import seed_client_vendors
 
 # One row that will insert if the script is allowed to reach the database.
 # A test whose CSV parses to nothing would pass for the wrong reason.
+# The header is deliberately the older `vendor_code` spelling. The column was
+# renamed to `vendor_key` on 2026-09-06 and import_vendor_csv.py still reads
+# both, because the CSVs on disk were not rewritten. This fixture is what keeps
+# the back-compatible read exercised.
 IMPORT_CSV = """vendor_code,vendor_name,detail,nominal_code,account_name
 shell,Shell UK,Fuel purchase,103,Fuel
 """

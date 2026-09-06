@@ -541,7 +541,7 @@ def _record_event(repo, receipt_id, actor, source, action, outcome,
     )
 
 
-def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_code,
+def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_key,
                            vendor_name, code, account_name, note_resolved_at) -> None:
     """One audit row per mapping learned from a back-feed note. Sub-step 10j.11.
 
@@ -577,7 +577,7 @@ def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_co
         corrections_json=json.dumps({
             "remember_gl_for_supplier": True,
             "client_id": client_id,
-            "vendor_code": vendor_code,
+            "vendor_key": vendor_key,
             "vendor_name": vendor_name,
             "nominal_code": code,
             "account_name": account_name,
@@ -585,7 +585,7 @@ def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_co
         }, sort_keys=True, default=str),
         gl_override_code=code,
         reason=(
-            f"the operator ticked remember this supplier, and {vendor_code} now maps "
+            f"the operator ticked remember this supplier, and {vendor_key} now maps "
             f"to {code} {account_name} for client {client_id}"
         ),
         created_at=_now(),
@@ -817,7 +817,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             extraction_id=extraction_id,
             client_id=receipt["client_id"],
             trade=categorisation.business_type,
-            vendor_key=categorisation.vendor_key,
+            mapping_id=categorisation.mapping_id,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
             confidence=categorisation.confidence,
@@ -890,11 +890,11 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         #     the exact-match layer would then apply the wrong code confidently to
         #     every future receipt from that vendor.
         if corrections.remember_gl_for_supplier and effective_code:
-            vendor_code = getattr(categorisation, "vendor_code", None)
-            if vendor_code:
+            vendor_key = getattr(categorisation, "vendor_key", None)
+            if vendor_key:
                 repo.upsert_client_vendor(
                     client_id=receipt["client_id"],
-                    vendor_code=vendor_code,
+                    vendor_key=vendor_key,
                     nominal_code=effective_code,
                     account_name=effective_name,
                     last_updated=_now(),
@@ -903,7 +903,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             else:
                 logger.warning(
                     f"remember_gl_for_supplier requested for {receipt_id} but the engine "
-                    "returned no vendor_code, so nothing was learned"
+                    "returned no vendor_key, so nothing was learned"
                 )
 
         # 14. Audit row.
@@ -1300,7 +1300,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             extraction_id=extraction_id,
             client_id=receipt["client_id"],
             trade=categorisation.business_type,
-            vendor_key=categorisation.vendor_key,
+            mapping_id=categorisation.mapping_id,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
             confidence=categorisation.confidence,
@@ -1341,15 +1341,21 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         # business_type and needs the receipt account rather than this one, which
         # is a separate decision: item 166, deferred.
         if note.remember_gl_for_supplier and code and category.chart_confirmed:
-            # `vendor_code` and not `vendor_key`. The column this writes holds the
-            # normalised merchant code that layer 1 looks up; `vendor_key` is the
-            # UUID primary key of a mapping that already exists, and is None on
-            # exactly the receipts worth learning from, the ones nothing matched.
-            vendor_code = categorisation.vendor_code
-            if vendor_code:
+            # `vendor_key` and not `mapping_id`. What this writes is the
+            # normalised merchant key that layer 1 looks up; `mapping_id` is the
+            # row id of a mapping that already exists, and is None on exactly the
+            # receipts worth learning from, the ones nothing matched.
+            #
+            # Both names moved on 2026-09-06. This comment said the opposite of
+            # what it says now and was right both times: the field holding the
+            # normalised key was called `vendor_code` and is now called
+            # `vendor_key`, and the field holding the row id was called
+            # `vendor_key` and is now called `mapping_id`.
+            vendor_key = categorisation.vendor_key
+            if vendor_key:
                 repo.upsert_client_vendor(
                     client_id=receipt["client_id"],
-                    vendor_code=vendor_code,
+                    vendor_key=vendor_key,
                     nominal_code=code,
                     account_name=category_name,
                     last_updated=_now(),
@@ -1358,19 +1364,19 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                 _record_vendor_learned(
                     repo, receipt_id, extraction_id,
                     client_id=receipt["client_id"],
-                    vendor_code=vendor_code,
+                    vendor_key=vendor_key,
                     vendor_name=merged["supplier_name"],
                     code=code, account_name=category_name,
                     note_resolved_at=note.resolved_at,
                 )
                 logger.info(
-                    f"learned {vendor_code} -> {code} {category_name} for client "
+                    f"learned {vendor_key} -> {code} {category_name} for client "
                     f"{receipt['client_id']} from the Desktop note for {receipt_id}"
                 )
             else:
                 logger.warning(
                     f"remember_gl_for_supplier requested for {receipt_id} but the engine "
-                    "returned no vendor_code, so nothing was learned"
+                    "returned no vendor_key, so nothing was learned"
                 )
 
         repo.mark_receipt_filed(receipt_id, str(target))

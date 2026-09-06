@@ -329,68 +329,68 @@ class Repository:
 
     # Categorisation repository methods
 
-    def get_client_vendor(self, client_id: str, vendor_code: str) -> Optional[dict]:
+    def get_client_vendor(self, client_id: str, vendor_key: str) -> Optional[dict]:
         """Exact match lookup for client-specific vendor mapping. Returns most-seen variant."""
         row = self._conn.execute("""
-            SELECT vendor_key, nominal_code, account_name, vendor_name, times_seen
+            SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
             FROM categorisations_client_vendors
-            WHERE client_id = ? AND vendor_code = ?
+            WHERE client_id = ? AND vendor_key = ?
             ORDER BY times_seen DESC, last_updated DESC
             LIMIT 1
-        """, (client_id, vendor_code)).fetchone()
+        """, (client_id, vendor_key)).fetchone()
         return dict(row) if row else None
 
-    def upsert_client_vendor(self, client_id: str, vendor_code: str,
+    def upsert_client_vendor(self, client_id: str, vendor_key: str,
                             nominal_code: str, account_name: str, last_updated: str,
                             vendor_name: str = None, detail: str = None):
-        """Insert or update client vendor mapping. Each variant (vendor_name) gets unique vendor_key."""
+        """Insert or update client vendor mapping. Each variant (vendor_name) gets unique mapping_id."""
         # Check if this exact variant exists
         existing = self._conn.execute("""
-            SELECT vendor_key FROM categorisations_client_vendors
-            WHERE client_id = ? AND vendor_code = ? AND vendor_name = ?
-        """, (client_id, vendor_code, vendor_name)).fetchone()
+            SELECT mapping_id FROM categorisations_client_vendors
+            WHERE client_id = ? AND vendor_key = ? AND vendor_name = ?
+        """, (client_id, vendor_key, vendor_name)).fetchone()
 
         if existing:
             # Update existing variant
             self._conn.execute("""
                 UPDATE categorisations_client_vendors
                 SET nominal_code = ?, account_name = ?, detail = ?, times_seen = times_seen + 1, last_updated = ?
-                WHERE vendor_key = ?
-            """, (nominal_code, account_name, detail, last_updated, existing["vendor_key"]))
+                WHERE mapping_id = ?
+            """, (nominal_code, account_name, detail, last_updated, existing["mapping_id"]))
         else:
             # Insert new variant
-            vendor_key = str(uuid.uuid4())
+            mapping_id = str(uuid.uuid4())
             self._conn.execute("""
                 INSERT INTO categorisations_client_vendors
-                    (vendor_key, client_id, vendor_code, nominal_code, account_name, vendor_name, detail, times_seen, last_updated)
+                    (mapping_id, client_id, vendor_key, nominal_code, account_name, vendor_name, detail, times_seen, last_updated)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-            """, (vendor_key, client_id, vendor_code, nominal_code, account_name, vendor_name, detail, last_updated))
+            """, (mapping_id, client_id, vendor_key, nominal_code, account_name, vendor_name, detail, last_updated))
 
         self._conn.commit()
 
     def list_client_vendors(self, client_id: str) -> list[str]:
-        """Get distinct vendor_codes for a client for fuzzy matching candidates."""
+        """Get distinct vendor_keys for a client for fuzzy matching candidates."""
         rows = self._conn.execute(
-            "SELECT DISTINCT vendor_code FROM categorisations_client_vendors WHERE client_id = ?",
+            "SELECT DISTINCT vendor_key FROM categorisations_client_vendors WHERE client_id = ?",
             (client_id,)
         ).fetchall()
-        return [row["vendor_code"] for row in rows]
+        return [row["vendor_key"] for row in rows]
 
-    def get_firm_vendor(self, business_type: str, vendor_code: str) -> Optional[dict]:
+    def get_firm_vendor(self, business_type: str, vendor_key: str) -> Optional[dict]:
         """Exact match lookup for firm-level vendor mapping. Returns most-seen variant."""
         row = self._conn.execute("""
-            SELECT vendor_key, nominal_code, account_name, vendor_name, times_seen
+            SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
             FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_code = ?
+            WHERE business_type = ? AND vendor_key = ?
             ORDER BY times_seen DESC, last_updated DESC
             LIMIT 1
-        """, (business_type, vendor_code)).fetchone()
+        """, (business_type, vendor_key)).fetchone()
         return dict(row) if row else None
 
-    def upsert_firm_vendor(self, business_type: str, vendor_code: str,
+    def upsert_firm_vendor(self, business_type: str, vendor_key: str,
                           nominal_code: str, account_name: str, last_updated: str,
                           vendor_name: str = None, firm_id: str = None):
-        """Insert or update firm vendor mapping. Each variant gets unique vendor_key.
+        """Insert or update firm vendor mapping. Each variant gets unique mapping_id.
 
         Sub-step 10d.39. firm_id is written and never read: the unique key does
         not change, so the pool stays shared and behaviour does not change. The
@@ -403,56 +403,56 @@ class Repository:
         """
         # Check if this exact variant exists
         existing = self._conn.execute("""
-            SELECT vendor_key FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_code = ? AND vendor_name = ?
-        """, (business_type, vendor_code, vendor_name)).fetchone()
+            SELECT mapping_id FROM categorisations_firm_vendors
+            WHERE business_type = ? AND vendor_key = ? AND vendor_name = ?
+        """, (business_type, vendor_key, vendor_name)).fetchone()
 
         if existing:
             # Update existing variant
             self._conn.execute("""
                 UPDATE categorisations_firm_vendors
                 SET nominal_code = ?, account_name = ?, times_seen = times_seen + 1, last_updated = ?
-                WHERE vendor_key = ?
-            """, (nominal_code, account_name, last_updated, existing["vendor_key"]))
+                WHERE mapping_id = ?
+            """, (nominal_code, account_name, last_updated, existing["mapping_id"]))
         else:
             # Insert new variant
-            vendor_key = str(uuid.uuid4())
+            mapping_id = str(uuid.uuid4())
             self._conn.execute("""
                 INSERT INTO categorisations_firm_vendors
-                    (vendor_key, business_type, vendor_code, nominal_code, account_name, vendor_name, times_seen, last_updated, firm_id)
+                    (mapping_id, business_type, vendor_key, nominal_code, account_name, vendor_name, times_seen, last_updated, firm_id)
                 VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-            """, (vendor_key, business_type, vendor_code, nominal_code, account_name, vendor_name, last_updated, firm_id))
+            """, (mapping_id, business_type, vendor_key, nominal_code, account_name, vendor_name, last_updated, firm_id))
 
         self._conn.commit()
 
     def list_firm_vendors(self, business_type: str) -> list[str]:
-        """Get distinct vendor_codes for a business type for fuzzy matching candidates."""
+        """Get distinct vendor_keys for a business type for fuzzy matching candidates."""
         rows = self._conn.execute(
-            "SELECT DISTINCT vendor_code FROM categorisations_firm_vendors WHERE business_type = ?",
+            "SELECT DISTINCT vendor_key FROM categorisations_firm_vendors WHERE business_type = ?",
             (business_type,)
         ).fetchall()
-        return [row["vendor_code"] for row in rows]
+        return [row["vendor_key"] for row in rows]
 
-    def increment_firm_vendor_count(self, business_type: str, vendor_code: str):
+    def increment_firm_vendor_count(self, business_type: str, vendor_key: str):
         """Increment times_seen for the most-seen firm vendor variant."""
         # Find the most-seen variant and increment it
         row = self._conn.execute("""
-            SELECT vendor_key FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_code = ?
+            SELECT mapping_id FROM categorisations_firm_vendors
+            WHERE business_type = ? AND vendor_key = ?
             ORDER BY times_seen DESC, last_updated DESC
             LIMIT 1
-        """, (business_type, vendor_code)).fetchone()
+        """, (business_type, vendor_key)).fetchone()
 
         if row:
             self._conn.execute(
-                "UPDATE categorisations_firm_vendors SET times_seen = times_seen + 1 WHERE vendor_key = ?",
-                (row["vendor_key"],)
+                "UPDATE categorisations_firm_vendors SET times_seen = times_seen + 1 WHERE mapping_id = ?",
+                (row["mapping_id"],)
             )
             self._conn.commit()
 
     def save_categorisation(self, categorisation_id: str, receipt_id: str,
                            extraction_id: str, client_id: str, trade: str,
-                           vendor_key: Optional[str], suggested_code: Optional[str],
+                           mapping_id: Optional[str], suggested_code: Optional[str],
                            suggested_name: Optional[str], confidence: str,
                            match_source: str, matched_vendor: Optional[str],
                            needs_review: bool, categorised_at: str):
@@ -467,11 +467,11 @@ class Repository:
         self._conn.execute("""
             INSERT INTO categorisations
                 (categorisation_id, receipt_id, extraction_id, client_id, trade,
-                 vendor_key, suggested_code, suggested_name, confidence, match_source,
+                 mapping_id, suggested_code, suggested_name, confidence, match_source,
                  matched_vendor, needs_review, categorised_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (categorisation_id, receipt_id, extraction_id, client_id, trade,
-              vendor_key, suggested_code, suggested_name, confidence, match_source,
+              mapping_id, suggested_code, suggested_name, confidence, match_source,
               matched_vendor, needs_review, categorised_at))
         self._conn.commit()
 
@@ -532,7 +532,7 @@ class Repository:
     def get_client_rules(self, client_id: str) -> list[dict]:
         """Get all rules for a client, ordered by priority (highest first)."""
         rows = self._conn.execute("""
-            SELECT rule_id, rule_name, priority, vendor_code, condition_type,
+            SELECT rule_id, rule_name, priority, vendor_key, condition_type,
                    condition_field, condition_value, nominal_code, account_name
             FROM categorisations_client_rules
             WHERE client_id = ?
@@ -541,17 +541,17 @@ class Repository:
         return [dict(row) for row in rows]
 
     def create_client_rule(self, rule_id: str, client_id: str, rule_name: str,
-                         priority: int, vendor_code: str, condition_type: str,
+                         priority: int, vendor_key: str, condition_type: str,
                          condition_field: str, condition_value: str,
                          nominal_code: str, account_name: str):
         """Create a new client categorisation rule."""
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute("""
             INSERT INTO categorisations_client_rules
-                (rule_id, client_id, rule_name, priority, vendor_code, condition_type,
+                (rule_id, client_id, rule_name, priority, vendor_key, condition_type,
                  condition_field, condition_value, nominal_code, account_name, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (rule_id, client_id, rule_name, priority, vendor_code, condition_type,
+        """, (rule_id, client_id, rule_name, priority, vendor_key, condition_type,
               condition_field, condition_value, nominal_code, account_name, now))
         self._conn.commit()
 

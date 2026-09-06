@@ -263,7 +263,7 @@ def process_extraction_result(
             extraction_id=extraction_id,
             client_id=client_id,
             trade=categorisation.business_type,
-            vendor_key=categorisation.vendor_key,
+            mapping_id=categorisation.mapping_id,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
             confidence=categorisation.confidence,

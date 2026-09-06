@@ -1,7 +1,9 @@
 """
 Import pre-cleaned vendor CSV directly into the database.
 
-CSV format: vendor_code,vendor_name,detail,nominal_code,account_name
+CSV format: vendor_key,vendor_name,detail,nominal_code,account_name
+A file with the older `vendor_code` header is still read: the column was
+renamed on 2026-09-06 and the CSVs on disk were not rewritten.
 """
 
 import csv
@@ -26,26 +28,27 @@ def import_csv(csv_path: str, client_id: str):
             reader = csv.DictReader(f)
 
             for i, row in enumerate(reader, start=2):
-                # Handle both vendor_key (old) and vendor_code (new) column names
-                vendor_code = row.get('vendor_code') or row.get('vendor_key')
-                if not vendor_code:
+                # Three header spellings, oldest last. `vendor_code` was the
+                # header until 2026-09-06 and files on disk still carry it.
+                vendor_key = row.get('vendor_key') or row.get('vendor_code')
+                if not vendor_key:
                     total_skipped += 1
                     continue
 
-                vendor_code = vendor_code.strip()
+                vendor_key = vendor_key.strip()
                 vendor_name = row.get('vendor_name', '').strip()
                 detail = row.get('detail', '').strip()
                 nominal_code = row.get('nominal_code', '').strip()
                 account_name = row.get('account_name', '').strip()
 
-                if not vendor_code or not nominal_code:
+                if not vendor_key or not nominal_code:
                     total_skipped += 1
                     continue
 
                 try:
                     repo.upsert_client_vendor(
                         client_id=client_id,
-                        vendor_code=vendor_code,
+                        vendor_key=vendor_key,
                         nominal_code=nominal_code,
                         account_name=account_name,
                         vendor_name=vendor_name,
@@ -53,7 +56,7 @@ def import_csv(csv_path: str, client_id: str):
                         last_updated=now
                     )
                     total_inserted += 1
-                    print(f"[+] {vendor_code:30} -> {nominal_code} {account_name}")
+                    print(f"[+] {vendor_key:30} -> {nominal_code} {account_name}")
                 except Exception as e:
                     print(f"[-] Row {i}: {e}")
                     total_skipped += 1

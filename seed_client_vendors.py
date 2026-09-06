@@ -51,7 +51,7 @@ def normalise_description(raw: str) -> str:
     filtered = [w for w in words if w not in NOISE_WORDS and len(w) > 1]
     return " ".join(filtered)
 
-def extract_vendor_code(normalised: str, aliases: dict = None) -> str:
+def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
     """Extract canonical vendor key from normalised description."""
     if aliases is None:
         aliases = DEFAULT_ALIASES
@@ -117,7 +117,7 @@ def seed_database(client_id: str, gl_vendors: dict[str, list[str]]):
 
     try:
         for gl_code, (gl_name, vendors) in sorted(gl_vendors.items()):
-            vendor_codes_seen = set()
+            vendor_keys_seen = set()
 
             for vendor_desc in vendors:
                 # Remove GL code/account name suffix from vendor description
@@ -137,19 +137,19 @@ def seed_database(client_id: str, gl_vendors: dict[str, list[str]]):
 
                 # Extract and normalise vendor name
                 normalised = normalise_description(detail)
-                vendor_code = extract_vendor_code(normalised)
+                vendor_key = extract_vendor_key(normalised)
 
                 # Skip empty keys and duplicates within this GL code
-                if not vendor_code or vendor_code in vendor_codes_seen:
+                if not vendor_key or vendor_key in vendor_keys_seen:
                     total_skipped += 1
                     continue
 
-                vendor_codes_seen.add(vendor_code)
+                vendor_keys_seen.add(vendor_key)
 
                 # Upsert to database
                 repo.upsert_client_vendor(
                     client_id=client_id,
-                    vendor_code=vendor_code,
+                    vendor_key=vendor_key,
                     nominal_code=gl_code,
                     account_name=gl_name,
                     vendor_name=detail,
@@ -157,7 +157,7 @@ def seed_database(client_id: str, gl_vendors: dict[str, list[str]]):
                     last_updated=now
                 )
                 total_inserted += 1
-                print(f"[+] {client_id} | {vendor_code:20} | {detail:40} -> {gl_code}")
+                print(f"[+] {client_id} | {vendor_key:20} | {detail:40} -> {gl_code}")
 
     finally:
         repo.close()

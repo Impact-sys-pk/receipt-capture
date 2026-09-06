@@ -153,7 +153,7 @@ class RetroactiveCategoriseTest(unittest.TestCase):
             try:
                 repo.upsert_client_vendor(
                     client_id="CLIENT001",
-                    vendor_code="apcoa parking",
+                    vendor_key="apcoa parking",
                     nominal_code="271",
                     account_name="Parking and tolls",
                     last_updated="2026-07-27T00:00:00+00:00",
@@ -183,7 +183,7 @@ class RetroactiveCategoriseTest(unittest.TestCase):
                     extraction_id="ext-r-existing",
                     client_id="CLIENT001",
                     trade="UNSPECIFIED",
-                    vendor_key=None,
+                    mapping_id=None,
                     suggested_code="999",
                     suggested_name="Sundry expenses",
                     confidence="medium",

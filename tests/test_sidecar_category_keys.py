@@ -117,12 +117,12 @@ class TempEnvironment:
             repo._conn.commit()
         return file_path
 
-    def seed_mapping(self, repo, vendor_code="apcoa parking", code="271", name="Parking and tolls"):
-        # vendor_code is normalise_description("Apcoa Parking"), which is what
+    def seed_mapping(self, repo, vendor_key="apcoa parking", code="271", name="Parking and tolls"):
+        # vendor_key is normalise_description("Apcoa Parking"), which is what
         # the engine looks up. Seeding "apcoa" would silently never match.
         repo.upsert_client_vendor(
             client_id="CLIENT001",
-            vendor_code=vendor_code,
+            vendor_key=vendor_key,
             nominal_code=code,
             account_name=name,
             last_updated=datetime.now(timezone.utc).isoformat(),

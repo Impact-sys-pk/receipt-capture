@@ -1,5 +1,7 @@
 """
-Regenerate vendor_code from vendor_name using engine normalization logic.
+Regenerate vendor_key from vendor_name using engine normalization logic.
+The header was `vendor_code` until 2026-09-06; a file still carrying it is
+read and written back out under the new name.
 This produces short, core merchant names suitable for lookups.
 """
 
@@ -57,7 +59,7 @@ def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
     core_words = [w for w in words if w not in LOCATION_WORDS]
     if not core_words and words:
         core_words = [words[0]]
-    # For vendor code regeneration, take only first 1-2 words to avoid verbosity
+    # For vendor key regeneration, take only first 1-2 words to avoid verbosity
     # (e.g., "apcoa hal ss" → "apcoa", "half ords balham" → "halfords")
     if len(core_words) > 2:
         core_words = core_words[:1]
@@ -66,7 +68,7 @@ def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
 
 
 def regenerate_codes(csv_path: str):
-    """Regenerate vendor_codes from vendor_names."""
+    """Regenerate vendor_keys from vendor_names."""
 
     # Read CSV
     with open(csv_path, 'r', encoding='utf-8') as f:
@@ -89,7 +91,7 @@ def regenerate_codes(csv_path: str):
         normalised = normalise_description(vendor_name)
         new_code = extract_vendor_key(normalised, DEFAULT_ALIASES)
 
-        old_code = row.get('vendor_code', '')
+        old_code = row.get('vendor_key') or row.get('vendor_code') or ''
 
         if new_code != old_code:
             print(f"{old_code:35} -> {new_code:20} | {vendor_name}")
@@ -99,11 +101,11 @@ def regenerate_codes(csv_path: str):
                 code_map[new_code] = []
             code_map[new_code].append(old_code)
 
-        row['vendor_code'] = new_code
+        row['vendor_key'] = new_code
         updated_rows.append(row)
 
     # Write back
-    fieldnames = ['vendor_code', 'vendor_name', 'detail', 'nominal_code', 'account_name']
+    fieldnames = ['vendor_key', 'vendor_name', 'detail', 'nominal_code', 'account_name']
     with open(csv_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -111,7 +113,7 @@ def regenerate_codes(csv_path: str):
 
     print(f"\n--- Results ---")
     print(f"Updated: {csv_path}")
-    print(f"Unique vendor_codes: {len(code_map)}")
+    print(f"Unique vendor_keys: {len(code_map)}")
     print(f"Total rows: {len(updated_rows)}")
 
     # Show consolidations
@@ -145,7 +147,7 @@ if __name__ == "__main__":
 
         normalised = normalise_description(vendor_name)
         new_code = extract_vendor_key(normalised, DEFAULT_ALIASES)
-        old_code = row.get('vendor_code', '')
+        old_code = row.get('vendor_key') or row.get('vendor_code') or ''
 
         if new_code != old_code:
             print(f"{old_code:35} -> {new_code:20} | {vendor_name}")
@@ -154,11 +156,11 @@ if __name__ == "__main__":
                 code_map[new_code] = []
             code_map[new_code].append(old_code)
 
-        row['vendor_code'] = new_code
+        row['vendor_key'] = new_code
         updated_rows.append(row)
 
     # Write to new file
-    fieldnames = ['vendor_code', 'vendor_name', 'detail', 'nominal_code', 'account_name']
+    fieldnames = ['vendor_key', 'vendor_name', 'detail', 'nominal_code', 'account_name']
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -166,7 +168,7 @@ if __name__ == "__main__":
 
     print(f"\n--- Results ---")
     print(f"Created: {output_path}")
-    print(f"Unique vendor_codes: {len(code_map)}")
+    print(f"Unique vendor_keys: {len(code_map)}")
     print(f"Total rows: {len(updated_rows)}")
     print(f"\nConsolidations (multiple old codes -> 1 new code):")
     for new_code in sorted(code_map.keys()):

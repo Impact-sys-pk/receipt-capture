@@ -419,7 +419,7 @@ class GlOverrideTest(unittest.TestCase):
 
     def _seed_mapping(self, repo):
         repo.upsert_client_vendor(
-            client_id="CLIENT001", vendor_code="apcoa parking",
+            client_id="CLIENT001", vendor_key="apcoa parking",
             nominal_code="271", account_name="Parking and tolls",
             last_updated=datetime.now(timezone.utc).isoformat(),
             vendor_name="Apcoa Parking",

@@ -293,8 +293,8 @@ class SchemaShapeTest(unittest.TestCase):
         sql = self.conn.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'categorisations_firm_vendors'"
         ).fetchone()[0]
-        self.assertIn("UNIQUE(business_type, vendor_code, vendor_name)", sql)
-        self.assertNotIn("UNIQUE(business_type, vendor_code, vendor_name, firm_id)", sql)
+        self.assertIn("UNIQUE(business_type, vendor_key, vendor_name)", sql)
+        self.assertNotIn("UNIQUE(business_type, vendor_key, vendor_name, firm_id)", sql)
 
     def test_no_migration_survives(self):
         # 10d.34. Eleven ALTER TABLE ADD COLUMN guards, all removed, and the

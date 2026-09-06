@@ -192,7 +192,7 @@ class GetResolutionViewTest(unittest.TestCase):
                     extraction_id="ext-1",
                     client_id="CLIENT001",
                     trade="PHV_DRIVER",
-                    vendor_key=None,
+                    mapping_id=None,
                     suggested_code="271",
                     suggested_name="Parking and tolls",
                     confidence="high",
@@ -295,12 +295,12 @@ class GetResolutionViewTest(unittest.TestCase):
                 env.add_extraction(repo, "r-1", "ext-1", "2026-07-27T00:00:00+00:00")
                 now = datetime.now(timezone.utc).isoformat()
                 repo.upsert_client_vendor(
-                    client_id="CLIENT001", vendor_code="apcoa parking",
+                    client_id="CLIENT001", vendor_key="apcoa parking",
                     nominal_code="271", account_name="Parking and tolls",
                     last_updated=now, vendor_name="Apcoa Parking",
                 )
                 repo.upsert_firm_vendor(
-                    business_type="PHV_DRIVER", vendor_code="shell",
+                    business_type="PHV_DRIVER", vendor_key="shell",
                     nominal_code="500", account_name="Fuel", last_updated=now,
                     vendor_name="Shell",
                 )

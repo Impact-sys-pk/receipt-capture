@@ -19,9 +19,10 @@ the code says "do not call this", so the assertion is the thing that protects it
 
 The learned row is checked twice over: once by reading it, and once by putting a
 second receipt from the same supplier through the engine and watching layer 1
-return the learned code. The second is what proves `vendor_code` and not
-`vendor_key` is the right thing to write, because `vendor_code` is what layer 1
-looks up.
+return the learned code. The second is what proves `vendor_key` and not
+`mapping_id` is the right thing to write, because `vendor_key` is what layer 1
+looks up. Both fields were renamed on 2026-09-06 and this sentence said the
+same thing under the old names, `vendor_code` and `vendor_key`.
 """
 
 import json
@@ -348,8 +349,8 @@ class FiledNoteLearningTest(unittest.TestCase):
         self.assertEqual(learned[0]["vendor_name"], "Apcoa Parking")
         self.assertEqual(learned[0]["times_seen"], 1)
 
-    def test_what_is_written_is_the_vendor_code_layer_one_looks_up(self):
-        # Not the vendor_key, which is the UUID primary key of a mapping that
+    def test_what_is_written_is_the_vendor_key_layer_one_looks_up(self):
+        # Not the mapping_id, which is the row id of a mapping that
         # already exists and is None on exactly the receipts worth learning from.
         # The proof is a second receipt from the same supplier: it must come back
         # from layer 1 with the learned code.
@@ -375,6 +376,19 @@ class FiledNoteLearningTest(unittest.TestCase):
         self.assertEqual(categorisation["match_source"], "client")
         self.assertEqual(categorisation["suggested_code"], IN_CHART[0])
         self.assertEqual(categorisation["suggested_name"], IN_CHART[1])
+
+        # And the row points back at the mapping that answered, by its row id.
+        #
+        # Added 2026-09-06 because a mutation survived: swapping the two kwargs
+        # at layer 1 in engine.py, so that `vendor_key` carried the row id and
+        # `mapping_id` carried the normalised key, turned the whole suite green.
+        # Nothing anywhere asserted what a matched receipt stores in either
+        # field, because every categorisations row in existence is unmatched.
+        learned = self.learned()
+        self.assertEqual(len(learned), 1)
+        self.assertEqual(categorisation["mapping_id"], learned[0]["mapping_id"])
+        self.assertEqual(learned[0]["vendor_key"], "apcoa parking",
+                         "the normalised key, not a row id")
 
     def test_without_the_tick_the_same_note_learns_nothing(self):
         self.seed()
@@ -475,6 +489,11 @@ class FiledNoteLearningTest(unittest.TestCase):
         recorded = json.loads(events[0]["corrections_json"])
         self.assertTrue(recorded["remember_gl_for_supplier"], "11.3: record the choice")
         self.assertEqual(recorded["nominal_code"], IN_CHART[0])
+        # The blob's key was `vendor_code` until 2026-09-06 and nothing asserted
+        # it, so the rename could have moved it silently. It holds the normalised
+        # merchant key, which is what layer 1 looks up.
+        self.assertEqual(recorded["vendor_key"], "apcoa parking")
+        self.assertNotIn("vendor_code", recorded)
 
     def test_no_audit_row_and_no_learning_when_the_tick_is_off(self):
         self.seed()

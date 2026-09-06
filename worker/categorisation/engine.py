@@ -11,8 +11,8 @@ reader had in front of them. Rules were missing here altogether.
   Layer 0 - Rules (client-specific overrides, highest priority)
   Layer 1 - Client-level lookup (vendor -> nominal code for one client)
   Layer 2 - Firm-level lookup (vendor -> nominal code by business type)
-  Layer 3 - Fuzzy matching against the client's vendor codes
-  Layer 4 - Fuzzy matching against the firm's vendor codes
+  Layer 3 - Fuzzy matching against the client's vendor keys
+  Layer 4 - Fuzzy matching against the firm's vendor keys
   Layer 5 - AI suggestion (only when enable_ai_fallback is True)
 
 Unmatched is not a layer. It is what is recorded when no layer answered:
@@ -100,8 +100,15 @@ class CategorisationResult:
     extraction_id: str
     client_id: str
     business_type: str
-    vendor_code: Optional[str] = None
+    # The normalised merchant key that the layers look up, "imo" or "apcoa".
+    # Always set once a supplier name normalises to anything. Renamed from
+    # vendor_code on 2026-09-06: "code" means a four-digit account code
+    # everywhere else in this project, and this has never been one.
     vendor_key: Optional[str] = None
+    # The row id of the learned mapping a layer matched, and None when nothing
+    # matched. Renamed from vendor_key on the same day, which is the half of
+    # that correction that matters: the two names were the wrong way round.
+    mapping_id: Optional[str] = None
     suggested_code: Optional[str] = None
     suggested_name: Optional[str] = None
     confidence: str = "none"
@@ -204,10 +211,10 @@ class CategorisationEngine:
         self.enable_ai_fallback = enable_ai_fallback
         self.aliases = dict(DEFAULT_ALIASES)
 
-    def _rule_matches(self, rule: dict, vendor_code: str, detail: str) -> bool:
+    def _rule_matches(self, rule: dict, vendor_key: str, detail: str) -> bool:
         """Check if a rule matches the given vendor and detail."""
-        # Vendor code must match if specified in rule
-        if rule.get("vendor_code") and rule["vendor_code"] != vendor_code:
+        # Vendor key must match if specified in rule
+        if rule.get("vendor_key") and rule["vendor_key"] != vendor_key:
             return False
 
         # Check condition
@@ -216,7 +223,7 @@ class CategorisationEngine:
         condition_value = rule.get("condition_value", "").lower()
 
         # Get the field to check
-        field_value = detail.lower() if condition_field == "detail" else vendor_code.lower()
+        field_value = detail.lower() if condition_field == "detail" else vendor_key.lower()
 
         # Evaluate condition
         if condition_type == "contains":
@@ -261,11 +268,11 @@ class CategorisationEngine:
                 confidence="none", match_source="unmatched", needs_review=True
             )
 
-        # Normalise and extract vendor code
+        # Normalise and extract the vendor key
         normalised = normalise_description(supplier_name)
-        vendor_code = extract_vendor_key(normalised, self.aliases)
+        vendor_key = extract_vendor_key(normalised, self.aliases)
 
-        if not vendor_code:
+        if not vendor_key:
             return CategorisationResult(
                 receipt_id=receipt_id, extraction_id=extraction_id,
                 client_id=client_id, business_type=business_type,
@@ -276,11 +283,11 @@ class CategorisationEngine:
         if self.repo:
             rules = self.repo.get_client_rules(client_id)
             for rule in rules:
-                if self._rule_matches(rule, vendor_code, supplier_name):
+                if self._rule_matches(rule, vendor_key, supplier_name):
                     return CategorisationResult(
                         receipt_id=receipt_id, extraction_id=extraction_id,
                         client_id=client_id, business_type=business_type,
-                        vendor_code=vendor_code, suggested_code=rule["nominal_code"],
+                        vendor_key=vendor_key, suggested_code=rule["nominal_code"],
                         suggested_name=rule["account_name"],
                         confidence="high", match_source="rule",
                         matched_vendor=rule.get("rule_name"), needs_review=False
@@ -288,35 +295,35 @@ class CategorisationEngine:
 
         # Layer 1: Exact match in client lookup
         if self.repo:
-            client_vendor = self.repo.get_client_vendor(client_id, vendor_code)
+            client_vendor = self.repo.get_client_vendor(client_id, vendor_key)
             if client_vendor:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
                     client_id=client_id, business_type=business_type,
-                    vendor_code=vendor_code, vendor_key=client_vendor["vendor_key"],
+                    vendor_key=vendor_key, mapping_id=client_vendor["mapping_id"],
                     suggested_code=client_vendor["nominal_code"],
                     suggested_name=client_vendor["account_name"],
                     confidence="high", match_source="client",
-                    matched_vendor=vendor_code, needs_review=False
+                    matched_vendor=vendor_key, needs_review=False
                 )
 
             # Layer 2: Exact match in firm lookup (by business type)
-            firm_vendor = self.repo.get_firm_vendor(business_type, vendor_code)
+            firm_vendor = self.repo.get_firm_vendor(business_type, vendor_key)
             if firm_vendor:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
                     client_id=client_id, business_type=business_type,
-                    vendor_code=vendor_code, vendor_key=firm_vendor["vendor_key"],
+                    vendor_key=vendor_key, mapping_id=firm_vendor["mapping_id"],
                     suggested_code=firm_vendor["nominal_code"],
                     suggested_name=firm_vendor["account_name"],
                     confidence="high", match_source="firm",
-                    matched_vendor=vendor_code, needs_review=False
+                    matched_vendor=vendor_key, needs_review=False
                 )
 
             # Layer 3: Fuzzy match in client lookup
             client_vendors = self.repo.list_client_vendors(client_id)
             if client_vendors:
-                fuzzy_results = fuzzy_match(vendor_code, client_vendors, threshold=0.70)
+                fuzzy_results = fuzzy_match(vendor_key, client_vendors, threshold=0.70)
                 if fuzzy_results:
                     best_match, score = fuzzy_results[0]
                     matched_vendor = self.repo.get_client_vendor(client_id, best_match)
@@ -325,7 +332,7 @@ class CategorisationEngine:
                         return CategorisationResult(
                             receipt_id=receipt_id, extraction_id=extraction_id,
                             client_id=client_id, business_type=business_type,
-                            vendor_code=vendor_code, vendor_key=matched_vendor["vendor_key"],
+                            vendor_key=vendor_key, mapping_id=matched_vendor["mapping_id"],
                             suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
                             confidence=conf, match_source="fuzzy_client",
@@ -335,7 +342,7 @@ class CategorisationEngine:
             # Layer 4: Fuzzy match in firm lookup
             firm_vendors = self.repo.list_firm_vendors(business_type)
             if firm_vendors:
-                fuzzy_results = fuzzy_match(vendor_code, firm_vendors, threshold=0.70)
+                fuzzy_results = fuzzy_match(vendor_key, firm_vendors, threshold=0.70)
                 if fuzzy_results:
                     best_match, score = fuzzy_results[0]
                     matched_vendor = self.repo.get_firm_vendor(business_type, best_match)
@@ -344,7 +351,7 @@ class CategorisationEngine:
                         return CategorisationResult(
                             receipt_id=receipt_id, extraction_id=extraction_id,
                             client_id=client_id, business_type=business_type,
-                            vendor_code=vendor_code, vendor_key=matched_vendor["vendor_key"],
+                            vendor_key=vendor_key, mapping_id=matched_vendor["mapping_id"],
                             suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
                             confidence=conf, match_source="fuzzy_firm",
@@ -353,23 +360,23 @@ class CategorisationEngine:
 
         # Layer 5: AI suggestion (if enabled)
         if self.enable_ai_fallback:
-            ai_result = self._ai_suggest(vendor_code, client_id, supplier_name,
+            ai_result = self._ai_suggest(vendor_key, client_id, supplier_name,
                                          gross_amount, line_items)
             if ai_result:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
                     client_id=client_id, business_type=business_type,
-                    vendor_code=vendor_code, suggested_code=ai_result.get("code"),
+                    vendor_key=vendor_key, suggested_code=ai_result.get("code"),
                     suggested_name=ai_result.get("name"),
                     confidence="low", match_source="ai",
-                    matched_vendor=vendor_code, needs_review=True
+                    matched_vendor=vendor_key, needs_review=True
                 )
 
         # No match
         return CategorisationResult(
             receipt_id=receipt_id, extraction_id=extraction_id,
             client_id=client_id, business_type=business_type,
-            vendor_code=vendor_code, confidence="none", match_source="unmatched", needs_review=True
+            vendor_key=vendor_key, confidence="none", match_source="unmatched", needs_review=True
         )
 
     def _ai_suggest(self, vendor_key: str, client_id: str,
@@ -523,49 +530,3 @@ Return the best matching GL code and name."""
         except Exception as e:
             logger.warning(f"AI categorisation failed for {vendor_key}: {e}")
             return None
-
-    def learn_from_correction(self, client_id: str, business_type: str,
-                             vendor_key: str, nominal_code: str, account_name: str):
-        """
-        Record a user correction. Update both client and firm lookups.
-        """
-        if not self.repo or not vendor_key:
-            return
-
-        now = datetime.now().isoformat()
-
-        # Update client lookup
-        self.repo.upsert_client_vendor(
-            client_id=client_id, vendor_key=vendor_key,
-            nominal_code=nominal_code, account_name=account_name,
-            last_updated=now
-        )
-
-        # Update firm lookup (only if no conflict)
-        existing_firm = self.repo.get_firm_vendor(business_type, vendor_key)
-        if existing_firm is None:
-            # First time for this vendor in this business type.
-            #
-            # 10d.39. The firm is resolved from the client_id this method already
-            # receives, rather than added as a parameter, which is what keeps
-            # categorise()'s five production call sites untouched. It is written
-            # and never read: the unique key does not change and the learned pool
-            # stays shared.
-            #
-            # It reads config.CLIENTS_BY_ID rather than being told, because after
-            # 10d.19 the client loader refuses a record with no firm, so a client
-            # that resolves at all has a firm. None where it does not resolve,
-            # and a null provenance is honest where an invented one is not.
-            firm_id = (config.CLIENTS_BY_ID.get(client_id) or {}).get("firm_id")
-            self.repo.upsert_firm_vendor(
-                business_type=business_type, vendor_code=vendor_key,
-                nominal_code=nominal_code, account_name=account_name,
-                last_updated=now, firm_id=firm_id
-            )
-        elif existing_firm["nominal_code"] == nominal_code:
-            # Consistent correction, increment counter
-            self.repo.increment_firm_vendor_count(business_type, vendor_key)
-        else:
-            # CONFLICT: different code for same vendor in same business type
-            # Log but don't update firm lookup
-            pass

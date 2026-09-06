@@ -7,9 +7,9 @@ def init_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS categorisations_firm_vendors (
-            vendor_key              TEXT PRIMARY KEY,
+            mapping_id              TEXT PRIMARY KEY,
             business_type           TEXT NOT NULL,
-            vendor_code             TEXT NOT NULL,
+            vendor_key              TEXT NOT NULL,
             nominal_code            TEXT NOT NULL,
             account_name            TEXT NOT NULL,
             vendor_name             TEXT,
@@ -21,34 +21,34 @@ def init_db():
             -- column exists so the provenance of a learned mapping is captured
             -- while it is still capturable.
             firm_id                 TEXT,
-            UNIQUE(business_type, vendor_code, vendor_name)
+            UNIQUE(business_type, vendor_key, vendor_name)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_firm_vendor_code
-            ON categorisations_firm_vendors(business_type, vendor_code);
+        CREATE INDEX IF NOT EXISTS idx_firm_vendor_key
+            ON categorisations_firm_vendors(business_type, vendor_key);
 
         CREATE TABLE IF NOT EXISTS categorisations_client_vendors (
-            vendor_key              TEXT PRIMARY KEY,
+            mapping_id              TEXT PRIMARY KEY,
             client_id               TEXT NOT NULL,
-            vendor_code             TEXT NOT NULL,
+            vendor_key              TEXT NOT NULL,
             nominal_code            TEXT NOT NULL,
             account_name            TEXT NOT NULL,
             vendor_name             TEXT,
             detail                  TEXT,
             times_seen              INTEGER DEFAULT 1,
             last_updated            TEXT NOT NULL,
-            UNIQUE(client_id, vendor_code, vendor_name)
+            UNIQUE(client_id, vendor_key, vendor_name)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_client_vendor_code
-            ON categorisations_client_vendors(client_id, vendor_code);
+        CREATE INDEX IF NOT EXISTS idx_client_vendor_key
+            ON categorisations_client_vendors(client_id, vendor_key);
 
         CREATE TABLE IF NOT EXISTS categorisations_client_rules (
             rule_id                 TEXT PRIMARY KEY,
             client_id               TEXT NOT NULL,
             rule_name               TEXT NOT NULL,
             priority                INTEGER NOT NULL DEFAULT 50,
-            vendor_code             TEXT,
+            vendor_key              TEXT,
             condition_type          TEXT NOT NULL,
             condition_field         TEXT NOT NULL,
             condition_value         TEXT NOT NULL,
@@ -63,7 +63,7 @@ def init_db():
             extraction_id           TEXT NOT NULL,
             client_id               TEXT NOT NULL,
             trade                   TEXT NOT NULL,
-            vendor_key              TEXT,
+            mapping_id              TEXT,
             suggested_code          TEXT,
             suggested_name          TEXT,
             confidence              TEXT NOT NULL,

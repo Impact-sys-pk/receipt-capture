@@ -316,7 +316,7 @@ def process_extraction_result(
         stats['extractions_succeeded'] = stats.get('extractions_succeeded', 0) + 1
 
     else:  # failed, needs_review, possible_duplicate
-        # Build sidecar with confidence="low"
+        # Build sidecar with confidence="none"
         sidecar_payload = make_enriched_sidecar(
             receipt_id=receipt_id,
             source=source,
@@ -330,9 +330,15 @@ def process_extraction_result(
             gross=extraction.gross_amount,
             currency=extraction.currency,
             # Nothing is categorised on this path: the receipt is not filed.
+            # `confidence` is "none" and not "low" because there is no category
+            # to be confident about. "none" is what the engine itself writes
+            # when it produces no code, at engine.py:268, :279 and :379.
+            # Corrected 2026-09-06: this said "low", which is also what a fuzzy
+            # match under 0.80 and every layer 5 answer say, so one word carried
+            # three unrelated meanings.
             category_code=None,
             category_name=None,
-            confidence="low",
+            confidence="none",
             validation_status=validation.status,
             asserted=asserted_values,
             original_filename=filename,

@@ -79,14 +79,24 @@ class LivePathsSurviveTest(unittest.TestCase):
                             live_paths.TEMP_UNSYNCED_ROOT)
 
     def test_the_live_roots_are_what_config_would_have_resolved(self):
-        # The defaults are read out of config.py's own source rather than copied
-        # here, so this compares the capture against the file it came from.
-        practice_var, practice_default = live_paths._root_declaration("PRACTICE_ROOT")
-        unsynced_var, unsynced_default = live_paths._root_declaration("UNSYNCED_ROOT")
-        self.assertEqual(live_paths.LIVE_PRACTICE_ROOT, Path(practice_default))
-        self.assertEqual(live_paths.LIVE_UNSYNCED_ROOT, Path(unsynced_default))
+        # ~~The defaults are read out of config.py's own source rather than
+        # copied here, so this compares the capture against the file it came
+        # from.~~ **Rewritten 2026-09-06: config.py has no defaults to read.**
+        # Both roots are required and both come from .env, so what is checkable
+        # here is that the variable names still come from config.py's source and
+        # that the captured roots are absolute and did not pick up the redirect.
+        practice_var = live_paths._root_variable("PRACTICE_ROOT")
+        unsynced_var = live_paths._root_variable("UNSYNCED_ROOT")
         self.assertEqual((practice_var, unsynced_var),
                          ("PRACTICE_ROOT", "INTELLIBILLS_UNSYNCED_ROOT"))
+        for name in ("LIVE_PRACTICE_ROOT", "LIVE_UNSYNCED_ROOT"):
+            with self.subTest(root=name):
+                root = getattr(live_paths, name)
+                self.assertTrue(root.is_absolute(), root)
+                self.assertNotIn(live_paths.SESSION_ROOT,
+                                 [root, *root.parents],
+                                 f"{name} is under the session temp directory, "
+                                 "so the capture ran after the redirect")
 
     def test_live_maps_a_redirected_path_back(self):
         self.assertEqual(live_paths.live(config.CHARTS_DIR),

@@ -28,13 +28,45 @@ BASE_DIR = Path(__file__).parent
 # the environment variables were ONEDRIVE_ROOT and INTELLIBILLS_LOCAL_ROOT. Each
 # old name stated a thing that is not the property that matters: nothing in this
 # pipeline calls a Microsoft API, and what matters about the first is that it is
-# the practice root and about the second that it is not synced. Neither variable
-# is set in .env or .env.example, so the rename changes no configuration.
-PRACTICE_ROOT = Path(os.environ.get(
-    "PRACTICE_ROOT",
-    r"C:\Users\PDK7\OneDrive - Intellitax Accounting Limited"
-))
-UNSYNCED_ROOT = Path(os.environ.get("INTELLIBILLS_UNSYNCED_ROOT", r"C:\Intellibills"))
+# the practice root and about the second that it is not synced. ~~Neither
+# variable is set in .env or .env.example, so the rename changes no
+# configuration.~~ **Corrected 2026-09-06: both are set in both files now, and
+# both are required.** The defaults that used to sit here were one person's own
+# folders; _required_root below explains what they did on any other machine.
+
+
+def _required_root(variable: str) -> Path:
+    """One root, read from the environment with no default and no fallback.
+
+    Called once per root, so each root gets its own check and its own message. A
+    combined message makes a person check the variable that was already right.
+
+    **The check is the definition, so it cannot run after the folders are made.**
+    The mkdir block below builds five directories from these two roots at import,
+    and until 2026-09-06 this module carried one machine's own folders as the
+    defaults, so a bare `import config` anywhere else built that person's folder
+    tree on that disk. It happened twice, on 29 July and on 2026-09-03, both
+    times from the Linux sandbox, and it is the fourth trap in CLAUDE.md.
+
+    Which is why absoluteness is the test and not a nicety. A Windows path string
+    has no leading separator on Linux, so Path(...).is_absolute() is False there:
+    the check makes the sandbox raise instead of making folders.
+    """
+    value = os.environ.get(variable)
+    if not value or not Path(value).is_absolute():
+        raise RuntimeError(
+            f"{variable} is required and must be an absolute path. It read "
+            f"{value!r}. There is no default: config.py carried one until "
+            f"2026-09-06 and it was one person's own folder, which is how a "
+            f"bare import made folders on machines it did not belong to. Set "
+            f"it in {BASE_DIR / '.env'}, unquoted and with the backslashes "
+            f"unescaped, and see {BASE_DIR / '.env.example'} for the shape."
+        )
+    return Path(value)
+
+
+PRACTICE_ROOT = _required_root("PRACTICE_ROOT")
+UNSYNCED_ROOT = _required_root("INTELLIBILLS_UNSYNCED_ROOT")
 
 # One folder per owner in the practice root, so nothing of ours sits in
 # IntelliBooks' folder any more. Amendment 72.

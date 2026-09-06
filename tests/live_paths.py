@@ -8,8 +8,8 @@ below makes a broken order loud rather than silent.
 
 ## Why this exists
 
-`config.py` derives every path from two roots **at import**, at `:41` and
-`:63-96`. So setting `config.PRACTICE_ROOT` afterwards moves nothing else, and a
+`config.py` derives every path from two roots **at import**, at `:73` and
+`:95-128`. So setting `config.PRACTICE_ROOT` afterwards moves nothing else, and a
 fixture that wants a private practice root has to assign thirteen constants by
 hand. Fifteen fixture classes did that, each pinning a different subset, and
 `tests/test_resolution_service.py` was written pinning five of them and not
@@ -23,7 +23,7 @@ environment before `config` computes anything from them, so all eighteen Path
 constants land in temp, including the five no fixture pins at all: `BASE_DIR`,
 `FIRMS_JSON`, `INTELLIBILLS_ROOT`, `PIPELINE_LOCKFILE` and `UNSYNCED_ROOT`.
 
-It also means `config.py:129`'s import-time `mkdir` block builds its folders in
+It also means `config.py:161`'s import-time `mkdir` block builds its folders in
 temp rather than in the live practice root, which is the fourth trap in
 `CLAUDE.md` neutralised for anything run through pytest.
 
@@ -81,17 +81,25 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_SOURCE = REPO_ROOT / "config.py"
 
 
-def _root_declaration(constant: str) -> tuple[str, str]:
-    """(environment variable, default) for one root, read from config.py's source.
+def _root_variable(constant: str) -> str:
+    """The environment variable config.py reads for one root, from its source.
 
-    Read rather than copied, so there is no second statement of the defaults that
-    can drift from config.py's. Read rather than imported, because importing is
-    the one thing this file may not do: `config.py:117-129` calls `mkdir` on five
-    paths at import, which is what `CLAUDE.md`'s fourth trap is about.
+    Read rather than copied, so a rename in config.py cannot leave this file
+    setting a variable nothing reads. Read rather than imported, because
+    importing is the one thing this file may not do: config.py calls `mkdir` on
+    five paths at import, which is what `CLAUDE.md`'s fourth trap is about.
 
-    Raises rather than guessing if the shape moves. A wrong default here would
-    silently capture the wrong live root and the two isolation tests would then
-    assert against a folder that does not exist, which passes.
+    ~~(environment variable, default)~~ **Changed 2026-09-06: there is no default
+    to read any more.** Both roots became required, so config.py declares each as
+    a call taking the variable name and nothing else, and the live value below
+    comes from the environment or from .env rather than from a literal in the
+    source.
+
+    Matches any single-argument call rather than `_required_root` by name. The
+    name of the helper is config.py's business; what this file needs is the
+    string it is given. Raises rather than guessing if the shape moves, because a
+    wrong variable name here would capture the wrong live root and the isolation
+    tests would then assert against a folder that does not exist, which passes.
     """
     tree = ast.parse(CONFIG_SOURCE.read_text(encoding="utf-8"))
     for node in tree.body:
@@ -100,28 +108,25 @@ def _root_declaration(constant: str) -> tuple[str, str]:
         names = [t.id for t in node.targets if isinstance(t, ast.Name)]
         if constant not in names:
             continue
-        for call in ast.walk(node.value):
-            if not isinstance(call, ast.Call):
-                continue
-            func = call.func
-            if (isinstance(func, ast.Attribute) and func.attr == "get"
-                    and isinstance(func.value, ast.Attribute)
-                    and func.value.attr == "environ"
-                    and len(call.args) == 2
-                    and all(isinstance(a, ast.Constant) for a in call.args)):
-                return call.args[0].value, call.args[1].value
+        call = node.value
+        if (isinstance(call, ast.Call) and not call.keywords
+                and len(call.args) == 1
+                and isinstance(call.args[0], ast.Constant)
+                and isinstance(call.args[0].value, str)):
+            return call.args[0].value
     raise RuntimeError(
-        f"config.py no longer declares {constant} as "
-        f"Path(os.environ.get(<name>, <default>)). tests/live_paths.py reads it "
-        "from the source to avoid holding a second copy of the defaults, so this "
-        "needs updating alongside config.py rather than being worked around."
+        f"config.py no longer declares {constant} as a call taking one string, "
+        "the environment variable name. tests/live_paths.py reads the name from "
+        "the source rather than holding a second copy of it, so this needs "
+        "updating alongside config.py rather than being worked around."
     )
 
 
-# config.py calls load_dotenv() at import, so a root set in .env would reach it.
-# Mirrored here, before the capture, or the captured "live" root would be the
-# hardcoded default while config used the .env value. Neither root is in .env
-# today, checked 2026-09-05; this is so that stops being load-bearing.
+# config.py calls load_dotenv() at import, so a root set in .env reaches it.
+# Mirrored here, before the capture, or the captured "live" root would disagree
+# with the one config uses. ~~Neither root is in .env today, checked
+# 2026-09-05~~ **both are, from 2026-09-06, and .env is now the only place either
+# comes from: config.py carries no defaults any more.**
 try:
     from dotenv import load_dotenv
 
@@ -129,13 +134,35 @@ try:
 except ImportError:  # pragma: no cover - dotenv is a hard dependency of config
     pass
 
-PRACTICE_VAR, PRACTICE_DEFAULT = _root_declaration("PRACTICE_ROOT")
-UNSYNCED_VAR, UNSYNCED_DEFAULT = _root_declaration("UNSYNCED_ROOT")
+PRACTICE_VAR = _root_variable("PRACTICE_ROOT")
+UNSYNCED_VAR = _root_variable("UNSYNCED_ROOT")
+
+
+def _live_root(variable: str) -> Path:
+    """The root config.py would resolve, captured before the redirect below.
+
+    Refuses for the same reasons config.py's `_required_root` refuses, and it has
+    to: with no default in the source, an unset variable would make this a
+    `Path('.')` sitting in the repository, `live()` would map redirected paths
+    onto it, and the two isolation tests would assert that nothing was written to
+    a folder that is not the one they mean. A green suite testing nothing is the
+    failure this whole file exists to prevent.
+    """
+    value = os.environ.get(variable)
+    if not value or not Path(value).is_absolute():
+        raise RuntimeError(
+            f"{variable} is required and must be an absolute path, and the "
+            f"suite needs it before it redirects it. It read {value!r}. Set it "
+            f"in {REPO_ROOT / '.env'}; {REPO_ROOT / '.env.example'} shows the "
+            "shape. config.py requires the same thing and for the same reason."
+        )
+    return Path(value)
+
 
 #: The real practice root, as config.py would have resolved it. OneDrive.
-LIVE_PRACTICE_ROOT = Path(os.environ.get(PRACTICE_VAR, PRACTICE_DEFAULT))
+LIVE_PRACTICE_ROOT = _live_root(PRACTICE_VAR)
 #: The real unsynced root, as config.py would have resolved it. C:\Intellibills.
-LIVE_UNSYNCED_ROOT = Path(os.environ.get(UNSYNCED_VAR, UNSYNCED_DEFAULT))
+LIVE_UNSYNCED_ROOT = _live_root(UNSYNCED_VAR)
 
 # One directory for the whole session. Per-test isolation is still each fixture's
 # job; this is the floor under all of them, so a test that pins nothing writes
@@ -149,7 +176,7 @@ TEMP_UNSYNCED_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ[PRACTICE_VAR] = str(TEMP_PRACTICE_ROOT)
 os.environ[UNSYNCED_VAR] = str(TEMP_UNSYNCED_ROOT)
 
-# RESOLUTIONS_DIR has an environment override of its own at config.py:96 that is
+# RESOLUTIONS_DIR has an environment override of its own at config.py:128 that is
 # read before the fall back to INTELLIBILLS_ROOT, so a value set in .env would
 # survive this redirect and point at the live folder. Cleared for the run.
 os.environ.pop("RESOLUTIONS_DIR", None)

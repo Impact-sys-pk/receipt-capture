@@ -206,6 +206,8 @@ specified, so it is left alone. **Small and obviously right if you want it: drop
 the `getattr` at line 893 for `categorisation.vendor_key`, matching
 `_apply_filed_note()`. Say the word and it goes in with the next thing.**
 
+**CLOSED 2026-09-06 on Paul's answer. Section 9 records what was done.**
+
 ---
 
 ## 6. Verification
@@ -1034,3 +1036,107 @@ indexes:
   categorisations_client_rules       0 rows  ['rule_id', 'client_id', 'rule_name', 'priority', 'vendor_code', 'condition_type', 'condition_field', 'condition_value', 'nominal_code', 'account_name', 'created_at']
   categorisations                    11 rows  ['categorisation_id', 'receipt_id', 'extraction_id', 'client_id', 'trade', 'vendor_key', 'suggested_code', 'suggested_name', 'confidence', 'match_source', 'matched_vendor', 'needs_review', 'categorised_at', 'corrected_at', 'correction_code', 'correction_name', 'correction_reason']
 ```
+
+---
+
+## 9. Flag 3, closed 2026-09-06 on Paul's answer
+
+**The plain attribute read is the form kept.** `resolve_receipt():893` now reads
+`categorisation.vendor_key`, which is what `_apply_filed_note()` already did.
+
+### Why that form and not the `getattr`
+
+**The `getattr` default could never fire.** Three reasons, each checked rather
+than assumed:
+
+1. `categorisation` is bound at `service.py:791` from
+   `categorisation_engine.categorise()`, which returns a `CategorisationResult`
+   on every one of its seven return paths.
+2. It is passed through `resolve_against_chart()` at `:812`, and that function
+   returns the object it was given: `worker\categorisation\fallback.py` returns
+   `result` at `:244`, `:272` and `:276`, and constructs nothing.
+3. `vendor_key` is a declared dataclass field with a default of `None`, so the
+   attribute always exists. **And `resolve_receipt()` already reads eight
+   attributes off that same object directly, at `:819` to `:826`, before it ever
+   reaches line 893.** A missing attribute would have raised at the first of
+   them.
+
+**What the default could do is swallow a rename**, which is the failure the
+whole naming brief existed to correct, sitting in the code that does the
+learning.
+
+### What the change actually buys, measured rather than asserted
+
+**Isolated mutation: rename the field out from under the read only, leaving
+everything else alone, and run the one test that asserts learning happens,
+`test_resolution_service.py::RememberMappingTest::test_opt_in_on_learns_the_mapping`.**
+
+| Form | What the failure says |
+|---|---|
+| **Old**, `getattr(categorisation, "vendor_kee", None)` | `AssertionError: 0 != 1` |
+| **New**, `categorisation.vendor_kee` | `AttributeError: 'CategorisationResult' object has no attribute 'vendor_kee'. Did you mean: 'vendor_key'?` |
+
+**Both are caught, so this is not a difference between passing and failing.** It
+is a difference between a failure that says "no rows were learned" and one that
+names the field and suggests the right spelling. **The old form was not silent
+in the suite; it was silent about the cause.**
+
+**Nothing can crash the pipeline either way.** Both learning branches sit inside
+a broad handler, `service.py:945` for `resolve_receipt()` and `:1433` for
+`apply_resolution_note()`. Each logs the traceback with `exc_info=True` and
+returns an `error` outcome with a message safe to render. So a raise fails one
+receipt loudly and logs why, rather than taking the run down.
+
+**In production the two forms are identical**, because the attribute is always
+there. The difference exists only once somebody has broken something.
+
+### Evidence
+
+**Red before green.** Both new tests were written first and both failed against
+the unchanged code:
+
+```
+AssertionError: Lists differ:
+  ['893: vendor_key = getattr(categorisation, "vendor_key", None)'] != []
+
+AssertionError: Lists differ:
+  ['vendor_key = getattr(categorisation, "vendor_key", None)',
+   'vendor_key = categorisation.vendor_key']
+  != ['vendor_key = categorisation.vendor_key',
+      'vendor_key = categorisation.vendor_key']
+```
+
+**The guard:** `tests\test_vendor_key_naming.py::TheTwoLearningBranchesReadTheFieldTheSameWay`,
+two tests. One asserts no live line in `service.py` reaches the categorisation
+through `getattr`. The other asserts both branches read it with the identical
+expression, so they cannot drift apart again without a test going red.
+
+**Mutation E, putting the `getattr` back exactly as it was:**
+
+```
+2 failed, 522 passed, 330 subtests passed
+  TheTwoLearningBranchesReadTheFieldTheSameWay::test_both_branches_read_it_as_a_plain_attribute
+  TheTwoLearningBranchesReadTheFieldTheSameWay::test_neither_branch_reaches_the_field_through_getattr
+```
+
+**Two tests, and they are the two that exist for it.**
+
+**The suite:** 522 passed, 330 subtests before this change. **524 passed, 330
+subtests after.** Zero skips.
+
+### Two disclosures
+
+- **My first version of the guard failed after the fix was already correct.** It
+  searched for the string `getattr(categorisation` across the whole file and hit
+  the comment I had just written explaining the old form. Comment lines are now
+  skipped, the same way the `vendor_code` allowlist in section 6.4 keeps two
+  comments that name the old field. The second test, which compares the two
+  reads exactly, is what stops that skip being a loophole.
+- **My first failure message printed the entire 1,500-line module** into the
+  test output, because `assertNotIn` against a whole file prints the haystack.
+  It now reports the matching lines with their numbers.
+
+### Not done, and not asked for
+
+**`_apply_filed_note()` was not touched.** It already read the field as a plain
+attribute. The change is one line of code in one branch, plus its comment.

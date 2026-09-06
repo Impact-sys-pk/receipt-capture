@@ -145,6 +145,55 @@ class LearnFromCorrectionIsGone(unittest.TestCase):
         self.assertEqual(callers, [], f"learn_from_correction is back in: {callers}")
 
 
+class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):
+    """Paul's answer to flag 3 of the naming report, 2026-09-06.
+
+    `resolve_receipt()` read the field with `getattr(categorisation,
+    "vendor_key", None)` and `_apply_filed_note()` read it as
+    `categorisation.vendor_key`. Same object, same field, two forms.
+
+    The `getattr` default could never fire. `categorisation` is the
+    `CategorisationResult` that `categorise()` returned and
+    `resolve_against_chart()` handed back unchanged, `vendor_key` is a declared
+    dataclass field with a default, and `resolve_receipt()` already reads eight
+    other attributes off that same object directly before it reaches this line.
+    A missing attribute would have raised at the first of those.
+
+    What the default could do is swallow a rename. A field renamed out from
+    under it returns None, learning stops, and the only sign is a warning line
+    saying the engine returned no vendor_key. That is the failure the whole
+    naming brief existed to correct, sitting in the code that does the learning.
+    """
+
+    SERVICE = REPO_ROOT / "worker" / "resolution" / "service.py"
+
+    def test_neither_branch_reaches_the_field_through_getattr(self):
+        # Report the lines, not the file. assertNotIn against the whole source
+        # prints all 1,500 lines of it into the failure.
+        # Comment lines are skipped: the comment above the corrected read names
+        # the old form on purpose, the same way the vendor_code allowlist above
+        # keeps the two comments that name the old field. Live code only.
+        hits = [f"{n}: {line.strip()}"
+                for n, line in enumerate(
+                    self.SERVICE.read_text(encoding="utf-8").splitlines(), 1)
+                if "getattr(categorisation" in line
+                and not line.strip().startswith("#")]
+        self.assertEqual(
+            hits, [],
+            "a getattr on the categorisation hides a rename instead of raising",
+        )
+
+    def test_both_branches_read_it_as_a_plain_attribute(self):
+        source = self.SERVICE.read_text(encoding="utf-8")
+        reads = [line.strip() for line in source.splitlines()
+                 if "vendor_key = " in line and "categorisation" in line]
+        self.assertEqual(
+            reads,
+            ["vendor_key = categorisation.vendor_key"] * 2,
+            "resolve_receipt() and _apply_filed_note() must read it identically",
+        )
+
+
 def _create_statements() -> str:
     """The CREATE script out of init_db(), without opening the live database.
 

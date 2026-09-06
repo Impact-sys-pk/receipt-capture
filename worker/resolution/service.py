@@ -890,7 +890,23 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         #     the exact-match layer would then apply the wrong code confidently to
         #     every future receipt from that vendor.
         if corrections.remember_gl_for_supplier and effective_code:
-            vendor_key = getattr(categorisation, "vendor_key", None)
+            # A plain attribute read, matching _apply_filed_note(). Paul's
+            # answer of 2026-09-06 to flag 3 of the vendor_key naming report.
+            #
+            # It was `getattr(categorisation, "vendor_key", None)`, and that
+            # default could never fire: `categorisation` is the
+            # CategorisationResult that categorise() returned and
+            # resolve_against_chart() handed back unchanged, `vendor_key` is a
+            # declared field with a default, and step 8 above already reads
+            # eight attributes off this same object directly. A missing
+            # attribute would have raised there first.
+            #
+            # What the default could do is swallow a rename. Renamed out from
+            # under it, the field reads None, learning silently stops, and the
+            # only trace is the warning below saying the engine returned no
+            # vendor_key. That is the failure the naming correction of
+            # 2026-09-06 existed to fix, sitting in the code that learns.
+            vendor_key = categorisation.vendor_key
             if vendor_key:
                 repo.upsert_client_vendor(
                     client_id=receipt["client_id"],

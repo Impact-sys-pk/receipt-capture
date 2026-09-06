@@ -130,11 +130,39 @@ def _count_review_items(repo: Repository | None) -> int:
 
 
 def _write_pipeline_status(last_run: str, processed_today: int, review_count: int, last_error: str | None):
+    """The status file IntelliBooks Desktop reads. Five keys, and the shape is a contract.
+
+    `practice_root` is sub-step 10e.10, named by amendment 241 of
+    `2026-07-25_CONSOLE_DESIGN.md`. **The browser hands IntelliBooks a folder
+    handle and a folder name and no path**, so until this field existed
+    IntelliBooks could not say which folder it was working in, nor tell the right
+    folder from a similarly-named wrong one. 10e.9 settles that the pipeline's
+    configuration is the single authority, because the pipeline cannot read a
+    file inside the practice root to learn where the practice root is.
+    **IntelliBooks verifies; it does not decide.**
+
+    **The value is `str(config.PRACTICE_ROOT)` as configured, and is deliberately
+    not resolved, normalised or case-folded.** The point of the field is that a
+    person can reconcile what IntelliBooks shows against `.env` or against
+    `config.py:33` and see the same characters. `.resolve()` collapses `..` and
+    case-folds an existing path, so it can differ from the configured string
+    through a junction, a symlink or the case somebody typed, and the two
+    products would then disagree over a difference that does not exist.
+
+    **Written on every cycle including a failed one**, because the call site at
+    the `finally:` block below already guarantees that and the field is not
+    conditional. The case where IntelliBooks most needs to know which folder it
+    is looking at is the case where the pipeline is unhealthy.
+
+    Backslashes are escaped by `json.dumps()`. That is correct JSON and is not
+    worked around.
+    """
     payload = {
         "last_run": last_run,
         "processed_today": processed_today,
         "review_count": review_count,
         "last_error": last_error,
+        "practice_root": str(config.PRACTICE_ROOT),
     }
     config.PIPELINE_STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 

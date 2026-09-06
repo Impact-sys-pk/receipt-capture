@@ -204,11 +204,87 @@ class ProcessedTodayTest(unittest.TestCase):
             self.assertEqual(payload["processed_today"], 3, payload)
             self.assertEqual(payload["review_count"], 2, payload)
             self.assertIsNone(payload["last_error"])
-            # The shape IntelliBooks Desktop reads must not change.
+            # The shape IntelliBooks Desktop reads must not change. Five keys
+            # since sub-step 10e.10 added practice_root on 2026-09-06; it was
+            # four, and this assertion caught the change, which is what it is
+            # for. Kept as an exact comparison rather than loosened to a subset
+            # check, or it would stop catching the next unannounced field.
             self.assertEqual(
                 sorted(payload.keys()),
-                ["last_error", "last_run", "processed_today", "review_count"],
+                ["last_error", "last_run", "practice_root", "processed_today",
+                 "review_count"],
             )
+            # The value, not only the key. Read from config at assertion time so
+            # it is the redirected temp root that tests/live_paths.py installed
+            # and never Paul's real practice root.
+            self.assertEqual(payload["practice_root"], str(config.PRACTICE_ROOT))
+
+    def test_the_practice_root_is_written_when_the_run_fails(self):
+        """10e.10: the unhealthy case is the one IntelliBooks most needs it for.
+
+        Placed here rather than in tests/test_failure_path_engine.py, which the
+        brief offered. That file's failure is an extraction failure, which
+        process_once() catches per receipt and which leaves the run itself
+        successful and last_error None. What this needs is a run-level
+        exception, so that errors is set and the finally block writes the status
+        of a failed cycle. And the status payload's other assertions are all in
+        this file, so the shape lives in one place.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo, "r-1", "ok")
+            finally:
+                repo.close()
+
+            # process_once() re-raises after recording the error, so the raise is
+            # part of the contract and not an accident of the fixture.
+            with patch.object(app, "scan_inbox", return_value=[]),                  patch.object(app, "fetch_emails_without_attachments", return_value=[]),                  patch.object(app, "fetch_new_messages",
+                              side_effect=RuntimeError("simulated IMAP outage")):
+                with self.assertRaises(RuntimeError):
+                    app.process_once()
+
+            payload = json.loads(config.PIPELINE_STATUS_PATH.read_text(encoding="utf-8"))
+
+            # The cycle failed: this is the case the field exists for.
+            self.assertEqual(payload["last_error"], "simulated IMAP outage")
+            self.assertEqual(payload["practice_root"], str(config.PRACTICE_ROOT))
+            # And the shape is still the shape, unconditionally.
+            self.assertEqual(
+                sorted(payload.keys()),
+                ["last_error", "last_run", "practice_root", "processed_today",
+                 "review_count"],
+            )
+
+    def test_the_value_is_the_configured_string_and_is_not_resolved(self):
+        r"""10e.10 forbids resolving, normalising or case-folding the path.
+
+        The assertion in the two tests above cannot catch a `.resolve()`: they
+        compare the written value against `str(config.PRACTICE_ROOT)`, and the
+        session temp root that tests/live_paths.py installs is already fully
+        resolved, so resolving it again changes nothing and both would still
+        pass. This test is what makes the instruction testable.
+
+        `Path` does not collapse `..` and `.resolve()` does, checked on Windows
+        rather than assumed: `str(Path(r"C:\A\..\B"))` is `C:\A\..\B` and
+        `.resolve()` gives `C:\B`. So a configured root carrying a `..` is a
+        clean discriminator and needs no folder to exist.
+        """
+        with TempEnvironment() as env:
+            saved = config.PRACTICE_ROOT
+            config.PRACTICE_ROOT = Path(str(env.path) + r"\Sub\..\Practice")
+            try:
+                app._write_pipeline_status("2026-09-06T00:00:00+00:00", 0, 0, None)
+                payload = json.loads(
+                    config.PIPELINE_STATUS_PATH.read_text(encoding="utf-8")
+                )
+            finally:
+                config.PRACTICE_ROOT = saved
+
+            self.assertIn("..", payload["practice_root"],
+                          "the configured string is written, not a resolved one")
+            self.assertEqual(payload["practice_root"],
+                             str(Path(str(env.path) + r"\Sub\..\Practice")))
 
     def test_count_processed_today_ignores_older_receipts(self):
         with TempEnvironment() as env:

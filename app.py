@@ -143,11 +143,12 @@ def _write_pipeline_status(last_run: str, processed_today: int, review_count: in
 
     **The value is `str(config.PRACTICE_ROOT)` as configured, and is deliberately
     not resolved, normalised or case-folded.** The point of the field is that a
-    person can reconcile what IntelliBooks shows against `.env` or against
-    `config.py:33` and see the same characters. `.resolve()` collapses `..` and
-    case-folds an existing path, so it can differ from the configured string
-    through a junction, a symlink or the case somebody typed, and the two
-    products would then disagree over a difference that does not exist.
+    person can reconcile what IntelliBooks shows against `.env`, which is where
+    `config.py`'s `_required_root()` reads it from, and see the same
+    characters. `.resolve()` collapses `..` and case-folds an existing path, so
+    it can differ from the configured string through a junction, a symlink or
+    the case somebody typed, and the two products would then disagree over a
+    difference that does not exist.
 
     **Written on every cycle including a failed one**, because the call site at
     the `finally:` block below already guarantees that and the field is not

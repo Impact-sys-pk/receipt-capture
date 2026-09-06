@@ -65,7 +65,7 @@ def _required_root(variable: str) -> Path:
     return Path(value)
 
 
-PRACTICE_ROOT = _required_root("PRACTICE_ROOT")
+PRACTICE_ROOT = _required_root("INTELLIBILLS_PRACTICE_ROOT")
 UNSYNCED_ROOT = _required_root("INTELLIBILLS_UNSYNCED_ROOT")
 
 # One folder per owner in the practice root, so nothing of ours sits in

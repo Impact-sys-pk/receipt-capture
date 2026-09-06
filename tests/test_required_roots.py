@@ -1,4 +1,5 @@
-"""PRACTICE_ROOT and INTELLIBILLS_UNSYNCED_ROOT are required, and absolute.
+"""INTELLIBILLS_PRACTICE_ROOT and INTELLIBILLS_UNSYNCED_ROOT are required,
+and absolute.
 
 **The change this tests, 2026-09-06.** `config.py` carried one person's own
 folders as the defaults for the two roots, and it calls `mkdir` on five paths
@@ -43,7 +44,7 @@ CHILD = (
     "print('IMPORTED', config.PRACTICE_ROOT, config.UNSYNCED_ROOT)\n"
 )
 
-PRACTICE_VAR = "PRACTICE_ROOT"
+PRACTICE_VAR = "INTELLIBILLS_PRACTICE_ROOT"
 UNSYNCED_VAR = "INTELLIBILLS_UNSYNCED_ROOT"
 
 #: Every way of being missing that the check refuses, with the value the message
@@ -118,7 +119,8 @@ class RefusalTest(unittest.TestCase):
                 self.assertIn(UNSYNCED_VAR, result.stderr)
                 self.assertIn(quoted, result.stderr,
                               "the message must quote the value it read")
-                self.assertNotIn("PRACTICE_ROOT is required", result.stderr,
+                self.assertNotIn("INTELLIBILLS_PRACTICE_ROOT is required",
+                                 result.stderr,
                                  "one message per variable")
 
     def test_the_message_names_both_env_files(self):

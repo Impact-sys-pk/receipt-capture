@@ -88,7 +88,8 @@ class LivePathsSurviveTest(unittest.TestCase):
         practice_var = live_paths._root_variable("PRACTICE_ROOT")
         unsynced_var = live_paths._root_variable("UNSYNCED_ROOT")
         self.assertEqual((practice_var, unsynced_var),
-                         ("PRACTICE_ROOT", "INTELLIBILLS_UNSYNCED_ROOT"))
+                         ("INTELLIBILLS_PRACTICE_ROOT",
+                          "INTELLIBILLS_UNSYNCED_ROOT"))
         for name in ("LIVE_PRACTICE_ROOT", "LIVE_UNSYNCED_ROOT"):
             with self.subTest(root=name):
                 root = getattr(live_paths, name)

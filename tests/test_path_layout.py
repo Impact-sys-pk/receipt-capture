@@ -14,7 +14,8 @@ So the value of every path this system writes to rested on nobody editing
 config.py by mistake. This module reads them.
 
 It asserts against the two roots rather than against literal strings, so it holds
-with PRACTICE_ROOT or INTELLIBILLS_UNSYNCED_ROOT overridden. That is deliberate: the
+with INTELLIBILLS_PRACTICE_ROOT or INTELLIBILLS_UNSYNCED_ROOT overridden. That is
+deliberate: the
 mutation runs above were done with both roots pointed at a scratch directory, and
 a test that only passes on one machine's real paths would have had to be skipped
 for them.

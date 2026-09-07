@@ -101,7 +101,6 @@ REVIEW_ROOT = INTELLIBILLS_ROOT / "Review"
 CLIENTS_JSON = INTELLIBILLS_ROOT / "clients.json"
 FIRMS_JSON = INTELLIBILLS_ROOT / "firms.json"
 PIPELINE_STATUS_PATH = INTELLIBILLS_ROOT / "pipeline-status.json"
-PIPELINE_LOCKFILE = INTELLIBILLS_ROOT / "pipeline.lock"
 
 # The chart bundle IntelliCharts publishes for this product. Read only, and never
 # created here: `publish_master.py` in IntelliCharts\ writes it, so a missing
@@ -119,6 +118,22 @@ MASTER_CHART_FILENAME = "Master_COA.csv"
 DB_PATH = UNSYNCED_ROOT / "db" / "receipts.db"
 LOGS_DIR = UNSYNCED_ROOT / "logs"
 RUNS_LOG = LOGS_DIR / "runs.ndjson"
+
+# Process state, not a document, so it belongs on this side of 18.2a for the
+# same reason the live database and the process logs do. Paul's decision,
+# 2026-09-07. It was INTELLIBILLS_ROOT / "pipeline.lock" until then, inside
+# OneDrive, where its Windows attributes read Archive, ReparsePoint: a Files
+# On-Demand placeholder, so every read of it went through the sync filter. It is
+# written and deleted on every start and stop, which is churn a synced folder
+# does not want, and acquire_lock() in app.py sets existing_pid = None inside a
+# bare except and treats None as stale, so a read that fails for any reason
+# reads as "no live pipeline". run.log recorded 16 starts on 2026-09-06 and 16
+# "Stale pipeline lock detected, removing", with no refusals at all. Whether the
+# sync filter caused that is not knowable now; this removes it from the
+# question. No mkdir is needed here: acquire_lock() calls
+# lock_path.parent.mkdir(parents=True, exist_ok=True) before it touches the
+# file, and UNSYNCED_ROOT / "db" is already created below in any case.
+PIPELINE_LOCKFILE = UNSYNCED_ROOT / "pipeline.lock"
 
 # Where IntelliBooks Desktop writes its resolution notes, per design document 12.2.
 # Deliberately not created at import, unlike the directories below: the pipeline

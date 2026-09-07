@@ -43,7 +43,6 @@ class PracticeRootTest(unittest.TestCase):
             "CLIENTS_JSON": "clients.json",
             "FIRMS_JSON": "firms.json",
             "PIPELINE_STATUS_PATH": "pipeline-status.json",
-            "PIPELINE_LOCKFILE": "pipeline.lock",
             # Read only, and created by IntelliCharts rather than here.
             # Listed because the sweep below only proves it is not in
             # IntelliBooks' folder, not that it is in ours.
@@ -69,7 +68,8 @@ class PracticeRootTest(unittest.TestCase):
 
 
 class LocalRootTest(unittest.TestCase):
-    """What must not be synced: held open, or appended to on every poll."""
+    """What must not be synced: held open, appended to on every poll, or
+    process state that a sync filter would sit in front of."""
 
     def test_the_live_database_is_outside_any_synced_folder(self):
         # Amendment 72, on evidence rather than preference: schema.py runs
@@ -94,6 +94,22 @@ class LocalRootTest(unittest.TestCase):
             "every intake event belongs to a firm or to UNATTRIBUTED.",
         )
         self.assertFalse(config.LOGS_DIR.is_relative_to(config.PRACTICE_ROOT))
+
+    def test_the_pipeline_lock_is_outside_any_synced_folder(self):
+        # Paul's decision, 2026-09-07. This assertion used to sit in the synced
+        # list above, with the leaf "pipeline.lock" under INTELLIBILLS_ROOT.
+        # The lock is process state: written and deleted on every start and
+        # stop, and read by acquire_lock() to decide whether another pipeline is
+        # alive. In OneDrive it was a Files On-Demand placeholder, so every read
+        # went through the sync filter, and a read that raises for any reason is
+        # treated as a stale lock and removed.
+        #
+        # Stated as an equality and as a negative, because absence from the
+        # synced list would not have caught a lock left in the practice root
+        # under some other name. The negative is the guard: it fails if a later
+        # edit puts it back.
+        self.assertEqual(config.PIPELINE_LOCKFILE, config.UNSYNCED_ROOT / "pipeline.lock")
+        self.assertFalse(config.PIPELINE_LOCKFILE.is_relative_to(config.PRACTICE_ROOT))
 
     def test_the_process_logs_land_there_too(self):
         # The one-letter trap amendment 76 named: logs\runs.ndjson and
@@ -124,7 +140,7 @@ class NoSharedParentTest(unittest.TestCase):
         for name in ("FILES_DIR", "BACKUPS_ROOT"):
             with self.subTest(constant=name):
                 self.assertFalse(getattr(config, name).is_relative_to(config.UNSYNCED_ROOT))
-        for name in ("DB_PATH", "LOGS_DIR"):
+        for name in ("DB_PATH", "LOGS_DIR", "PIPELINE_LOCKFILE"):
             with self.subTest(constant=name):
                 self.assertFalse(
                     getattr(config, name).is_relative_to(config.INTELLIBILLS_ROOT)

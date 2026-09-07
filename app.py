@@ -110,6 +110,52 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, extraction_s
 
 REVIEW_STATUSES = ("needs_review", "possible_duplicate")
 
+# Where an email goes for each extraction outcome, worst first. The order is the
+# tie-break when one email carries several images whose outcomes differ, which is
+# Paul's decision of 2026-09-07: the worst outcome wins, because a person looking
+# in INBOX.Failed Processing wants to see every email that needs them, and an
+# email holding one good image and one failure needs them.
+#
+# The four folders and the four statuses are the attachment path's, unchanged.
+# That path routes one email on one outcome and never faces a tie, so it keeps
+# its own if/elif chain and this table is not imposed on it; the two are held in
+# step by tests/test_embedded_email_routing.py, which drives both paths over each
+# outcome and compares.
+#
+# An extraction that RAISED is "failed" here, because that is the
+# validation_status the exception branch writes and because the attachment path
+# sends both to the same folder. To the person opening the mailbox they are one
+# thing: the document could not be read.
+#
+# `possible_duplicate` cannot arise on the embedded-image path today, because
+# that path does not call process_extraction_result() and so never runs the
+# semantic duplicate check. It is in the table because the ranking is a decision
+# about outcomes rather than about which path can currently produce them.
+EMAIL_OUTCOME_FOLDERS = (
+    ("failed", "INBOX.Failed Processing"),
+    ("needs_review", "INBOX.Needs Review"),
+    ("possible_duplicate", "INBOX.Possible Duplicate"),
+    ("ok", "INBOX.Processed Receipts"),
+)
+
+
+def _worst_outcome_folder(outcomes) -> str | None:
+    """The folder for the worst outcome in `outcomes`, or None for no move.
+
+    None has two meanings and both are deliberate:
+
+    - **Nothing to rank.** Every image took the duplicate branch, which moved the
+      email itself and continued, so the email is already in INBOX.Duplicates and
+      must not be moved again.
+    - **An outcome this table does not name.** The email stays in INBOX and is
+      offered again on the next poll, which is what the attachment path's
+      if/elif chain does with an unrecognised status, having no else.
+    """
+    for status, folder in EMAIL_OUTCOME_FOLDERS:
+        if status in outcomes:
+            return folder
+    return None
+
 
 def _count_review_items(repo: Repository | None) -> int:
     """Count receipts a human has to make a decision about.
@@ -1087,6 +1133,9 @@ def process_once():
                     continue
 
                 # Process embedded images like normal attachments
+                # One email can carry several, with different outcomes. The worst
+                # wins, and _worst_outcome_folder() below is where that is decided.
+                embedded_outcomes = []
                 for embedded_img in embedded_images:
                     att_id = embedded_img["id"]
                     filename = embedded_img["name"]
@@ -1160,6 +1209,7 @@ def process_once():
                         )
                         logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
 
+                        embedded_outcomes.append(validation.status)
                         if validation.status == "ok":
                             stats["extractions_succeeded"] += 1
                         else:
@@ -1177,6 +1227,9 @@ def process_once():
                     except Exception as exc:
                         logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
                         stats["extraction_failures"] += 1
+                        # The same word the row below records, and the same folder
+                        # the attachment path sends a raised extraction to.
+                        embedded_outcomes.append("failed")
                         repo.save_extraction(
                             extraction_id=str(uuid.uuid4()),
                             receipt_id=receipt_id,
@@ -1205,8 +1258,22 @@ def process_once():
 
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
 
-                # After processing all embedded images, move to Processed Receipts if all ok
-                move_email_to_folder(uid, "INBOX.Processed Receipts")
+                # Route the email on the worst outcome across its images, the way
+                # the attachment path routes on its one outcome. This line used to
+                # be an unconditional move to INBOX.Processed Receipts with a
+                # comment claiming "if all ok", so an extraction that raised, one
+                # that validated as failed and one that needs a person all
+                # reported themselves in the mailbox as processed. Nothing was
+                # lost, because the receipt row and its validation_status are
+                # written either way; what was wrong is the one place Paul looks
+                # to see what became of each email.
+                #
+                # None means do not move: either every image was a duplicate, in
+                # which case the duplicate branch has already put the email in
+                # INBOX.Duplicates, or the outcome is one the table does not name.
+                outcome_folder = _worst_outcome_folder(embedded_outcomes)
+                if outcome_folder:
+                    move_email_to_folder(uid, outcome_folder)
                 continue
 
             # No attachments and no embedded images - send alert

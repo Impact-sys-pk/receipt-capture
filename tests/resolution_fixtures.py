@@ -16,6 +16,8 @@ the Resolutions folder. A test that drives process_once() writes all six, and
 three of them are read by IntelliBooks Desktop.
 """
 
+import base64
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -229,3 +231,159 @@ def good_corrections():
     )
     assert errors == {}, errors
     return corrections
+
+
+#: One document, carried by whichever arrival route a test drives. Bytes rather
+#: than a fixture file, so two routes are provably carrying the same thing.
+DOCUMENT = b"one document, sent several ways"
+
+#: The address the email routes send from. `with_email_client()` below is what
+#: makes `config.CLIENTS` resolve it.
+SENDER = "driver@example.com"
+
+
+class Routes:
+    """Drive one arrival route at a time through a real `app.process_once()`.
+
+    **Only the mailbox and the extractor are replaced.** Everything inwards of
+    those is the live code path, because the things these tests assert are
+    routing decisions that span the intake reader, the shared pipeline and the
+    filer, and a hand-rolled call sequence would only test the sequence the test
+    author had in mind.
+
+    **Moved here 2026-09-07 from `tests/test_step10f_duplicates.py`**, when
+    `tests/test_embedded_email_routing.py` needed the same driver. One copy,
+    for the reason the credential guard in `tests/test_required_smtp.py` is one
+    copy: two would drift, and the half that would drift first is `_move()`
+    below, which is subtle and was wrong once already.
+    """
+
+    def __init__(self, extractor):
+        self.extractor = extractor
+        self.moved_to = []
+        self._landed = {}
+
+    def _move(self, uid, folder):
+        """Model what `move_email_to_folder()` actually does to a mailbox.
+
+        **It copies the message, flags it deleted and expunges**, read in
+        `worker/email/reader.py`, so once a uid has been moved out of INBOX a
+        second move of the same uid has nothing to copy and returns False.
+
+        **A stub that merely records every call reports a second move as having
+        worked**, which is how the first version of this said the embedded-image
+        path leaves a duplicate in `INBOX.Processed Receipts`. It does not: the
+        email lands in `INBOX.Duplicates` and the trailing move fails. The
+        trailing move was real and became its own brief; the stub was wrong.
+        """
+        self.moved_to.append(folder)
+        if uid in self._landed:
+            return False
+        self._landed[uid] = folder
+        return True
+
+    @property
+    def landed(self):
+        """Where each email actually ended up, as opposed to what was attempted.
+
+        The value a test should assert on. `moved_to` is every attempt, which is
+        useful only for showing that a doomed second move was made at all.
+        """
+        return dict(self._landed)
+
+    def only_landing(self):
+        """The one folder this run's email reached, or None if it moved nowhere.
+
+        Raises if more than one email moved, because every route below drives a
+        single email and a test reading `only_landing()` is assuming that.
+        """
+        landed = self.landed
+        assert len(landed) <= 1, f"more than one email moved: {landed}"
+        return next(iter(landed.values()), None)
+
+    def _run(self, **overrides):
+        import app
+
+        stubs = {
+            "scan_inbox": app.scan_inbox,
+            "fetch_emails_without_attachments": lambda *a, **k: [],
+            "extract_embedded_images": lambda *a, **k: [],
+            "fetch_new_messages": lambda *a, **k: [],
+            "fetch_attachments": lambda *a, **k: [],
+            "move_email_to_folder": self._move,
+            "send_no_attachment_alert": lambda *a, **k: False,
+            "send_unknown_sender_alert": lambda *a, **k: False,
+            "get_extractor": lambda *a, **k: self.extractor,
+        }
+        stubs.update(overrides)
+        patches = [patch.object(app, name, value) for name, value in stubs.items()]
+        patches.append(patch.object(config, "get_pipeline_version", lambda: VERSION))
+        for p in patches:
+            p.start()
+        try:
+            app.process_once()
+        finally:
+            for p in reversed(patches):
+                p.stop()
+
+    def email_attachment(self, message_id="msg-att", data=DOCUMENT, names=("shared.pdf",)):
+        """The attachment path: an email carrying one or more real attachments."""
+        message = {"id": message_id, "uid": 1, "subject": "receipt",
+                   "from": {"emailAddress": {"address": SENDER}},
+                   "receivedDateTime": "2026-04-01T00:00:00Z", "msg": None}
+        payloads = data if isinstance(data, (list, tuple)) else [data] * len(names)
+        attachments = [
+            {"id": f"att-{i}", "name": name,
+             "contentBytes": base64.standard_b64encode(payload).decode()}
+            for i, (name, payload) in enumerate(zip(names, payloads), start=1)
+        ]
+        self._run(fetch_new_messages=lambda *a, **k: [message],
+                  fetch_attachments=lambda *a, **k: attachments)
+
+    def embedded_image(self, message_id="msg-emb", data=DOCUMENT, names=("shared.pdf",)):
+        """The embedded-image path: an iOS share with the image in the body.
+
+        `data` may be one payload or one per name, because an email can carry
+        several embedded images whose outcomes differ, which is the case
+        sub-step 10f.22's routing decision of 2026-09-07 turns on.
+        """
+        message = {"id": message_id, "uid": 2, "subject": "receipt",
+                   "from": SENDER,
+                   "receivedDateTime": "2026-04-01T00:00:00Z", "msg": None}
+        payloads = data if isinstance(data, (list, tuple)) else [data] * len(names)
+        embedded = [
+            {"id": f"emb-{i}", "name": name,
+             "contentBytes": base64.standard_b64encode(payload).decode()}
+            for i, (name, payload) in enumerate(zip(names, payloads), start=1)
+        ]
+        self._run(fetch_emails_without_attachments=lambda *a, **k: [message],
+                  extract_embedded_images=lambda *a, **k: embedded)
+
+    def inbox_file(self, name, source, data=DOCUMENT, client_id="CLIENT001"):
+        """The folder-intake path, which serves both phone and Add Receipts.
+
+        `source` is the sidecar's own word, one of sub-step 10d.40's four. The
+        phone app writes `phone` and IntelliBooks Desktop writes `desktop` when
+        Add Receipts imports a file, and both land in the same loop.
+        """
+        inbox = config.RECEIPT_INBOX_ROOT / client_id
+        inbox.mkdir(parents=True, exist_ok=True)
+        original = inbox / name
+        original.write_bytes(data)
+        original.with_suffix(".json").write_text(
+            json.dumps({"client_id": client_id, "source": source}), encoding="utf-8")
+        self._run()
+        return original
+
+
+def with_email_client(test_case, client_id="CLIENT001"):
+    """Point `config.CLIENTS` at one client, and put it back.
+
+    `TempEnvironment` sets `CLIENTS_BY_ID` and deliberately leaves `CLIENTS`
+    alone, per `tests/live_paths.py`'s note that the registries are each test's
+    own business. The email routes resolve the sender through `CLIENTS`, so a
+    test that drives one has to say who is sending.
+    """
+    record = dict(config.CLIENTS_BY_ID[client_id])
+    test_case.addCleanup(setattr, config, "CLIENTS", config.CLIENTS)
+    config.CLIENTS = {SENDER: record}

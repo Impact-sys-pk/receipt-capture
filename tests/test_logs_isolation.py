@@ -134,6 +134,19 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
     passes once the stray folder exists, so it cannot catch the case that matters.
     """
 
+    #: Helpers in resolution_fixtures.py that call process_once() for a module.
+    #:
+    #: **A module that drives the pipeline only through one of these never
+    #: mentions `process_once` itself, so naming the string was not enough.**
+    #: Added 2026-09-07 after moving `Routes` out of
+    #: `tests/test_step10f_duplicates.py` and into the shared fixture took that
+    #: module out of this guard: it still drove process_once() and this test
+    #: stopped looking at it. **Nothing failed. The only visible trace was the
+    #: suite's subtest count dropping by nine**, which is 9 config names times
+    #: the one module that fell out, and it was found by asking why a total had
+    #: moved rather than by anything going red.
+    FIXTURE_DRIVERS = ("run_pipeline_once", "Routes")
+
     def test_every_test_that_drives_process_once_redirects_what_it_writes(self):
         tests_dir = Path(__file__).parent
         fixtures = (tests_dir / "resolution_fixtures.py").read_text(encoding="utf-8")
@@ -141,7 +154,9 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
         checked = 0
         for module in sorted(tests_dir.glob("test_*.py")):
             source = module.read_text(encoding="utf-8")
-            if "process_once" not in source:
+            drives = ("process_once" in source
+                      or any(name in source for name in self.FIXTURE_DRIVERS))
+            if not drives:
                 continue
             # Modules that use the shared fixture inherit its redirects.
             if "resolution_fixtures" in source:

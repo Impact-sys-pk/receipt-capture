@@ -32,141 +32,18 @@ class OpenAI:
 fake_openai.OpenAI = OpenAI
 sys.modules.setdefault("openai", fake_openai)
 
-import base64  # noqa: E402
-import json  # noqa: E402
-from unittest.mock import patch  # noqa: E402
-
 import config  # noqa: E402
-from resolution_fixtures import TempEnvironment  # noqa: E402
+from resolution_fixtures import (  # noqa: E402
+    DOCUMENT,
+    Routes,
+    TempEnvironment,
+    with_email_client,
+)
 from worker.database.repository import Repository  # noqa: E402
 
 CLIENT_A = "CLIENT001"
 CLIENT_B = "CLIENT002"
 SHARED_HASH = "a" * 64
-
-#: The one document every route in this file carries. Bytes rather than a
-#: fixture file, so the three routes are provably carrying the same thing.
-DOCUMENT = b"one document, sent three ways"
-SENDER = "driver@example.com"
-
-
-class Routes:
-    """Drive one arrival route at a time through a real `app.process_once()`.
-
-    **Only the mailbox and the extractor are replaced.** Everything from the
-    duplicate check inwards is the live code path, which is what 10f.22 is
-    asking about: whether the three routes reach the same verdict is a property
-    of the code between them, and a hand-rolled call sequence would only test
-    the sequence I had in mind.
-
-    `moved_to` records what `move_email_to_folder()` was asked to do, because
-    the disposal is the one thing 10f.22 expects to differ.
-    """
-
-    def __init__(self, extractor):
-        self.extractor = extractor
-        self.moved_to = []
-        self._landed = {}
-
-    def _move(self, uid, folder):
-        """Model what `move_email_to_folder()` actually does to a mailbox.
-
-        **It copies the message, flags it deleted and expunges**, read in
-        `worker/email/reader.py`, so once a uid has been moved out of INBOX a
-        second move of the same uid has nothing to copy and returns False.
-
-        A stub that merely recorded every call said the embedded-image path
-        leaves a duplicate in `INBOX.Processed Receipts`, because that path
-        moves to `INBOX.Duplicates` and then runs an unconditional move to
-        `INBOX.Processed Receipts` after its loop. **The first stub was wrong
-        and the finding it produced was half right**: the email does land in
-        Duplicates, and the trailing move is real and is flagged in the report.
-        """
-        self.moved_to.append(folder)
-        if uid in self._landed:
-            return False
-        self._landed[uid] = folder
-        return True
-
-    @property
-    def landed(self):
-        """Where each email actually ended up, as opposed to what was attempted."""
-        return dict(self._landed)
-
-    def _run(self, **overrides):
-        import app
-
-        stubs = {
-            "scan_inbox": app.scan_inbox,
-            "fetch_emails_without_attachments": lambda *a, **k: [],
-            "extract_embedded_images": lambda *a, **k: [],
-            "fetch_new_messages": lambda *a, **k: [],
-            "fetch_attachments": lambda *a, **k: [],
-            "move_email_to_folder": self._move,
-            "send_no_attachment_alert": lambda *a, **k: False,
-            "send_unknown_sender_alert": lambda *a, **k: False,
-            "get_extractor": lambda *a, **k: self.extractor,
-        }
-        stubs.update(overrides)
-        patches = [patch.object(app, name, value) for name, value in stubs.items()]
-        patches.append(patch.object(config, "get_pipeline_version", lambda: "test-version"))
-        for p in patches:
-            p.start()
-        try:
-            app.process_once()
-        finally:
-            for p in reversed(patches):
-                p.stop()
-
-    def email_attachment(self, message_id="msg-att", data=DOCUMENT):
-        """The attachment path: an email carrying a real attachment."""
-        message = {"id": message_id, "uid": 1, "subject": "receipt",
-                   "from": {"emailAddress": {"address": SENDER}},
-                   "receivedDateTime": "2026-04-01T00:00:00Z", "msg": None}
-        attachment = {"id": "att-1", "name": "shared.pdf",
-                      "contentBytes": base64.standard_b64encode(data).decode()}
-        self._run(fetch_new_messages=lambda *a, **k: [message],
-                  fetch_attachments=lambda *a, **k: [attachment])
-
-    def embedded_image(self, message_id="msg-emb", data=DOCUMENT):
-        """The embedded-image path: an iOS share with the image in the body."""
-        message = {"id": message_id, "uid": 2, "subject": "receipt",
-                   "from": SENDER,
-                   "receivedDateTime": "2026-04-01T00:00:00Z", "msg": None}
-        embedded = {"id": "emb-1", "name": "shared.pdf",
-                    "contentBytes": base64.standard_b64encode(data).decode()}
-        self._run(fetch_emails_without_attachments=lambda *a, **k: [message],
-                  extract_embedded_images=lambda *a, **k: [embedded])
-
-    def inbox_file(self, name, source, data=DOCUMENT, client_id=CLIENT_A):
-        """The folder-intake path, which serves both phone and Add Receipts.
-
-        `source` is the sidecar's own word, one of sub-step 10d.40's four. The
-        phone app writes `phone` and IntelliBooks Desktop writes `desktop` when
-        Add Receipts imports a file, and both land in the same loop.
-        """
-        inbox = config.RECEIPT_INBOX_ROOT / client_id
-        inbox.mkdir(parents=True, exist_ok=True)
-        original = inbox / name
-        original.write_bytes(data)
-        original.with_suffix(".json").write_text(
-            json.dumps({"client_id": client_id, "source": source}), encoding="utf-8")
-        self._run()
-        return original
-
-
-def with_email_client(test_case, client_id=CLIENT_A):
-    """Point `config.CLIENTS` at one client, and put it back.
-
-    `TempEnvironment` sets `CLIENTS_BY_ID` and deliberately leaves `CLIENTS`
-    alone, per `tests/live_paths.py`'s note that the registries are each test's
-    own business. The email routes resolve the sender through `CLIENTS`, so a
-    test that drives one has to say who is sending.
-    """
-    record = dict(config.CLIENTS_BY_ID[client_id])
-    test_case.addCleanup(setattr, config, "CLIENTS", config.CLIENTS)
-    config.CLIENTS = {SENDER: record}
-
 
 def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
                  firm_id="FIRM001"):

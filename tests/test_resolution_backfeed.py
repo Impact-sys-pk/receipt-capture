@@ -44,6 +44,7 @@ from resolution_fixtures import (  # noqa: E402
     run_pipeline_once,
 )
 from worker.database.repository import Repository  # noqa: E402
+from worker.filing import _review_dir_for_client_id  # noqa: E402
 from worker.resolution.service import apply_resolution_note  # noqa: E402
 
 import app  # noqa: E402
@@ -270,11 +271,25 @@ class ValidFiledNoteTest(BackfeedTestCase):
                 repo.close()
 
     def test_a_review_pair_that_desktop_already_deleted_is_not_a_failure(self):
-        # The 12.4 amendment: Desktop removes the pair itself, so
-        # remove_review_pair() finds nothing. Zero is not an error.
+        """The 12.4 amendment: Desktop removes the pair itself, so
+        remove_review_pair() finds nothing. Zero is not an error.
+
+        **The precondition below was a check that could not fail until
+        2026-09-07.** It read
+        `config.CLIENTS_ROOT / "Test Client" / "Review"`, which is where Review
+        sat before sub-step 10d.54 moved it to `REVIEW_ROOT / client_id`.
+        Nothing has written that path since, so the assertion was true whatever
+        the code did. Proved by creating a real review folder for CLIENT001 and
+        watching the old line stay green.
+
+        The folder is derived through `_review_dir_for_client_id()` rather than
+        composed here, so if the Review layout moves again this test moves with
+        it instead of going quiet. `tests/test_step10d_pipeline.py` already
+        imports the same helper for the same reason.
+        """
         with TempEnvironment() as env:
             self.seed_desktop_filed(env)
-            review_dir = config.CLIENTS_ROOT / "Test Client" / "Review"
+            review_dir = _review_dir_for_client_id("CLIENT001")
             self.assertFalse(review_dir.exists())
 
             self.write_note(note_payload())

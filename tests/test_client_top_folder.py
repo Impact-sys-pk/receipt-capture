@@ -261,7 +261,7 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         """Sub-step 10d.19 stopped DEFAULT_FIRM_ID being a fallback.
 
         Picking the firm record with it would revive it as one. The record is
-        taken because there is exactly one, not because it is named.
+        taken because there is exactly one, never because it is named.
 
         The docstring is dropped before the comparison. This test read the whole
         unparsed function on its first green run and failed on the docstring's

@@ -23,6 +23,14 @@ import and `.env` now sets all four, so a child that merely dropped a variable
 would have it put straight back and this file would pass while checking nothing.
 That is the shape of a check that cannot fail, and it is why the control test
 below is not optional.
+
+**One test in this file is no longer about SMTP, and that is deliberate.**
+`NoDefaultSurvivesInTheSourceTest.test_no_credential_is_read_with_environ_get_or_a_bare_subscript`
+covers `IMAP_*` and `OPENAI_API_KEY` as well, from 2026-09-07 and item 173. It
+was widened here rather than copied into
+`tests/test_required_imap_and_openai.py`, because it guards a **shape** in
+`config.py`'s source and two guards over one shape drift apart. Its own
+docstring carries the reasoning and the one recorded exception, `IMAP_PORT`.
 """
 
 import ast
@@ -215,23 +223,70 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
                     f'"{gone}"', source,
                     f"{gone} is back in config.py as a literal value")
 
-    def test_no_smtp_variable_is_read_with_environ_get(self):
-        # The shape of the defect rather than one instance of it: os.environ.get
-        # with a second argument is a default by definition.
+    def test_no_credential_is_read_with_environ_get_or_a_bare_subscript(self):
+        """The shape of the defect rather than any instance of it.
+
+        **Widened 2026-09-07 from `test_no_smtp_variable_is_read_with_environ_get`,
+        in two directions, and it stayed here rather than being copied into
+        `tests/test_required_imap_and_openai.py`.** Two guards over one shape
+        drift, and this project has the note about two copies of one list in
+        `CLAUDE.md`'s traps section, where one copy had four entries and the
+        other six. The file is named for SMTP and the guard is not, which is
+        the cost, and the docstring at the top says so.
+
+        **Wider in scope**: `IMAP_*` and `OPENAI_API_KEY` as well as `SMTP_*`,
+        because item 173 made those required too.
+
+        **Wider in shape, and this is the half that mattered.** The old version
+        looked only for `os.environ.get(name, default)`. Every one of the four
+        settings item 173 changed was a **bare subscript**, `os.environ["..."]`,
+        which the old guard passed silently. It carries no default, so it is not
+        the same defect, but it is the same absent message: `KeyError:
+        'IMAP_HOST'` names no file and explains nothing.
+
+        `OPENAI_MODEL` is out of scope on purpose. It begins with `OPENAI_` and
+        it is a model name with a sensible default, so the exact name is matched
+        rather than the prefix.
+        """
+        prefixes = ("SMTP_", "IMAP_")
+        exact = {"OPENAI_API_KEY"}
+        # Deliberate, recorded exceptions. Named here so that removing one is an
+        # act somebody has to perform rather than a prefix quietly covering it.
+        # IMAP_PORT keeps os.environ.get("IMAP_PORT", "993"): Paul's decision of
+        # 2026-09-07 covers the four credentials and not the port, because 993
+        # is the standard IMAPS port rather than one firm's value.
+        allowed_defaults = {"IMAP_PORT"}
+        self.assertEqual(allowed_defaults, {"IMAP_PORT"},
+                         "the exception list changed; that is a decision, not a "
+                         "refactor")
+
+        def in_scope(name):
+            if not isinstance(name, str) or name in allowed_defaults:
+                return False
+            return name in exact or name.startswith(prefixes)
+
         offenders = []
         for node in ast.walk(self.tree):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            if not (isinstance(func, ast.Attribute) and func.attr == "get"):
-                continue
-            if not node.args or not isinstance(node.args[0], ast.Constant):
-                continue
-            name = node.args[0].value
-            if isinstance(name, str) and name.startswith("SMTP_"):
-                offenders.append(name)
-        self.assertEqual(sorted(offenders), [],
-                         f"read through environ.get, so they have defaults: {offenders}")
+            # os.environ.get("NAME", default)
+            if isinstance(node, ast.Call):
+                func = node.func
+                if (isinstance(func, ast.Attribute) and func.attr == "get"
+                        and ast.unparse(func.value) == "os.environ"
+                        and node.args
+                        and isinstance(node.args[0], ast.Constant)
+                        and in_scope(node.args[0].value)):
+                    offenders.append(f"{node.args[0].value} (environ.get)")
+            # os.environ["NAME"]
+            if isinstance(node, ast.Subscript):
+                if (ast.unparse(node.value) == "os.environ"
+                        and isinstance(node.slice, ast.Constant)
+                        and in_scope(node.slice.value)):
+                    offenders.append(f"{node.slice.value} (bare subscript)")
+
+        self.assertEqual(
+            sorted(offenders), [],
+            "these are read straight from the environment, so they either "
+            f"carry a default or refuse with a bare KeyError: {sorted(offenders)}")
 
 
 if __name__ == "__main__":

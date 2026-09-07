@@ -201,6 +201,28 @@ class RefusalTest(unittest.TestCase):
         self.assertIn(str(REPO_ROOT / ".env"), result.stderr)
         self.assertIn(str(REPO_ROOT / ".env.example"), result.stderr)
 
+    def test_the_message_says_why_there_is_no_default_without_claiming_history(self):
+        """`_required()`'s shared sentence, driven for an IMAP setting.
+
+        **Paul's instruction, 2026-09-07, and the half that prompted it.** The
+        sentence used to read "config.py carried one firm's own values here
+        until 2026-09-07, so another installation inherited them instead of
+        being asked for its own". `IMAP_HOST` was `os.environ["IMAP_HOST"]`, so
+        `config.py` never carried a value for it and no installation inherited
+        one. **The whole of item 173 is the message, and it contained a
+        statement that was false about its own subject.**
+
+        The matching test in `tests/test_required_smtp.py` drives an SMTP
+        setting, where the old sentence was true. Both now get one sentence
+        that is true of all eight settings the helper serves.
+        """
+        result = import_config(self.tmp, {"IMAP_HOST": None})
+        self.assertNotIn("carried one firm's own values", result.stderr,
+                         "the message still tells this setting that config.py "
+                         "held a value for it, and it never did")
+        self.assertIn("one installation's own value", result.stderr)
+        self.assertIn("must not answer for it", result.stderr)
+
     def test_it_is_a_runtime_error_and_not_an_assert(self):
         """Asserts are stripped under `python -O`, so the check would vanish."""
         result = import_config(self.tmp, {"OPENAI_API_KEY": None},

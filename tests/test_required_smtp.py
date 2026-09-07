@@ -162,6 +162,30 @@ class RefusalTest(unittest.TestCase):
         self.assertIn(str(REPO_ROOT / ".env"), result.stderr)
         self.assertIn(str(REPO_ROOT / ".env.example"), result.stderr)
 
+    def test_the_message_says_why_there_is_no_default_without_claiming_history(self):
+        """`_required()`'s shared sentence, driven for an SMTP setting.
+
+        **Paul's instruction, 2026-09-07.** The sentence used to read "config.py
+        carried one firm's own values here until 2026-09-07, so another
+        installation inherited them instead of being asked for its own". That is
+        true of these four and false of the four in
+        `tests/test_required_imap_and_openai.py`, which were bare subscripts and
+        never carried a value at all. One helper, one message, eight settings, so
+        the sentence had to become true of all of them.
+
+        **This asserts the claim rather than the exact sentence**, so a copy-edit
+        does not break it and a reversion to the historical claim does. The
+        matching test in the other file drives an IMAP setting through the same
+        helper, because the point is that both families get one true message.
+        """
+        result = import_config(self.tmp, {"SMTP_HOST": None})
+        self.assertNotIn("carried one firm's own values", result.stderr,
+                         "the message still claims config.py held a value for "
+                         "this setting, which is false for four of the eight "
+                         "settings that share this helper")
+        self.assertIn("one installation's own value", result.stderr)
+        self.assertIn("must not answer for it", result.stderr)
+
     def test_it_is_a_runtime_error_and_not_an_assert(self):
         """Asserts are stripped under `python -O`, so the check would vanish."""
         result = import_config(self.tmp, {"SMTP_USERNAME": None},
@@ -222,6 +246,52 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
                 self.assertNotIn(
                     f'"{gone}"', source,
                     f"{gone} is back in config.py as a literal value")
+
+    def test_the_shared_message_makes_no_claim_about_what_config_used_to_hold(self):
+        """Scoped to `_required()`, and the scoping is the whole difficulty.
+
+        **`_required_root()` says almost the same thing and it is true there**,
+        so a search of the whole module would either fail on a correct message
+        or have to special-case it by wording. The roots really did carry one
+        person's own folders until 2026-09-06, which is why that message says so
+        and why Paul's instruction of 2026-09-07 left it alone.
+
+        So this reads `_required()`'s body and nothing else. A behavioural test
+        cannot make this distinction at all: both helpers produce a `RuntimeError`
+        naming a variable, and the four settings whose history claim was true
+        would go on passing.
+
+        **Docstrings are stripped before the comparison, and this test failed on
+        that first.** `_required()`'s docstring quotes the old sentence to record
+        what it used to say, which is how this project keeps a superseded
+        wording. **This is the second time today I have written a source check
+        that read a function's explanation of what it no longer does**, after
+        `tests/test_client_top_folder.py`'s `_client_top_folder` guard. The rule
+        that falls out: a check on what code does must never read prose about
+        it, and on this project the prose is always there because superseded
+        wording is kept rather than deleted.
+        """
+        def statements(name):
+            found = [n for n in ast.walk(self.tree)
+                     if isinstance(n, ast.FunctionDef) and n.name == name]
+            self.assertEqual(len(found), 1, f"config.py has no single {name}()")
+            return "\n".join(
+                ast.unparse(n) for n in found[0].body
+                if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)
+                        and isinstance(n.value.value, str)))
+
+        body = statements("_required")
+        self.assertNotIn("carried one firm's own values", body,
+                         "_required() is shared by eight settings and four of "
+                         "them never had a value in config.py to inherit")
+        self.assertIn("one installation's own value", body)
+
+        # And the roots' own message, which says the same thing truthfully, is
+        # untouched. Without this the assertion above is satisfied by deleting
+        # both, which would lose a true explanation to fix a false one.
+        self.assertIn("one person's own folder", statements("_required_root"),
+                      "_required_root's message was changed; it was true and "
+                      "Paul's instruction was to leave it")
 
     def test_no_credential_is_read_with_environ_get_or_a_bare_subscript(self):
         """The shape of the defect rather than any instance of it.

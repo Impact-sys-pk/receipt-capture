@@ -78,15 +78,30 @@ def _required(variable: str, what: str) -> str:
     variable and one message per variable, for the reason _required_root's
     docstring gives: a combined message makes a person check the variable that
     was already right.
+
+    **The sentence saying why there is no default is true of all eight settings
+    that reach this helper, and it was not until 2026-09-07.** It read
+    "config.py carried one firm's own values here until 2026-09-07, so another
+    installation inherited them instead of being asked for its own", which is
+    the history of the four SMTP settings amendment 253 changed. The four item
+    173 changed were bare os.environ[...] subscripts, so config.py never held a
+    value for any of them and none was ever inherited. **One helper cannot tell
+    two histories, and item 173's whole subject is the message**, so the
+    sentence now states the rule rather than the incident. Paul's instruction,
+    2026-09-07, and the SMTP four's messages changing with it is the point.
+
+    _required_root's message keeps its own account, which says the same thing
+    and is true there: the roots really did carry one person's own folders
+    until 2026-09-06. It is deliberately not shared with this one.
     """
     value = os.environ.get(variable)
     if not value:
         raise RuntimeError(
-            f"{variable} is required and has no default. It read {value!r}. "
-            f"{what} config.py carried one firm's own values here until "
-            f"2026-09-07, so another installation inherited them instead of "
-            f"being asked for its own. Set it in {BASE_DIR / '.env'}, "
-            f"unquoted, and see {BASE_DIR / '.env.example'} for the shape."
+            f"{variable} is required. It read {value!r}. {what} There is no "
+            f"default, because this is one installation's own value and "
+            f"config.py must not answer for it. Set it in "
+            f"{BASE_DIR / '.env'}, unquoted, and see "
+            f"{BASE_DIR / '.env.example'} for the shape."
         )
     return value
 

@@ -268,19 +268,14 @@ def _mailbox_firm_name() -> str:
     return ""
 
 
-def _remove_inbox_pair(intake) -> None:
-    try:
-        if intake.source_path.exists():
-            intake.source_path.unlink()
-    except OSError:
-        logger.warning(f"Failed to remove inbox file: {intake.source_path}")
-    if intake.sidecar_path:
-        try:
-            if intake.sidecar_path.exists():
-                intake.sidecar_path.unlink()
-        except OSError:
-            logger.warning(f"Failed to remove inbox sidecar: {intake.sidecar_path}")
-
+# _remove_inbox_pair() was here until 2026-09-07. Sub-step 10f.21, amendment 137,
+# closing outstanding item 144. It unlinked the inbox original and its sidecar,
+# and its two callers were the only places left where something a client sent was
+# deleted: step 9c had already moved the `ok` path from a delete to a move on
+# CLAUDE.md's no-data-loss rule, and left the two duplicate paths behind. So an
+# identical resend through the phone or Add Receipts removed the file from disk
+# with one log line and no receipt row. Both callers now use
+# _move_inbox_pair_to_processed() below, which is what every other outcome uses.
 
 INBOX_PROCESSED_DIRNAME = "Processed"
 
@@ -1254,8 +1249,11 @@ def process_once():
                 # rather than being taken for some other client's duplicate.
                 statement_client_id = intake.client_id or config.UNKNOWN_CLIENT_ID
                 if repo.find_statement_by_hash(intake.file_hash, statement_client_id):
-                    logger.info(f"capture duplicate statement by hash, removing inbox pair {intake.filename}")
-                    _remove_inbox_pair(intake)
+                    logger.info(
+                        f"capture duplicate statement by hash, moving inbox pair to "
+                        f"{INBOX_PROCESSED_DIRNAME}: {intake.filename}")
+                    # 10f.21. Kept, not deleted.
+                    _move_inbox_pair_to_processed(intake)
                     stats["duplicates_skipped"] += 1
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
                     continue
@@ -1328,8 +1326,11 @@ def process_once():
             existing = repo.find_by_hash(intake.file_hash, receipt_client_id)
             if existing:
                 if repo.is_recorded_and_filed(existing):
-                    logger.info(f"capture duplicate by hash of filed receipt, removing inbox pair {intake.filename}")
-                    _remove_inbox_pair(intake)
+                    logger.info(
+                        f"capture duplicate by hash of filed receipt, moving inbox pair "
+                        f"to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
+                    # 10f.21. Kept, not deleted.
+                    _move_inbox_pair_to_processed(intake)
                     stats["duplicates_skipped"] += 1
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
                     continue

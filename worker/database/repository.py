@@ -27,16 +27,46 @@ class Repository:
         ).fetchone()
         return row is not None
 
-    def find_by_hash(self, file_hash: str) -> Optional[str]:
+    def find_by_hash(self, file_hash: str, client_id: str) -> Optional[str]:
+        """This client's receipt with this file hash, if there is one. 10f.18.
+
+        **Both queries filter on the client, and until 2026-09-07 neither did.**
+        One capture mailbox serves every client. A photograph of a receipt is
+        different bytes every time, so the hash never matched across two people
+        and the fault looked unreachable; **a PDF is produced by software and is
+        the same bytes every time**, so a shared insurance schedule, MOT,
+        service invoice or breakdown-cover document between two drivers on one
+        car arrives byte-identical from both. The second one was discarded and
+        credited to the first, and nothing reported it. Amendment 136.
+
+        `client_id` is required rather than defaulted. All three callers, all in
+        app.py, hold the client at the point of the call, so a default would
+        only let a future one keep asking the old question.
+
+        **The first query joins rather than filtering, because
+        processed_attachments has no client_id**: it carries a receipt_id and
+        the client lives on `receipts`. Read out of schema.py. One consequence,
+        which is asserted in tests/test_step10f_duplicates.py rather than left
+        to be met: an attachment row naming a receipt a rebuild has dropped now
+        matches nobody, where the unjoined query returned the dangling id. No
+        caller can tell, because every one of them pairs this with
+        is_recorded_and_filed() and a receipt with no row is not filed.
+        """
         row = self._conn.execute(
-            "SELECT receipt_id FROM processed_attachments WHERE file_hash = ? LIMIT 1",
-            (file_hash,)
+            """
+            SELECT pa.receipt_id
+            FROM processed_attachments pa
+            INNER JOIN receipts r ON r.receipt_id = pa.receipt_id
+            WHERE pa.file_hash = ? AND r.client_id = ?
+            LIMIT 1
+            """,
+            (file_hash, client_id)
         ).fetchone()
         if row:
             return row["receipt_id"]
         row = self._conn.execute(
-            "SELECT receipt_id FROM receipts WHERE file_hash = ? LIMIT 1",
-            (file_hash,)
+            "SELECT receipt_id FROM receipts WHERE file_hash = ? AND client_id = ? LIMIT 1",
+            (file_hash, client_id)
         ).fetchone()
         return row["receipt_id"] if row else None
 

@@ -52,7 +52,12 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                 receipt_file = client_dir / "duplicate.pdf"
                 receipt_file.write_text("dummy receipt content", encoding="utf-8")
                 sidecar_file = client_dir / "duplicate.json"
-                sidecar_file.write_text('{"type":"capture"}', encoding="utf-8")
+                # 10f.18. The sidecar has to name the client the seeded receipt
+                # belongs to. It said only {"type":"capture"} until 2026-09-07,
+                # so the intake resolved to no client at all and the setup was
+                # only a duplicate because find_by_hash() ignored the client.
+                sidecar_file.write_text(
+                    '{"type":"capture","client_id":"CLIENT001"}', encoding="utf-8")
 
                 receipt_dir = temp_path / "stored"
                 receipt_dir.mkdir(parents=True, exist_ok=True)
@@ -81,7 +86,9 @@ class CaptureInboxCleanupTest(unittest.TestCase):
                     self.assertEqual(len(intake_records), 1)
                     intake = intake_records[0]
                     self.assertIsNotNone(intake.sidecar_path)
-                    existing_receipt_id = repo.find_by_hash(intake.file_hash)
+                    self.assertEqual(intake.client_id, "CLIENT001")
+                    existing_receipt_id = repo.find_by_hash(
+                        intake.file_hash, intake.client_id)
                     self.assertIsNotNone(existing_receipt_id)
                     self.assertTrue(repo.is_recorded_and_filed(existing_receipt_id))
 

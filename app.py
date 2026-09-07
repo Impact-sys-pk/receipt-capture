@@ -1101,7 +1101,9 @@ def process_once():
                     file_hash = compute_hash(file_data)
 
                     # Check for duplicates
-                    existing = repo.find_by_hash(file_hash)
+                    # 10f.18. Scoped to this client: another client's identical
+                    # PDF is not a duplicate of this one.
+                    existing = repo.find_by_hash(file_hash, client_id)
                     if existing:
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
@@ -1300,8 +1302,15 @@ def process_once():
                 stats["receipts_created"] += 1
                 continue
 
+            # 10d.16 and 10d.18. An unresolved client is a recorded conclusion,
+            # not a fallback. Worked out here rather than after the hash check,
+            # because 10f.18 scopes that check to the client and it has to be the
+            # same client the receipt row will name.
+            receipt_client_id = intake.client_id or config.UNKNOWN_CLIENT_ID
+            receipt_firm_id = intake.firm_id or config.UNATTRIBUTED_FIRM_ID
+
             # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
-            existing = repo.find_by_hash(intake.file_hash)
+            existing = repo.find_by_hash(intake.file_hash, receipt_client_id)
             if existing:
                 if repo.is_recorded_and_filed(existing):
                     logger.info(f"capture duplicate by hash of filed receipt, removing inbox pair {intake.filename}")
@@ -1314,12 +1323,10 @@ def process_once():
                 # Continue processing (don't skip)
 
             receipt_id = str(uuid.uuid4())
-            # 10d.16 and 10d.18. An unresolved client is a recorded conclusion, not
-            # a fallback: the row is written with UNKNOWN and the item goes to
-            # Review. UNATTRIBUTED is the firm, because there is no client to take
-            # a firm from and DEFAULT_FIRM_ID stopped being that answer at 10d.19.
-            receipt_client_id = intake.client_id or config.UNKNOWN_CLIENT_ID
-            receipt_firm_id = intake.firm_id or config.UNATTRIBUTED_FIRM_ID
+            # receipt_client_id and receipt_firm_id are computed above the hash
+            # check. The row is written with UNKNOWN rather than guessing, and
+            # UNATTRIBUTED is the firm, because there is no client to take a firm
+            # from and DEFAULT_FIRM_ID stopped being that answer at 10d.19.
             file_path = save_inbox_file(receipt_id, receipt_client_id, intake.source_path)
             stats["receipts_created"] += 1
 
@@ -1470,7 +1477,8 @@ def process_once():
                 file_hash = compute_hash(file_data)
 
                 # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
-                existing = repo.find_by_hash(file_hash)
+                # 10f.18. Scoped to this client.
+                existing = repo.find_by_hash(file_hash, client_id)
                 if existing and repo.is_recorded_and_filed(existing):
                     logger.warning(f"hash duplicate of {existing}, skipping {filename}")
                     stats["duplicates_skipped"] += 1

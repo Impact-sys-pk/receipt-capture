@@ -1150,8 +1150,8 @@ def process_once():
                     # 10f.20. And only a FILED match is a duplicate, which is the
                     # guard the attachment and folder-intake paths already had.
                     # A hash matching a receipt that failed extraction and was
-                    # never filed is the operator's second attempt, not a
-                    # duplicate, and this path used to swallow it. It cannot
+                    # never filed is the operator's second attempt rather than
+                    # a duplicate, and this path used to swallow it. It cannot
                     # loop: mark_processed() runs for every image below and the
                     # email moves to INBOX.Processed Receipts afterwards.
                     existing = repo.find_by_hash(file_hash, client_id)
@@ -1319,7 +1319,7 @@ def process_once():
                     logger.info(
                         f"capture duplicate statement by hash, moving inbox pair to "
                         f"{INBOX_PROCESSED_DIRNAME}: {intake.filename}")
-                    # 10f.21. Kept, not deleted.
+                    # 10f.21. Kept rather than deleted.
                     _move_inbox_pair_to_processed(intake)
                     stats["duplicates_skipped"] += 1
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
@@ -1396,7 +1396,7 @@ def process_once():
                     logger.info(
                         f"capture duplicate by hash of filed receipt, moving inbox pair "
                         f"to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
-                    # 10f.21. Kept, not deleted.
+                    # 10f.21. Kept rather than deleted.
                     _move_inbox_pair_to_processed(intake)
                     stats["duplicates_skipped"] += 1
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1

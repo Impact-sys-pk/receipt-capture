@@ -641,11 +641,20 @@ class Repository:
     # Part 2B: Duplicate detection & Part 3: Locking
 
     def find_by_transaction_loose(self, supplier_name: str, invoice_date: str, gross_amount: float,
+                                   client_id: str,
                                    case_insensitive: bool = True, amount_tolerance: float = 0.01) -> str:
-        """Find receipt matching supplier + date + amount (with tolerance).
+        """This client's filed receipt matching supplier + date + amount. 10f.19.
 
-        Used for semantic duplicate detection. Loosened matching with case-insensitive supplier
-        and ±tolerance on amount to reduce false positives.
+        Semantic duplicate detection. Case-insensitive supplier and a tolerance
+        on the amount, to reduce false positives against a resend of the same
+        document.
+
+        **`client_id` is required and both queries filter on it, and until
+        2026-09-07 neither did.** This is amendment 107's "same client", which
+        step 10f dropped when it was written. Across clients the net is far
+        wider than the hash's: two drivers filling up at the same garage on the
+        same day for the same amount need share no document at all, and they
+        were reaching Review as each other's possible duplicate.
 
         Returns receipt_id if found, None otherwise.
         """
@@ -667,9 +676,10 @@ class Repository:
                   AND e.invoice_date = ?
                   AND e.gross_amount BETWEEN ? AND ?
                   AND r.filed_path IS NOT NULL
+                  AND r.client_id = ?
                 LIMIT 1
             """
-            row = self._conn.execute(query, (supplier_search, supplier_name, invoice_date, min_amount, max_amount)).fetchone()
+            row = self._conn.execute(query, (supplier_search, supplier_name, invoice_date, min_amount, max_amount, client_id)).fetchone()
         else:
             # Match on supplier + amount only (no date)
             query = """
@@ -679,9 +689,10 @@ class Repository:
                 WHERE (LOWER(e.supplier_name) = ? OR e.supplier_name = ?)
                   AND e.gross_amount BETWEEN ? AND ?
                   AND r.filed_path IS NOT NULL
+                  AND r.client_id = ?
                 LIMIT 1
             """
-            row = self._conn.execute(query, (supplier_search, supplier_name, min_amount, max_amount)).fetchone()
+            row = self._conn.execute(query, (supplier_search, supplier_name, min_amount, max_amount, client_id)).fetchone()
 
         return row[0] if row else None
 

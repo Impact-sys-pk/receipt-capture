@@ -161,6 +161,110 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
                       "the unscoped question")
 
 
+def seed_extraction(repo, receipt_id, supplier="Apcoa Parking",
+                    invoice_date="2026-04-01", gross=12.0):
+    """One filed receipt's extraction, so the loose lookup can find it.
+
+    `find_by_transaction_loose()` requires `r.filed_path IS NOT NULL`, which
+    `seed_receipt()` supplies.
+    """
+    repo.save_extraction(
+        extraction_id=f"x-{receipt_id}",
+        receipt_id=receipt_id,
+        engine="fake",
+        supplier_name=supplier,
+        invoice_date=invoice_date,
+        net_amount=10.0,
+        vat_amount=2.0,
+        gross_amount=gross,
+        currency="GBP",
+        raw_response="{}",
+        validation_status="ok",
+        validation_notes=[],
+    )
+
+
+class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
+    """10f.19. `find_by_transaction_loose()` matches within one client.
+
+    **This is amendment 107's "same client", which step 10f dropped when it was
+    written.** Supplier, date and amount within a penny is a wide net on purpose,
+    and across clients it is far wider than the hash: two drivers filling up at
+    the same garage on the same day for the same amount need not have shared any
+    document at all.
+
+    Without it, two clients sending one document reach Review rather than being
+    no duplicate at all, which is worse than it sounds: 10f.24 routes a
+    `possible_duplicate` to Review and never publishes it.
+    """
+
+    def test_another_clients_identical_transaction_is_not_a_duplicate(self):
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a")
+                seed_extraction(repo, "r-a")
+                self.assertEqual(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_A),
+                    "r-a")
+                self.assertIsNone(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_B),
+                    "two clients buying the same thing on the same day for the "
+                    "same amount are not a duplicate")
+            finally:
+                repo.close()
+
+    def test_the_same_client_buying_it_twice_is_still_caught(self):
+        # Scoping must not switch the check off. `_signals_differ()` in
+        # worker/extraction_pipeline.py is what separates a genuine second
+        # purchase from a resend, and it is untouched by this sub-step.
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a")
+                seed_extraction(repo, "r-a")
+                self.assertEqual(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_A),
+                    "r-a")
+            finally:
+                repo.close()
+
+    def test_it_is_scoped_on_the_no_date_branch_too(self):
+        """The function has two queries and only one is the obvious one.
+
+        A receipt with no invoice date takes the second branch, matching on
+        supplier and amount alone. That is the wider of the two, so leaving it
+        unscoped would have left the worse half of the fault in place.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a")
+                seed_extraction(repo, "r-a", invoice_date=None)
+                self.assertEqual(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", None, 12.0, client_id=CLIENT_A),
+                    "r-a")
+                self.assertIsNone(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", None, 12.0, client_id=CLIENT_B))
+            finally:
+                repo.close()
+
+    def test_the_client_is_required_rather_than_defaulted(self):
+        import inspect
+
+        parameters = inspect.signature(
+            Repository.find_by_transaction_loose).parameters
+        self.assertIn("client_id", parameters)
+        self.assertIs(parameters["client_id"].default, inspect.Parameter.empty,
+                      "client_id has a default, so the one caller can still ask "
+                      "the unscoped question")
+
+
 class DeadFunctionsAreGoneTest(unittest.TestCase):
     """10f.23. Two duplicate lookups nothing called.
 

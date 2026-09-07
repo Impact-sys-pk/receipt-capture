@@ -160,10 +160,15 @@ def process_extraction_result(
 
     # Semantic duplicate check (Part 2B gate)
     if validation.status == "ok":
+        # 10f.19. Scoped to this receipt's client, which is amendment 107's
+        # "same client". `client_id` is already this function's parameter and is
+        # the value the receipt row was written with, so the check asks about
+        # the same client the receipt belongs to rather than about everybody.
         dup = repo.find_by_transaction_loose(
             extraction.supplier_name,
             extraction.invoice_date,
             extraction.gross_amount,
+            client_id=client_id,
             case_insensitive=True,
             amount_tolerance=0.01
         )

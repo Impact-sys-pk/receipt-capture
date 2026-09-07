@@ -65,6 +65,49 @@ def _required_root(variable: str) -> Path:
     return Path(value)
 
 
+def _required(variable: str, what: str) -> str:
+    """One setting, read from the environment with no default and no fallback.
+
+    Presence is the whole test, which is why this is not _required_root. That
+    one demands an absolute path because a relative one silently makes folders
+    in the wrong place; there is no equivalent shape to check in a hostname, a
+    mailbox or a password.
+
+    `what` says what the setting is and is printed in the message, so a person
+    who has never seen this file learns what to put there. One call per
+    variable and one message per variable, for the reason _required_root's
+    docstring gives: a combined message makes a person check the variable that
+    was already right.
+    """
+    value = os.environ.get(variable)
+    if not value:
+        raise RuntimeError(
+            f"{variable} is required and has no default. It read {value!r}. "
+            f"{what} config.py carried one firm's own values here until "
+            f"2026-09-07, so another installation inherited them instead of "
+            f"being asked for its own. Set it in {BASE_DIR / '.env'}, "
+            f"unquoted, and see {BASE_DIR / '.env.example'} for the shape."
+        )
+    return value
+
+
+def _required_int(variable: str, what: str) -> int:
+    """The same, for a setting that has to be a whole number.
+
+    int() on its own raises ValueError naming the string and not the variable,
+    so a mistyped port would report `invalid literal for int() with base 10:
+    '46 5'` and leave a person guessing which setting it came from.
+    """
+    value = _required(variable, what)
+    try:
+        return int(value)
+    except ValueError:
+        raise RuntimeError(
+            f"{variable} must be a whole number and it read {value!r}. "
+            f"{what} Set it in {BASE_DIR / '.env'}."
+        ) from None
+
+
 PRACTICE_ROOT = _required_root("INTELLIBILLS_PRACTICE_ROOT")
 UNSYNCED_ROOT = _required_root("INTELLIBILLS_UNSYNCED_ROOT")
 
@@ -162,10 +205,27 @@ PREFER_DAYFIRST = os.environ.get("PREFER_DAYFIRST", "1") in ("1", "true", "True"
 
 POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "300"))
 
-SMTP_HOST = os.environ.get("SMTP_HOST", "mail.lastingimpact.co.uk")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "alerts@lastingimpact.co.uk")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+# All four are REQUIRED and none has a default. Paul's decision, 2026-09-07.
+# They carried one firm's own configuration in the source until then:
+# mail.lastingimpact.co.uk, port 465 and alerts@lastingimpact.co.uk, none of
+# which .env set, so those literals were what actually ran. That is the defect
+# the two roots had until 2026-09-06, and it is not cosmetic here either:
+# SMTP_USERNAME is the From address and worker/email/alerts.py also prints it
+# inside the body of the reply to an unknown sender, so on another firm's
+# installation Intellitax's mailbox went into an email to that firm's
+# correspondent. SMTP_PASSWORD is included because its default was the empty
+# string, which failed at send time rather than at import.
+SMTP_HOST = _required(
+    "SMTP_HOST", "It is the outgoing mail server alerts are sent through.")
+SMTP_PORT = _required_int(
+    "SMTP_PORT", "It is the SMTP port, and the code connects with SMTP_SSL.")
+SMTP_USERNAME = _required(
+    "SMTP_USERNAME",
+    "It is the mailbox alerts are sent from. It is the From address the "
+    "recipient sees and it is printed in the body of the unknown-sender reply, "
+    "so a wrong one publishes somebody else's mailbox to a client.")
+SMTP_PASSWORD = _required(
+    "SMTP_PASSWORD", "It is that mailbox's password.")
 
 # Created at import, which means a casual `import config` makes these folders.
 # Only the new locations appear here: the old block created IntelliBooks\Backups\,

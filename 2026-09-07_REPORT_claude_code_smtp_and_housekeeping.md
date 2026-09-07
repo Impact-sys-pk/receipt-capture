@@ -3,8 +3,9 @@
 **Claude Code, 2026-09-07, 11:45 to 12:20 BST.** Written from
 `PROMPT_claude_code_2026-09-07_smtp_required_and_housekeeping.md`. Branch `feat/console-phase0`.
 
-**All five changes are done.** Six commits, one per change plus one for the two documents the
-consultant session left uncommitted while I worked.
+**All five changes are done.** Eight commits: one per change, one for the two documents the
+consultant session left uncommitted while I worked, one for this report, and one that puts the
+brief into `archive\` now it is spent.
 
 **Suite: 569 passed and 344 subtests before, 579 passed and 358 subtests after.** Both figures are
 passes and subtests separately, quoted from the last line of `pytest -q`, which prints them as two
@@ -361,7 +362,7 @@ hundred. Section 2.
 
 ## 8. Commits, and the one I got wrong
 
-Six, in order:
+Eight, in order, and the last two are this report and the brief's own retirement:
 
 | Commit | Change |
 | --- | --- |
@@ -371,6 +372,8 @@ Six, in order:
 | `03c7a67` | Change 4, the two images |
 | `a562e9f` | Change 5, the twenty-two files |
 | `1a3895f` | The consultant session's two documents, committed untouched |
+| `e8f6e51` | This report |
+| `42eb62a` | The brief into `archive\`, added rather than moved: it arrived untracked, so there was no history for a `git mv` to follow |
 
 **What went wrong and how it was put right.** `git mv` stages its own moves, so by the time I came to
 commit change 2 the index already held the image moves and all 22 archive moves. `git add app.py &&

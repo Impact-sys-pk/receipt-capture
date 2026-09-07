@@ -194,12 +194,36 @@ PIPELINE_LOCKFILE = UNSYNCED_ROOT / "pipeline.lock"
 # means "use the default", not "use the current directory".
 RESOLUTIONS_DIR = Path(os.environ.get("RESOLUTIONS_DIR") or (INTELLIBILLS_ROOT / "Resolutions"))
 
-IMAP_HOST = os.environ["IMAP_HOST"]
+# Three of these four are REQUIRED and none of the three has a default. Item 173
+# of 2026-08-20_LIST_outstanding_items_and_decisions.md, Paul's decision,
+# 2026-09-07. They were bare os.environ[...] subscripts, which is not the defect
+# the SMTP four had: a subscript carries no value, so nothing here was answering
+# for an installation that had not been asked. What it did was refuse with
+# `KeyError: 'IMAP_HOST'`, which names no file, explains nothing, and is the
+# first thing somebody sees on a fresh checkout. The whole of this change is the
+# message.
+#
+# IMAP_PORT is deliberately left alone and keeps its default. 993 is the
+# standard IMAPS port rather than one firm's value, which is the distinction
+# amendment 253 rested on when it made SMTP_PORT required. Held by
+# tests/test_required_imap_and_openai.py's
+# test_the_port_is_deliberately_left_with_its_default, so the inconsistency is a
+# recorded exception rather than something a reader has to notice.
+IMAP_HOST = _required(
+    "IMAP_HOST", "It is the mail server the capture mailbox is read from.")
 IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
-IMAP_USERNAME = os.environ["IMAP_USERNAME"]
-IMAP_PASSWORD = os.environ["IMAP_PASSWORD"]
+IMAP_USERNAME = _required(
+    "IMAP_USERNAME",
+    "It is the capture mailbox itself, the address clients email their "
+    "receipts to.")
+IMAP_PASSWORD = _required(
+    "IMAP_PASSWORD", "It is that mailbox's password.")
 
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+# Required for the same reason and by the same decision. An extraction is billed
+# to it, so an installation that has not been asked for one must be told, rather
+# than failing at the first receipt with a KeyError naming no file.
+OPENAI_API_KEY = _required(
+    "OPENAI_API_KEY", "It is the key every extraction is billed to.")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 
 # Which extraction provider the factory builds. Must be a key in

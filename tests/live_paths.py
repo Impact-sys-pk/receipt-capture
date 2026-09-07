@@ -8,8 +8,12 @@ below makes a broken order loud rather than silent.
 
 ## Why this exists
 
-`config.py` derives every path from two roots **at import**, at `:73` and
-`:95-128`. So setting `config.PRACTICE_ROOT` afterwards moves nothing else, and a
+`config.py` derives every path from two roots **at import**, at the
+`PRACTICE_ROOT` and `UNSYNCED_ROOT` assignments and in the block of path
+constants below them. ~~at `:73` and `:95-128`~~ **Line numbers dropped
+2026-09-07 by amendment 247: `config.py` is edited often enough that they go
+stale between readings, and both of those already had.** So setting
+`config.PRACTICE_ROOT` afterwards moves nothing else, and a
 fixture that wants a private practice root has to assign thirteen constants by
 hand. Fifteen fixture classes did that, each pinning a different subset, and
 `tests/test_resolution_service.py` was written pinning five of them and not
@@ -19,13 +23,28 @@ matches. Two other test files already carried that warning in as many words.
 
 **A comment in two files is not a guard. It is a hope that the next author reads
 those two files.** This is the guard: the two roots are redirected in the
-environment before `config` computes anything from them, so all eighteen Path
-constants land in temp, including the five no fixture pins at all: `BASE_DIR`,
-`FIRMS_JSON`, `INTELLIBILLS_ROOT`, `PIPELINE_LOCKFILE` and `UNSYNCED_ROOT`.
+environment before `config` computes anything from them, so **seventeen of the
+eighteen Path constants land in temp**, including the five no fixture pins at
+all: `FIRMS_JSON`, `INTELLIBILLS_ROOT`, `PIPELINE_LOCKFILE`, `UNSYNCED_ROOT` and
+`RESOLUTIONS_DIR`.
 
-It also means `config.py:161`'s import-time `mkdir` block builds its folders in
-temp rather than in the live practice root, which is the fourth trap in
-`CLAUDE.md` neutralised for anything run through pytest.
+**Both of those figures were wrong here until 2026-09-07 and the test next door
+was right.** ~~all eighteen Path constants land in temp, including the five no
+fixture pins at all: `BASE_DIR`, `FIRMS_JSON`, `INTELLIBILLS_ROOT`,
+`PIPELINE_LOCKFILE` and `UNSYNCED_ROOT`.~~ **`BASE_DIR` is the eighteenth and it
+is neither redirected nor unpinned.** It is `Path(config.__file__).parent`, the
+repository itself, so it is derived from neither root and this redirect cannot
+move it. `tests/test_conftest_redirect.py`'s
+`test_every_config_path_constant_is_under_a_temp_root` names it as the one
+exception for exactly that reason, and its
+`test_the_five_constants_no_fixture_pins_are_redirected_too` lists
+`RESOLUTIONS_DIR` as the fifth, which is the correct list: `RESOLUTIONS_DIR` has
+an environment override of its own and is popped below.
+
+It also means `config.py`'s import-time `mkdir` block builds its folders in temp
+rather than in the live practice root, which is the fourth trap in `CLAUDE.md`
+neutralised for anything run through pytest. ~~`config.py:161`'s~~ **Line number
+dropped 2026-09-07, amendment 247.**
 
 ## What it does not do
 
@@ -176,9 +195,10 @@ TEMP_UNSYNCED_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ[PRACTICE_VAR] = str(TEMP_PRACTICE_ROOT)
 os.environ[UNSYNCED_VAR] = str(TEMP_UNSYNCED_ROOT)
 
-# RESOLUTIONS_DIR has an environment override of its own at config.py:128 that is
-# read before the fall back to INTELLIBILLS_ROOT, so a value set in .env would
-# survive this redirect and point at the live folder. Cleared for the run.
+# RESOLUTIONS_DIR has an environment override of its own, read before the fall
+# back to INTELLIBILLS_ROOT, so a value set in .env would survive this redirect
+# and point at the live folder. Cleared for the run. (Its line number was cited
+# here until 2026-09-07; dropped by amendment 247.)
 os.environ.pop("RESOLUTIONS_DIR", None)
 
 

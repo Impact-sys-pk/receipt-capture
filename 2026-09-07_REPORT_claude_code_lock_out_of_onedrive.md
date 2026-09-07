@@ -506,8 +506,22 @@ Committed untouched before I changed anything, so that this brief's diff holds o
 **It also moved the design document's line numbers by seven**, which is why section 10's numbers
 differ from the brief's.
 
-**The second commit** carries `config.py`, `tests/test_path_layout.py` and this report. Its message
-names the new location and quotes both suite figures.
+**`bac4292`, this brief's work.** `config.py`, `tests/test_path_layout.py` and this report. Its
+message names the new location, quotes both suite figures, and carries the refusal finding so it is
+in the history and not only in this file.
+
+**`627ebe7`, the brief moved into `archive\` with `git mv`.** `CLAUDE.md`'s rule on spent files: a
+`PROMPT_*` file is spent once the session it was written for has executed it and reported, and it
+moves when it becomes spent rather than in a tidy-up later. Not asked for by the brief, and named
+here rather than left to be noticed.
+
+**Two of my own slips, disclosed because a report that hides a corrected error is worth less.** The
+`archive\` commit's message came out as a single 200-character subject line, because the subject ended
+in a backslash and the shell ate the blank line after it; amended, unpushed, and the amended message
+is what `627ebe7` carries. And section 10's count was wrong on the first pass, described there.
+
+**Nothing is pushed.** Branch `feat/console-phase0`, three commits ahead of where this session found
+it, working tree clean.
 
 ## 13. Confidence
 

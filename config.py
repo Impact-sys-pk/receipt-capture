@@ -236,17 +236,10 @@ SMTP_USERNAME = _required(
 SMTP_PASSWORD = _required(
     "SMTP_PASSWORD", "It is that mailbox's password.")
 
-# Created at import, which means a casual `import config` makes these folders.
-# Only the new locations appear here: the old block created IntelliBooks\Backups\,
-# so any import put that folder back after the move. Neither Receipt Inbox\,
-# Review\ nor Resolutions\ is created here, as before, because the code that
-# writes them creates them on demand and the tests that assert that must start
-# without them.
-INTELLIBILLS_ROOT.mkdir(parents=True, exist_ok=True)
-FILES_DIR.mkdir(parents=True, exist_ok=True)
-BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
+# The five directories this module creates at import used to be made here. They
+# are made at the very bottom of the file now, after the last thing that can
+# refuse. Paul's instruction, 2026-09-07. Read there for what they are and why
+# these five and no others.
 
 
 # The firm every client in the registry belongs to today, and the single source
@@ -481,6 +474,37 @@ def _client_top_folder(firms: dict) -> Path:
 CLIENTS, CLIENTS_BY_ID = load_clients()
 FIRMS = load_firms()
 CLIENTS_ROOT = _client_top_folder(FIRMS)
+
+# Created at import, which means a casual `import config` makes these folders.
+# Only the new locations appear here: the old block created IntelliBooks\Backups\,
+# so any import put that folder back after the move. Neither Receipt Inbox\,
+# Review\ nor Resolutions\ is created here, as before, because the code that
+# writes them creates them on demand and the tests that assert that must start
+# without them.
+#
+# **This block sits below every check in the module, and that is the point.**
+# Paul's instruction, 2026-09-07. It was 240 lines higher until then, above
+# load_clients() and load_firms(), which was correct for as long as every
+# refusal came before it: both roots and all four SMTP settings are still
+# checked far above. _client_top_folder() broke that, because it needs
+# FIRMS_JSON and load_firms(), so an installation with no client_top_folder
+# built five directories and then refused. It is the property _required_root's
+# docstring states in its own words: the check is the definition, so it cannot
+# run after the folders are made.
+#
+# Moving the block down was chosen over moving the two registry loaders up. The
+# loaders read files and handle a missing one, so nothing here depends on the
+# folders existing, and this is six lines moved against roughly ninety, with
+# _read_registry() left beside load_clients() where it belongs.
+#
+# tests/test_client_top_folder.py::test_every_refusal_sits_above_every_mkdir
+# reads this module's AST and holds the ordering, so a refusal added above this
+# block later cannot quietly go back to making folders first.
+INTELLIBILLS_ROOT.mkdir(parents=True, exist_ok=True)
+FILES_DIR.mkdir(parents=True, exist_ok=True)
+BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _registry_mtime():

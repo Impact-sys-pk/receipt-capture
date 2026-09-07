@@ -115,6 +115,32 @@ class AcceptedTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
+    def test_a_good_import_still_makes_the_five_directories(self):
+        """The counterpart to `test_the_refusal_creates_nothing_at_all`.
+
+        Moving the `mkdir` block below the last refusal on 2026-09-07 could as
+        easily have moved it somewhere that never runs, and **nothing in the
+        suite would have noticed**: every test that touches those folders makes
+        its own. The two tests together pin both halves, that the block is
+        below every check and that it is still reached.
+
+        Found by checking the move rather than by a test going red, which is
+        the disclosure: the gap existed before this change and this closes it.
+        """
+        wanted = self.tmp / "practice" / "Klienten"
+        result = import_config(self.tmp, [dict(FIRM, **{FIELD: str(wanted)})])
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        intellibills = self.tmp / "practice" / "Intellibills"
+        unsynced = self.tmp / "unsynced"
+        for made in (intellibills, intellibills / "Documents",
+                     intellibills / "Backups", unsynced / "db",
+                     unsynced / "logs"):
+            with self.subTest(directory=made.name):
+                self.assertTrue(made.is_dir(),
+                                f"{made} was not created, so config.py's mkdir "
+                                "block is no longer reached at import")
+
     def test_a_firm_that_is_not_FIRM001_works(self):
         """The behavioural half of the DEFAULT_FIRM_ID guard below.
 
@@ -207,6 +233,39 @@ class RefusalTest(unittest.TestCase):
         self._refused([dict(FIRM)])
         self.assertFalse(wanted.exists())
 
+    def test_the_refusal_creates_nothing_at_all(self):
+        """Every refusal precedes every mkdir. Paul's instruction, 2026-09-07.
+
+        The wider form of the test above, and it was red when written. This
+        refusal was the one exception in `config.py`: both root checks and all
+        four SMTP checks already sat above the `mkdir` block, and only
+        `_client_top_folder()` ran below it, so an installation with no
+        `client_top_folder` built five directories and then refused.
+
+        It is the property `_required_root()`'s own docstring states, that the
+        check is the definition and cannot run after the folders are made, and
+        it is the reason `tests/test_required_roots.py` has a whole class
+        called `ChecksRunBeforeTheFoldersAreMadeTest`.
+
+        What the harness itself made is excluded by naming it: `import_config()`
+        creates the practice root and `Intellibills\\` to put `firms.json` in.
+        Everything else appearing under either root is `config.py`'s doing.
+        """
+        practice = self.tmp / "practice"
+        unsynced = self.tmp / "unsynced"
+        self._refused([dict(FIRM)])
+
+        self.assertFalse(unsynced.exists(),
+                         "config made the unsynced root before refusing; it "
+                         f"holds {[p.name for p in unsynced.iterdir()] if unsynced.is_dir() else []}")
+        self.assertEqual(
+            sorted(p.name for p in (practice / "Intellibills").iterdir()),
+            ["firms.json"],
+            "only the firms.json this test wrote may be under Intellibills\\; "
+            "anything else is a folder config made before refusing")
+        self.assertEqual(
+            sorted(p.name for p in practice.iterdir()), ["Intellibills"])
+
 
 class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
     """A fallback reintroduced later would make every test above pass.
@@ -280,6 +339,50 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         body = "\n".join(ast.unparse(n) for n in statements)
         self.assertNotIn("DEFAULT_FIRM_ID", body)
         self.assertNotIn("FIRM001", body)
+
+    def test_every_refusal_sits_above_every_mkdir(self):
+        """The ordering, read off the source rather than inferred from one case.
+
+        `test_the_refusal_creates_nothing_at_all` proves it for the client top
+        folder. This proves it for every refusal `config.py` makes today, which
+        is the set claim, and it catches a **new** refusal being added below the
+        `mkdir` block rather than only this one moving back.
+
+        **What it does not catch, stated because a check whose limits are
+        unwritten gets trusted too far**: a refusal of a shape not listed here.
+        The four helper calls and `os.environ[...]` are every way this module
+        raises today, enumerated from its own AST below rather than remembered.
+        A new shape needs adding here, and the failure would be silence.
+        """
+        helpers = {"_required_root", "_required", "_required_int",
+                   "_client_top_folder"}
+        refusals = {}
+        mkdirs = {}
+        for node in self.tree.body:
+            if isinstance(node, ast.Assign):
+                for inner in ast.walk(node.value):
+                    if (isinstance(inner, ast.Call)
+                            and isinstance(inner.func, ast.Name)
+                            and inner.func.id in helpers):
+                        refusals[node.lineno] = ast.unparse(node.targets[0])
+                    if (isinstance(inner, ast.Subscript)
+                            and ast.unparse(inner.value) == "os.environ"):
+                        refusals[node.lineno] = ast.unparse(node.targets[0])
+            if (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Attribute)
+                    and node.value.func.attr == "mkdir"):
+                mkdirs[node.lineno] = ast.unparse(node.value.func.value)
+
+        self.assertTrue(refusals, "no refusal found; the shapes have moved")
+        self.assertTrue(mkdirs, "no module-level mkdir found; the block moved")
+        last_refusal = max(refusals)
+        first_mkdir = min(mkdirs)
+        self.assertGreater(
+            first_mkdir, last_refusal,
+            f"{mkdirs[first_mkdir]}.mkdir() at line {first_mkdir} runs before "
+            f"{refusals[last_refusal]} at line {last_refusal} can refuse, so a "
+            f"misconfigured installation makes folders and then fails. "
+            f"Refusals: {sorted(refusals.items())}. mkdirs: {sorted(mkdirs.items())}.")
 
     def test_the_field_name_is_stated_once(self):
         # Two products built by two sessions that cannot see each other have to

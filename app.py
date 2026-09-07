@@ -1100,11 +1100,18 @@ def process_once():
                     file_data = base64.b64decode(embedded_img.get("contentBytes", ""))
                     file_hash = compute_hash(file_data)
 
-                    # Check for duplicates
+                    # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
                     # 10f.18. Scoped to this client: another client's identical
                     # PDF is not a duplicate of this one.
+                    # 10f.20. And only a FILED match is a duplicate, which is the
+                    # guard the attachment and folder-intake paths already had.
+                    # A hash matching a receipt that failed extraction and was
+                    # never filed is the operator's second attempt, not a
+                    # duplicate, and this path used to swallow it. It cannot
+                    # loop: mark_processed() runs for every image below and the
+                    # email moves to INBOX.Processed Receipts afterwards.
                     existing = repo.find_by_hash(file_hash, client_id)
-                    if existing:
+                    if existing and repo.is_recorded_and_filed(existing):
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
                         repo.mark_processed(message_id, att_id, file_hash, existing, firm_id)

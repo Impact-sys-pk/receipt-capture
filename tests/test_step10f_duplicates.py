@@ -32,12 +32,114 @@ class OpenAI:
 fake_openai.OpenAI = OpenAI
 sys.modules.setdefault("openai", fake_openai)
 
+import base64  # noqa: E402
+import json  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+import config  # noqa: E402
 from resolution_fixtures import TempEnvironment  # noqa: E402
 from worker.database.repository import Repository  # noqa: E402
 
 CLIENT_A = "CLIENT001"
 CLIENT_B = "CLIENT002"
 SHARED_HASH = "a" * 64
+
+#: The one document every route in this file carries. Bytes rather than a
+#: fixture file, so the three routes are provably carrying the same thing.
+DOCUMENT = b"one document, sent three ways"
+SENDER = "driver@example.com"
+
+
+class Routes:
+    """Drive one arrival route at a time through a real `app.process_once()`.
+
+    **Only the mailbox and the extractor are replaced.** Everything from the
+    duplicate check inwards is the live code path, which is what 10f.22 is
+    asking about: whether the three routes reach the same verdict is a property
+    of the code between them, and a hand-rolled call sequence would only test
+    the sequence I had in mind.
+
+    `moved_to` records what `move_email_to_folder()` was asked to do, because
+    the disposal is the one thing 10f.22 expects to differ.
+    """
+
+    def __init__(self, extractor):
+        self.extractor = extractor
+        self.moved_to = []
+
+    def _run(self, **overrides):
+        import app
+
+        stubs = {
+            "scan_inbox": app.scan_inbox,
+            "fetch_emails_without_attachments": lambda *a, **k: [],
+            "extract_embedded_images": lambda *a, **k: [],
+            "fetch_new_messages": lambda *a, **k: [],
+            "fetch_attachments": lambda *a, **k: [],
+            "move_email_to_folder": lambda uid, folder: self.moved_to.append(folder),
+            "send_no_attachment_alert": lambda *a, **k: False,
+            "send_unknown_sender_alert": lambda *a, **k: False,
+            "get_extractor": lambda *a, **k: self.extractor,
+        }
+        stubs.update(overrides)
+        patches = [patch.object(app, name, value) for name, value in stubs.items()]
+        patches.append(patch.object(config, "get_pipeline_version", lambda: "test-version"))
+        for p in patches:
+            p.start()
+        try:
+            app.process_once()
+        finally:
+            for p in reversed(patches):
+                p.stop()
+
+    def email_attachment(self, message_id="msg-att", data=DOCUMENT):
+        """The attachment path: an email carrying a real attachment."""
+        message = {"id": message_id, "uid": 1, "subject": "receipt",
+                   "from": {"emailAddress": {"address": SENDER}},
+                   "receivedDateTime": "2026-04-01T00:00:00Z", "msg": None}
+        attachment = {"id": "att-1", "name": "shared.pdf",
+                      "contentBytes": base64.standard_b64encode(data).decode()}
+        self._run(fetch_new_messages=lambda *a, **k: [message],
+                  fetch_attachments=lambda *a, **k: [attachment])
+
+    def embedded_image(self, message_id="msg-emb", data=DOCUMENT):
+        """The embedded-image path: an iOS share with the image in the body."""
+        message = {"id": message_id, "uid": 2, "subject": "receipt",
+                   "from": SENDER,
+                   "receivedDateTime": "2026-04-01T00:00:00Z", "msg": None}
+        embedded = {"id": "emb-1", "name": "shared.pdf",
+                    "contentBytes": base64.standard_b64encode(data).decode()}
+        self._run(fetch_emails_without_attachments=lambda *a, **k: [message],
+                  extract_embedded_images=lambda *a, **k: [embedded])
+
+    def inbox_file(self, name, source, data=DOCUMENT, client_id=CLIENT_A):
+        """The folder-intake path, which serves both phone and Add Receipts.
+
+        `source` is the sidecar's own word, one of sub-step 10d.40's four. The
+        phone app writes `phone` and IntelliBooks Desktop writes `desktop` when
+        Add Receipts imports a file, and both land in the same loop.
+        """
+        inbox = config.RECEIPT_INBOX_ROOT / client_id
+        inbox.mkdir(parents=True, exist_ok=True)
+        original = inbox / name
+        original.write_bytes(data)
+        original.with_suffix(".json").write_text(
+            json.dumps({"client_id": client_id, "source": source}), encoding="utf-8")
+        self._run()
+        return original
+
+
+def with_email_client(test_case, client_id=CLIENT_A):
+    """Point `config.CLIENTS` at one client, and put it back.
+
+    `TempEnvironment` sets `CLIENTS_BY_ID` and deliberately leaves `CLIENTS`
+    alone, per `tests/live_paths.py`'s note that the registries are each test's
+    own business. The email routes resolve the sender through `CLIENTS`, so a
+    test that drives one has to say who is sending.
+    """
+    record = dict(config.CLIENTS_BY_ID[client_id])
+    test_case.addCleanup(setattr, config, "CLIENTS", config.CLIENTS)
+    config.CLIENTS = {SENDER: record}
 
 
 def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
@@ -263,6 +365,112 @@ class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
         self.assertIs(parameters["client_id"].default, inspect.Parameter.empty,
                       "client_id has a default, so the one caller can still ask "
                       "the unscoped question")
+
+
+class EmbeddedImageGuardTest(unittest.TestCase):
+    """10f.20. The third hash call site gains the guard the other two have.
+
+    Two of the three `find_by_hash()` call sites in `app.py` check
+    `is_recorded_and_filed()` before treating a match as a duplicate. The
+    embedded-image path did not, so it skipped on **any** hash match, including
+    one against a receipt that failed extraction and was never filed.
+
+    **The reprocessing rule this restores is deliberate and is described on
+    `_move_inbox_pair_to_processed()`'s docstring**: a hash matching a receipt
+    with a NULL `filed_path` is not a reason to skip, because that receipt never
+    became anything and the resend is the operator's second attempt. This change
+    makes that rule reachable on a route where it was not.
+
+    **It cannot loop.** The embedded path calls `mark_processed()` for every
+    image and moves the email to `INBOX.Processed Receipts` afterwards, so the
+    same email is not offered again. Established by reading the block, because
+    "allow reprocessing" on a path that re-reads its own input is how you get an
+    OpenAI call every five minutes indefinitely.
+    """
+
+    def _receipts(self):
+        repo = Repository()
+        try:
+            return [dict(r) for r in repo._conn.execute(
+                "SELECT * FROM receipts ORDER BY created_at").fetchall()]
+        finally:
+            repo.close()
+
+    def test_an_unfiled_hash_match_is_reprocessed_rather_than_skipped(self):
+        from resolution_fixtures import RecordingExtractor, extraction_result
+
+        with TempEnvironment():
+            with_email_client(self)
+            import app
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-unfiled", CLIENT_A,
+                             file_hash=app.compute_hash(DOCUMENT), filed=False)
+            finally:
+                repo.close()
+
+            Routes(RecordingExtractor(extraction_result())).embedded_image()
+
+            created = [r for r in self._receipts() if r["receipt_id"] != "r-unfiled"]
+            self.assertEqual(
+                len(created), 1,
+                "the embedded path skipped on a hash match against a receipt "
+                "that was never filed, so the operator's resend produced "
+                "nothing at all")
+
+    def test_a_filed_hash_match_is_still_skipped(self):
+        # The other half. The guard must not switch the duplicate check off.
+        from resolution_fixtures import RecordingExtractor, extraction_result
+
+        with TempEnvironment():
+            with_email_client(self)
+            import app
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-filed", CLIENT_A,
+                             file_hash=app.compute_hash(DOCUMENT), filed=True)
+            finally:
+                repo.close()
+
+            routes = Routes(RecordingExtractor(extraction_result()))
+            routes.embedded_image()
+
+            created = [r for r in self._receipts() if r["receipt_id"] != "r-filed"]
+            self.assertEqual(created, [], "a filed duplicate was processed again")
+            self.assertIn("INBOX.Duplicates", routes.moved_to)
+
+    def test_all_three_hash_call_sites_read_the_same_way(self):
+        """The set claim, read off `app.py` rather than trusted to three tests.
+
+        Every `find_by_hash()` call in `app.py` must sit in a condition that also
+        calls `is_recorded_and_filed()`. Reading the source catches a fourth call
+        site being added later without the guard, which no behavioural test would.
+        """
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent / "app.py").read_text(
+            encoding="utf-8")
+        tree = ast.parse(source)
+        lines = source.splitlines()
+
+        call_lines = [
+            node.lineno for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "find_by_hash"
+        ]
+        self.assertEqual(len(call_lines), 3,
+                         f"the number of find_by_hash call sites moved: {call_lines}")
+
+        for lineno in call_lines:
+            with self.subTest(line=lineno):
+                # The call, then the `if` that acts on it. Two lines is enough
+                # for both shapes app.py uses.
+                window = "\n".join(lines[lineno - 1:lineno + 2])
+                self.assertIn(
+                    "is_recorded_and_filed", window,
+                    f"the find_by_hash call at app.py:{lineno} treats a match as "
+                    "a duplicate without checking it was ever filed")
 
 
 class StatementHashLookupIsScopedToTheClientTest(unittest.TestCase):

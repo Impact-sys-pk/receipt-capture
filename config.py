@@ -114,7 +114,16 @@ UNSYNCED_ROOT = _required_root("INTELLIBILLS_UNSYNCED_ROOT")
 # One folder per owner in the practice root, so nothing of ours sits in
 # IntelliBooks' folder any more. Amendment 72.
 INTELLIBILLS_ROOT = PRACTICE_ROOT / "Intellibills"
-CLIENTS_ROOT = PRACTICE_ROOT / "Clients"
+
+# CLIENTS_ROOT was `PRACTICE_ROOT / "Clients"` on this line until 2026-09-07. It
+# is assigned further down now, beside the registry loader it needs: see
+# _client_top_folder(). Sub-step 10e.14, piece three, and amendment 261.
+#
+# It is not composed here any more because the client top folder is the firm's
+# own filing structure, per design document 18.2, and not storage this product
+# owns. While the literal was on this line, a firm whose top folder is called
+# anything but `Clients` needed a code change, and the folder was forced to sit
+# under the practice root when it need not sit there at all.
 
 # The parent folder inside a client folder that everything IntelliBooks owns now
 # sits under. Amendment 170, Paul's decision, 2026-09-02. Four children and no
@@ -401,8 +410,77 @@ def load_firms():
     return firms_by_id
 
 
+# The one key `IntelliBooks-Desktop-v3.html` and this module both have to know.
+# Stated once here, so a rename cannot go half done. Amendment 261 fixes it in
+# the design document for the reason amendment 241 fixed `practice_root`: the
+# two products are built by sessions that cannot see each other, so a field name
+# either agrees or the two halves silently stop meeting.
+CLIENT_TOP_FOLDER_FIELD = "client_top_folder"
+
+
+def _client_top_folder(firms: dict) -> Path:
+    """The firm's client top folder, off the firm record. Sub-step 10e.14.
+
+    It replaces `PRACTICE_ROOT / "Clients"`, which wrote one firm's folder name
+    into the pipeline. The value is the firm's own filing structure, per design
+    document 18.2, so this product does not own it, does not create it and does
+    not get to name it. It is an absolute path in its own right and need not sit
+    under the practice root.
+
+    **There is no default and no fallback to the old composition**, which is the
+    rule this project has applied every other time: amendment 245 made both roots
+    required and absolute, sub-steps 10d.13, 10d.17 and 10d.19 removed silent
+    fallbacks one at a time, and amendment 253 made all four SMTP settings
+    required. A default here would also keep the literal `"Clients"` in this
+    module, which is the thing sub-step 10e.14 exists to remove. **What it costs
+    is stated rather than discovered: a firms.json with no client_top_folder
+    will not start the pipeline, and that includes a fresh checkout.**
+
+    **The record is taken because there is exactly one, never because it is
+    named.** DEFAULT_FIRM_ID would pick a record here, and sub-step 10d.19 spent
+    a step stopping it being a fallback. Local multi-firm is not built and will
+    not be built, Paul's decision of 2026-08-20 recorded as amendment 117, so
+    more than one firm is refused rather than guessed between.
+
+    Absoluteness is checked for _required_root's reason as well as its own: a
+    relative value would file client documents somewhere nobody looks, and a
+    Windows path string has no leading separator on Linux, so the fourth trap in
+    CLAUDE.md holds for this field exactly as it holds for the two roots.
+    """
+    where = f"Set it on the Firm Settings page in IntelliBooks Desktop, which writes {FIRMS_JSON}."
+    if not firms:
+        raise RuntimeError(
+            f"{FIRMS_JSON} names no firm, so {CLIENT_TOP_FOLDER_FIELD} cannot "
+            f"be read and there is no default for it. The client top folder is "
+            f"the firm's own filing structure and this pipeline does not "
+            f"compose it: it was PRACTICE_ROOT / 'Clients' until 2026-09-07, "
+            f"which wrote one firm's folder name into the code. {where}"
+        )
+    if len(firms) > 1:
+        raise RuntimeError(
+            f"{FIRMS_JSON} names {len(firms)} firms, {', '.join(sorted(firms))}, "
+            f"and one pipeline serves one firm, so which {CLIENT_TOP_FOLDER_FIELD} "
+            f"to use cannot be decided here. Local multi-firm is not built: see "
+            f"amendment 117 and section 1 of 2026-09-01_DESIGN_cloud_multi_firm.md. "
+            f"Leave one firm in the file."
+        )
+    firm_id, firm = next(iter(firms.items()))
+    value = (firm.get(CLIENT_TOP_FOLDER_FIELD) or "").strip()
+    if not value or not Path(value).is_absolute():
+        raise RuntimeError(
+            f"{CLIENT_TOP_FOLDER_FIELD} on firm {firm_id} in {FIRMS_JSON} is "
+            f"required and must be an absolute path. It read {value!r}. There "
+            f"is no default: this was PRACTICE_ROOT / 'Clients' until "
+            f"2026-09-07, which wrote one firm's folder name into the pipeline "
+            f"and forced the folder to sit under the practice root. A relative "
+            f"value would file client documents where nobody looks. {where}"
+        )
+    return Path(value)
+
+
 CLIENTS, CLIENTS_BY_ID = load_clients()
 FIRMS = load_firms()
+CLIENTS_ROOT = _client_top_folder(FIRMS)
 
 
 def _registry_mtime():

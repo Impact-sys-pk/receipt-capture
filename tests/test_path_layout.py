@@ -147,6 +147,48 @@ class NoSharedParentTest(unittest.TestCase):
                 )
 
 
+class ClientTopFolderTest(unittest.TestCase):
+    """The one path that is not derived from either root. Sub-step 10e.14.
+
+    `CLIENTS_ROOT` was `PRACTICE_ROOT / "Clients"` until 2026-09-07, so it had
+    no place in this module: it was composed from a root like everything else.
+    It is now the `client_top_folder` field on the firm record, which is the
+    firm's own filing structure per design document 18.2 and need not sit under
+    the practice root at all. So it is the one constant whose value this module
+    has to read from somewhere other than the two roots.
+
+    The refusals live in `tests/test_client_top_folder.py`, which imports config
+    in a subprocess. What is checkable here is the value the running suite got.
+    """
+
+    def test_it_is_the_field_off_the_firm_record(self):
+        firms = list(config.FIRMS.values())
+        self.assertEqual(len(firms), 1,
+                         "config refuses to start on any other number, so the "
+                         "suite cannot be running with one")
+        self.assertEqual(config.CLIENTS_ROOT,
+                         Path(firms[0][config.CLIENT_TOP_FOLDER_FIELD]))
+
+    def test_it_is_not_composed_from_the_practice_root(self):
+        # The deliverable. tests/live_paths.py stores a folder deliberately not
+        # called `Clients` for exactly this assertion: a config.py that went
+        # back to composing would land on the line below and this goes red.
+        self.assertNotEqual(config.CLIENTS_ROOT, config.PRACTICE_ROOT / "Clients")
+
+    def test_the_word_clients_is_not_required_of_it(self):
+        self.assertNotEqual(config.CLIENTS_ROOT.name.lower(), "clients",
+                            "the suite is running against a top folder called "
+                            "Clients, so it cannot tell the two apart")
+
+    def test_importing_config_does_not_create_it(self):
+        # It belongs to the firm, so this product does not make it. Filing does,
+        # on demand, and a test that needs it makes it itself.
+        self.assertFalse(config.CLIENTS_ROOT.exists())
+
+    def test_it_is_absolute(self):
+        self.assertTrue(config.CLIENTS_ROOT.is_absolute())
+
+
 class NothingLeftInIntelliBooksTest(unittest.TestCase):
     """Amendment 72: one folder per owner, and IntelliBooks' is not ours.
 

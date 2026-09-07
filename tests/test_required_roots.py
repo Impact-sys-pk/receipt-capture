@@ -31,6 +31,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import live_paths
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # The child imports config with dotenv neutralised, so its environment is exactly
@@ -90,7 +92,16 @@ class RefusalTest(unittest.TestCase):
 
         Every test below asserts that an import failed. Without this one they
         would all pass against a child that could not start at all.
+
+        The firm record is written here rather than inside `import_config`,
+        which matters. Sub-step 10e.14 made `CLIENTS_ROOT` a required field on
+        that record, so a successful import needs one; but writing it in the
+        helper would create the practice root for every call, and
+        `ChecksRunBeforeTheFoldersAreMadeTest` below asserts that the temp
+        directory stays empty when a root is refused. Only the tests that
+        expect an import to succeed write it.
         """
+        live_paths.write_firm_record(self.good_practice)
         result = import_config(self.tmp, self.good_practice, self.good_unsynced)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("IMPORTED", result.stdout)

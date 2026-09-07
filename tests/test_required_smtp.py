@@ -33,6 +33,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import live_paths
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 CHILD = (
@@ -76,8 +78,14 @@ def import_config(cwd, overrides=None, extra_args=()):
     env["PYTHONPATH"] = str(REPO_ROOT)
     # The two roots have to be valid or config refuses before it reaches SMTP,
     # and the refusal would then be the wrong one.
-    env["INTELLIBILLS_PRACTICE_ROOT"] = str(Path(cwd) / "practice")
+    practice = Path(cwd) / "practice"
+    env["INTELLIBILLS_PRACTICE_ROOT"] = str(practice)
     env["INTELLIBILLS_UNSYNCED_ROOT"] = str(Path(cwd) / "unsynced")
+    # And the firm record has to be there for the same reason, from 2026-09-07:
+    # sub-step 10e.14 made CLIENTS_ROOT a required field on it, so without one
+    # the control test below would fail on a refusal that has nothing to do with
+    # SMTP, and every other test here would pass on the wrong RuntimeError.
+    live_paths.write_firm_record(practice)
     values = dict(GOOD)
     values.update(overrides or {})
     for var in SMTP_VARS:

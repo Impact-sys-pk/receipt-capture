@@ -46,12 +46,52 @@ rather than in the live practice root, which is the fourth trap in `CLAUDE.md`
 neutralised for anything run through pytest. ~~`config.py:161`'s~~ **Line number
 dropped 2026-09-07, amendment 247.**
 
+## It also writes one firm record, and that is new on 2026-09-07
+
+**Sub-step 10e.14, piece three.** `config.CLIENTS_ROOT` was
+`PRACTICE_ROOT / "Clients"` and is now the `client_top_folder` field on the firm
+record in `Intellibills\\firms.json`, with no default and no fallback. Under
+pytest `FIRMS_JSON` points into the temp practice root, where no `firms.json`
+exists, **so a redirect that only moved paths would refuse at import and stop
+the whole suite.** It did: 50 collection errors.
+
+So `write_firm_record()` below puts a minimal record in the temp practice root
+before `config` is imported. **The suite then exercises the real code path
+against a temp folder**, which is the point: the alternative was to weaken the
+refusal or to weaken
+`tests/test_conftest_redirect.py`'s `test_every_config_path_constant_is_under_a_temp_root`,
+and that test is the one thing standing between the suite and Paul's live client
+folder.
+
+**The stored folder is deliberately not called `Clients`.** It is
+`TEMP_CLIENT_TOP_FOLDER`, `practice\\Client Folders`, so if `config.py` ever went
+back to composing `PRACTICE_ROOT / "Clients"` the value would change and a test
+comparing against it goes red. Naming it `Clients` would have made the
+regression invisible to behaviour and left only the source-level guards in
+`tests/test_client_top_folder.py` to catch it. **It is also the deliverable in
+one line: the whole suite runs against a client top folder called something
+else.**
+
+**Two literals are duplicated here**, `Intellibills` and `firms.json`, because
+this file may not import `config` to ask. They are guarded twice over:
+`tests/test_path_layout.py` asserts both against the two roots, and getting
+either wrong here makes `config` refuse at import and every test error, which is
+loud rather than silent. That is the reason the duplication is acceptable and
+`_root_variable()`'s source-reading is not extended to cover it.
+
 ## What it does not do
 
-**It redirects paths and nothing else.** `CLIENTS_BY_ID`, `CLIENTS`, `FIRMS`,
-`PREFER_DAYFIRST`, `EXTRACTION_ENGINE`, `DEFAULT_FIRM_ID`, `_CLIENTS_MTIME` and
-`get_pipeline_version` are still each test's own business, and
-`tests/test_prefer_dayfirst_isolation.py` exists because one of them leaked.
+**It redirects paths, and it writes the one firm record `config` now requires.**
+~~It redirects paths and nothing else.~~ **Corrected 2026-09-07, and the
+docstring changed with the behaviour rather than after it.** `CLIENTS_BY_ID`,
+`CLIENTS`, `PREFER_DAYFIRST`, `EXTRACTION_ENGINE`, `DEFAULT_FIRM_ID`,
+`_CLIENTS_MTIME` and `get_pipeline_version` are still each test's own business,
+and `tests/test_prefer_dayfirst_isolation.py` exists because one of them leaked.
+
+**`FIRMS` has left that list.** It was `{}` under pytest and always had been,
+and it is now the one record written below. A test that wants a different firm
+registry still assigns `config.FIRMS` and restores it, which is what
+`MailboxFirmTest` in `tests/test_step10d_pipeline.py` already did.
 
 **It only applies under pytest.** A module run directly through its
 `if __name__ == "__main__": unittest.main()` block does not load `conftest.py`
@@ -78,6 +118,7 @@ condition they had before.
 
 import ast
 import atexit
+import json
 import os
 import shutil
 import sys
@@ -200,6 +241,59 @@ os.environ[UNSYNCED_VAR] = str(TEMP_UNSYNCED_ROOT)
 # and point at the live folder. Cleared for the run. (Its line number was cited
 # here until 2026-09-07; dropped by amendment 247.)
 os.environ.pop("RESOLUTIONS_DIR", None)
+
+#: The client top folder the whole suite runs against. Deliberately not called
+#: `Clients`: see the docstring. It is under the temp practice root because
+#: test_conftest_redirect.py requires every config Path to be, and that
+#: requirement is what keeps the suite off Paul's live client folder.
+TEMP_CLIENT_TOP_FOLDER = TEMP_PRACTICE_ROOT / "Client Folders"
+
+#: The field on the firm record config.py reads it from. One literal, matching
+#: config.CLIENT_TOP_FOLDER_FIELD, which this file may not import to ask.
+CLIENT_TOP_FOLDER_FIELD = "client_top_folder"
+
+
+def write_firm_record(practice_root=None, client_top_folder=None) -> Path:
+    """Write the one firm record `config` requires, before `config` is imported.
+
+    Sub-step 10e.14: `CLIENTS_ROOT` is `client_top_folder` off the firm record
+    and has no default, so an import against a practice root with no
+    `Intellibills\\firms.json` refuses and every test errors during collection.
+
+    Minimal on purpose. `firm_id` and `name` are the two fields `load_firms()`
+    guarantees and `app._mailbox_firm_name()` reads; `email` and `phone_app_url`
+    are left out because nothing in the pipeline reads either, so putting them
+    here would only invite a test to depend on them.
+
+    The folder itself is **not** created. `config` does not create it either, and
+    a test that needs it makes it: filing is what creates a client folder, and a
+    suite that pre-made it could not catch filing failing to.
+    """
+    practice_root = Path(practice_root or TEMP_PRACTICE_ROOT)
+    client_top_folder = Path(client_top_folder or TEMP_CLIENT_TOP_FOLDER)
+    directory = practice_root / "Intellibills"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "firms.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "firms": [{
+                    "firm_id": "FIRM001",
+                    "name": "Test Firm",
+                    CLIENT_TOP_FOLDER_FIELD: str(client_top_folder),
+                }],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+#: Written at import, for the same reason the redirect above happens at import:
+#: it has to be on disk before anything reads `config`.
+TEMP_FIRMS_JSON = write_firm_record()
 
 
 @atexit.register

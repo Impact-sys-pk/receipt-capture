@@ -265,6 +265,70 @@ class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
                       "the unscoped question")
 
 
+class StatementHashLookupIsScopedToTheClientTest(unittest.TestCase):
+    """Amendment 1 to the brief, Paul's ruling of 2026-09-07 19:35 BST.
+
+    **No sub-step of step 10f covers this**, which is why it arrived as an
+    amendment after the work had started. `find_statement_by_hash()` filtered on
+    the hash alone in exactly the way `find_by_hash()` did, so a platform
+    statement sent by two clients collided and the second client's was credited
+    to the first.
+
+    **A statement is more exposed to this than a receipt, not less.** An uber,
+    bolt or freenow weekly statement is a generated PDF, which is the file type
+    amendment 136 identified as the one where byte-identical copies actually
+    happen, and two drivers on one account is an ordinary arrangement.
+
+    `statements` held 0 rows when this landed, so nothing on disk was affected
+    and no migration arose.
+    """
+
+    def _seed_statement(self, repo, statement_id, client_id, file_hash="s" * 64):
+        repo.save_statement(
+            statement_id=statement_id,
+            client_id=client_id,
+            platform="uber",
+            week_ending="2026-04-05",
+            source="desktop",
+            file_hash=file_hash,
+            file_path=f"/store/{statement_id}.pdf",
+            filed_path=f"/clients/{client_id}/{statement_id}.pdf",
+        )
+
+    def test_another_clients_identical_statement_is_not_a_duplicate(self):
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                self._seed_statement(repo, "s-a", CLIENT_A)
+                self.assertEqual(
+                    repo.find_statement_by_hash("s" * 64, CLIENT_A), "s-a")
+                self.assertIsNone(
+                    repo.find_statement_by_hash("s" * 64, CLIENT_B),
+                    "client B's identical weekly statement was credited to "
+                    "client A and B's copy was removed from the inbox")
+            finally:
+                repo.close()
+
+    def test_the_same_client_resending_is_still_a_duplicate(self):
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                self._seed_statement(repo, "s-a", CLIENT_A)
+                self.assertEqual(
+                    repo.find_statement_by_hash("s" * 64, CLIENT_A), "s-a")
+            finally:
+                repo.close()
+
+    def test_the_client_is_required_rather_than_defaulted(self):
+        import inspect
+
+        parameters = list(
+            inspect.signature(Repository.find_statement_by_hash).parameters.values())
+        self.assertEqual([p.name for p in parameters],
+                         ["self", "file_hash", "client_id"])
+        self.assertIs(parameters[2].default, inspect.Parameter.empty)
+
+
 class DeadFunctionsAreGoneTest(unittest.TestCase):
     """10f.23. Two duplicate lookups nothing called.
 

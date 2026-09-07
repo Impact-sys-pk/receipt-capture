@@ -135,10 +135,29 @@ class Repository:
               source, file_hash, str(file_path), str(filed_path), status, now))
         self._conn.commit()
 
-    def find_statement_by_hash(self, file_hash: str) -> Optional[str]:
+    def find_statement_by_hash(self, file_hash: str, client_id: str) -> Optional[str]:
+        """This client's statement with this file hash. Amendment 1 to the
+        step 10f duplicates brief, Paul's ruling of 2026-09-07.
+
+        **No sub-step of step 10f covers this one**, which is why it arrived as
+        an amendment. It filtered on the hash alone in exactly the way
+        find_by_hash() did before 10f.18, so a statement sent by two clients
+        collided and the second client's was credited to the first.
+
+        **A statement is more exposed to this than a receipt.** An uber, bolt or
+        freenow weekly statement is a generated PDF, which is the file type
+        amendment 136 identified as the one where byte-identical copies actually
+        occur, and two drivers on one account is an ordinary arrangement.
+
+        client_id is required rather than defaulted, as on find_by_hash(). The
+        one caller, the duplicate-statement path in app.py's folder-intake loop,
+        already holds it.
+
+        `statements` held 0 rows when this landed, so no migration arises.
+        """
         row = self._conn.execute(
-            "SELECT statement_id FROM statements WHERE file_hash = ? LIMIT 1",
-            (file_hash,)
+            "SELECT statement_id FROM statements WHERE file_hash = ? AND client_id = ? LIMIT 1",
+            (file_hash, client_id)
         ).fetchone()
         return row["statement_id"] if row else None
 

@@ -1238,7 +1238,15 @@ def process_once():
 
         for intake in intake_records:
             if intake.is_statement:
-                if repo.find_statement_by_hash(intake.file_hash):
+                # Amendment 1 to the step 10f duplicates brief. Scoped to this
+                # client, and UNKNOWN where the sidecar names none, which is the
+                # same recorded conclusion the receipt path reaches at 10d.16.
+                # No statement row is ever written under UNKNOWN, because the
+                # branch below routes an unresolvable client to Review before
+                # save_statement(), so an unresolved statement now goes to Review
+                # rather than being taken for some other client's duplicate.
+                statement_client_id = intake.client_id or config.UNKNOWN_CLIENT_ID
+                if repo.find_statement_by_hash(intake.file_hash, statement_client_id):
                     logger.info(f"capture duplicate statement by hash, removing inbox pair {intake.filename}")
                     _remove_inbox_pair(intake)
                     stats["duplicates_skipped"] += 1

@@ -66,6 +66,32 @@ class Routes:
     def __init__(self, extractor):
         self.extractor = extractor
         self.moved_to = []
+        self._landed = {}
+
+    def _move(self, uid, folder):
+        """Model what `move_email_to_folder()` actually does to a mailbox.
+
+        **It copies the message, flags it deleted and expunges**, read in
+        `worker/email/reader.py`, so once a uid has been moved out of INBOX a
+        second move of the same uid has nothing to copy and returns False.
+
+        A stub that merely recorded every call said the embedded-image path
+        leaves a duplicate in `INBOX.Processed Receipts`, because that path
+        moves to `INBOX.Duplicates` and then runs an unconditional move to
+        `INBOX.Processed Receipts` after its loop. **The first stub was wrong
+        and the finding it produced was half right**: the email does land in
+        Duplicates, and the trailing move is real and is flagged in the report.
+        """
+        self.moved_to.append(folder)
+        if uid in self._landed:
+            return False
+        self._landed[uid] = folder
+        return True
+
+    @property
+    def landed(self):
+        """Where each email actually ended up, as opposed to what was attempted."""
+        return dict(self._landed)
 
     def _run(self, **overrides):
         import app
@@ -76,7 +102,7 @@ class Routes:
             "extract_embedded_images": lambda *a, **k: [],
             "fetch_new_messages": lambda *a, **k: [],
             "fetch_attachments": lambda *a, **k: [],
-            "move_email_to_folder": lambda uid, folder: self.moved_to.append(folder),
+            "move_email_to_folder": self._move,
             "send_no_attachment_alert": lambda *a, **k: False,
             "send_unknown_sender_alert": lambda *a, **k: False,
             "get_extractor": lambda *a, **k: self.extractor,
@@ -535,6 +561,191 @@ class StatementHashLookupIsScopedToTheClientTest(unittest.TestCase):
         self.assertEqual([p.name for p in parameters],
                          ["self", "file_hash", "client_id"])
         self.assertIs(parameters[2].default, inspect.Parameter.empty)
+
+
+class EveryArrivalRouteReachesTheSameVerdictTest(unittest.TestCase):
+    """10f.22, and it is the acceptance criterion for the four before it.
+
+    **Email, phone and Add Receipts, plus the embedded-image path**, which is a
+    fourth code path rather than a fourth route: an iOS share button puts the
+    image in the body, and 10f.20 is the sub-step that brought it into line.
+    Four are driven because four exist, and the brief's three would have left
+    the one that was actually different untested.
+
+    **What must be identical is the verdict. What must differ is the disposal**,
+    and only the disposal: an email is moved to `INBOX.Duplicates` and an inbox
+    file to `Processed\\`, and in both cases the thing that arrived is kept.
+
+    Amendment 107 chose detection on the extracted values precisely because it
+    catches every arrival route, so a route deciding differently would undo the
+    reason for the check.
+    """
+
+    def _receipt_ids(self):
+        repo = Repository()
+        try:
+            return {r["receipt_id"] for r in repo._conn.execute(
+                "SELECT receipt_id FROM receipts").fetchall()}
+        finally:
+            repo.close()
+
+    def _verdicts(self, seed_filed):
+        """Drive all four routes and report what each did.
+
+        Returns {route: (verdict, disposal)}. `verdict` is "duplicate" when the
+        route created no receipt row and "processed" when it created one, which
+        is the decision 10f.22 requires to be identical.
+
+        **`seed_filed` decides whether the four share a document, and that is
+        not a detail.** With a filed receipt already on record, all four carry
+        the same bytes, which is the case 10f.22 is about. Without one, each
+        route carries its own document, because the routes run in sequence
+        against one database and the first would otherwise file the very
+        receipt the second is asked about. The first draft shared the document
+        in both cases and reported that three routes disagreed with the first;
+        the routes were right and the test was wrong.
+        """
+        from resolution_fixtures import RecordingExtractor, extraction_result
+
+        import app
+
+        if seed_filed:
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-seed", CLIENT_A,
+                             file_hash=app.compute_hash(DOCUMENT), filed=True)
+            finally:
+                repo.close()
+
+        def payload(route):
+            return DOCUMENT if seed_filed else DOCUMENT + route.encode()
+
+        results = {}
+        for name, drive in (
+            ("email attachment",
+             lambda r, d: r.email_attachment(data=d)),
+            ("embedded image",
+             lambda r, d: r.embedded_image(data=d)),
+            ("phone",
+             lambda r, d: r.inbox_file("phone.pdf", "phone", data=d)),
+            ("Add Receipts",
+             lambda r, d: r.inbox_file("desktop.pdf", "desktop", data=d)),
+        ):
+            before = self._receipt_ids()
+            routes = Routes(RecordingExtractor(extraction_result()))
+            original = drive(routes, payload(name))
+            after = self._receipt_ids()
+
+            verdict = "duplicate" if after == before else "processed"
+            if routes.landed:
+                # Where the email actually ended up, which is the first move
+                # that succeeded. See Routes._move().
+                disposal = next(iter(routes.landed.values()))
+            else:
+                processed = original.parent / app.INBOX_PROCESSED_DIRNAME
+                kept = (processed / original.name).exists()
+                disposal = (f"{app.INBOX_PROCESSED_DIRNAME}\\" if kept
+                            else "GONE FROM DISK")
+            results[name] = (verdict, disposal)
+        return results
+
+    def test_all_four_routes_call_the_same_document_a_duplicate(self):
+        with TempEnvironment():
+            with_email_client(self)
+            results = self._verdicts(seed_filed=True)
+
+            # Printed as well as asserted: the brief asks for the verdict from
+            # each route, and a dict in a failure message is only visible when
+            # it fails.
+            print("\n10f.22 verdicts, one filed receipt already on record:")
+            for route, (verdict, disposal) in results.items():
+                print(f"  {route:<18} verdict={verdict:<10} disposal={disposal}")
+
+            self.assertEqual({v for v, _ in results.values()}, {"duplicate"},
+                             f"the routes disagree: {results}")
+
+    def test_the_disposal_differs_and_nothing_is_lost(self):
+        with TempEnvironment():
+            with_email_client(self)
+            results = self._verdicts(seed_filed=True)
+
+            self.assertEqual(results["email attachment"][1], "INBOX.Duplicates")
+            self.assertEqual(results["embedded image"][1], "INBOX.Duplicates")
+            for route in ("phone", "Add Receipts"):
+                with self.subTest(route=route):
+                    self.assertEqual(results[route][1], "Processed\\",
+                                     "the inbox original was deleted rather "
+                                     "than kept")
+
+    def test_all_four_routes_process_a_document_that_is_not_a_duplicate(self):
+        """The other direction, and it is not optional.
+
+        Every assertion above is that a route said "duplicate". Without this one
+        they would all pass against a pipeline that called everything a
+        duplicate and processed nothing.
+        """
+        with TempEnvironment():
+            with_email_client(self)
+            results = self._verdicts(seed_filed=False)
+
+            print("\n10f.22 verdicts, nothing on record:")
+            for route, (verdict, disposal) in results.items():
+                print(f"  {route:<18} verdict={verdict:<10} disposal={disposal}")
+
+            self.assertEqual({v for v, _ in results.values()}, {"processed"},
+                             f"the routes disagree: {results}")
+
+    def test_another_clients_copy_is_a_duplicate_on_no_route(self):
+        """10f.18 and 10f.19 through the routes rather than through the queries.
+
+        The seeded receipt belongs to client A and every arrival is client B's.
+        Before this brief all four routes credited B's document to A and
+        produced nothing for B at all.
+
+        **Each route gets its own environment, and it has to.** To ask whether
+        A's receipt blocks B, B's document must be byte-identical to A's; run
+        two routes in sequence against one database and the first legitimately
+        files it for B, so the second is looking at B's own duplicate and says
+        so. The first draft shared the environment and reported a failure that
+        was the test's, not the code's.
+        """
+        from resolution_fixtures import RecordingExtractor, extraction_result
+
+        import app
+
+        for name, drive in (
+            ("email attachment", lambda r: r.email_attachment()),
+            ("embedded image", lambda r: r.embedded_image()),
+            ("phone", lambda r: r.inbox_file("b.pdf", "phone", client_id=CLIENT_B)),
+            ("Add Receipts", lambda r: r.inbox_file("b.pdf", "desktop", client_id=CLIENT_B)),
+        ):
+            with self.subTest(route=name):
+                with TempEnvironment():
+                    config.CLIENTS_BY_ID = dict(config.CLIENTS_BY_ID)
+                    config.CLIENTS_BY_ID[CLIENT_B] = {
+                        "client_name": "Other Client",
+                        "client_folder_name": "Other Client",
+                        "client_id": CLIENT_B,
+                        "firm_id": "FIRM001",
+                        "trade": "UNSPECIFIED",
+                    }
+                    with_email_client(self, CLIENT_B)
+
+                    repo = Repository()
+                    try:
+                        seed_receipt(repo, "r-client-a", CLIENT_A,
+                                     file_hash=app.compute_hash(DOCUMENT),
+                                     filed=True)
+                    finally:
+                        repo.close()
+
+                    before = self._receipt_ids()
+                    drive(Routes(RecordingExtractor(extraction_result())))
+                    self.assertNotEqual(
+                        self._receipt_ids(), before,
+                        f"on the {name} route, client B's identical document "
+                        "was credited to client A and B got nothing, which is "
+                        "the case amendment 136 exists to remove")
 
 
 class DeadFunctionsAreGoneTest(unittest.TestCase):

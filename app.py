@@ -1000,7 +1000,10 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
                 update_status=False,
             )
         finally:
-            # Release lock (acquired at line 282)
+            # Release the lock repo.acquire_receipt_lock() took at the top of
+            # this iteration. Named rather than numbered: this comment said
+            # "acquired at line 282" and the file had grown past it, so the
+            # number pointed at unrelated code. Amendment 247.
             repo.release_receipt_lock(receipt_id)
 
 

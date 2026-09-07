@@ -40,19 +40,16 @@ class Repository:
         ).fetchone()
         return row["receipt_id"] if row else None
 
-    def find_by_transaction(self, supplier_name: str, invoice_date: str, gross_amount: float) -> Optional[str]:
-        row = self._conn.execute(
-            "SELECT receipt_id FROM extractions WHERE supplier_name = ? AND invoice_date = ? AND gross_amount = ? LIMIT 1",
-            (supplier_name, invoice_date, gross_amount)
-        ).fetchone()
-        return row["receipt_id"] if row else None
-
-    def find_by_transaction_no_date(self, supplier_name: str, gross_amount: float) -> Optional[str]:
-        row = self._conn.execute(
-            "SELECT receipt_id FROM extractions WHERE supplier_name = ? AND gross_amount = ? LIMIT 1",
-            (supplier_name, gross_amount)
-        ).fetchone()
-        return row["receipt_id"] if row else None
+    # find_by_transaction() and find_by_transaction_no_date() were here until
+    # 2026-09-07. Sub-step 10f.23. Exact supplier and exact amount, one with a
+    # date and one without, both selecting straight out of `extractions` with no
+    # regard to the client and no check that the match was ever filed.
+    # find_by_transaction_loose() below superseded both and nothing called
+    # either, in production or in tests, confirmed by grepping every tracked
+    # file. They are noted rather than removed silently, because a reader who
+    # finds them in git history should know they were superseded rather than
+    # lost, and because 10f.18 and 10f.19 are about exactly the fault they had.
+    # tests/test_step10f_duplicates.py holds them gone.
 
     def resolve_client_info(self, email_from: str) -> tuple[str, str, str]:
         """Match a sender address to a client. Returns (client_id, firm_id, folder).

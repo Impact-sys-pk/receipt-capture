@@ -508,7 +508,7 @@ class StatementHashLookupIsScopedToTheClientTest(unittest.TestCase):
     statement sent by two clients collided and the second client's was credited
     to the first.
 
-    **A statement is more exposed to this than a receipt, not less.** An uber,
+    **A statement is more exposed to this than a receipt.** An uber,
     bolt or freenow weekly statement is a generated PDF, which is the file type
     amendment 136 identified as the one where byte-identical copies actually
     happen, and two drivers on one account is an ordinary arrangement.
@@ -707,7 +707,7 @@ class EveryArrivalRouteReachesTheSameVerdictTest(unittest.TestCase):
         two routes in sequence against one database and the first legitimately
         files it for B, so the second is looking at B's own duplicate and says
         so. The first draft shared the environment and reported a failure that
-        was the test's, not the code's.
+        belonged to the test rather than to the code.
         """
         from resolution_fixtures import RecordingExtractor, extraction_result
 

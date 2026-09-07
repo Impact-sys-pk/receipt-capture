@@ -257,8 +257,8 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         # is the standard IMAPS port rather than one firm's value.
         allowed_defaults = {"IMAP_PORT"}
         self.assertEqual(allowed_defaults, {"IMAP_PORT"},
-                         "the exception list changed; that is a decision, not a "
-                         "refactor")
+                         "the exception list changed; that needs a decision "
+                         "behind it rather than a refactor")
 
         def in_scope(name):
             if not isinstance(name, str) or name in allowed_defaults:

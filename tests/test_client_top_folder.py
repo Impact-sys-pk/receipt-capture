@@ -115,6 +115,23 @@ class AcceptedTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
+    def test_a_firm_that_is_not_FIRM001_works(self):
+        """The behavioural half of the DEFAULT_FIRM_ID guard below.
+
+        Mutating `next(iter(firms.items()))` to `firms.get(DEFAULT_FIRM_ID, {})`
+        on 2026-09-07 was caught by the source-level test alone, because the
+        one firm the suite writes happens to be FIRM001, so naming it and
+        taking the only one give the same answer. This is the case where they
+        differ: another firm's installation has another firm's id and must not
+        need this repository's default to match it.
+        """
+        wanted = self.tmp / "practice" / "Dossiers"
+        result = import_config(
+            self.tmp,
+            [dict(FIRM, firm_id="FIRM042", **{FIELD: str(wanted)})])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"IMPORTED {wanted}", result.stdout)
+
     def test_it_need_not_sit_under_the_practice_root(self):
         # Sub-step 10e.14: it is an absolute path in its own right. The firm's
         # filing structure is not storage this product owns.

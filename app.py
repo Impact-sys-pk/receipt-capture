@@ -1,4 +1,6 @@
 import base64
+import ctypes
+import ctypes.wintypes
 import json
 import logging
 import logging.handlers
@@ -8,7 +10,7 @@ import sqlite3
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -598,35 +600,235 @@ def _create_daily_backup(repo: Repository):
     _cleanup_old_backups()
 
 
+# Windows constants for the two process queries below, named rather than inlined.
+# PROCESS_QUERY_LIMITED_INFORMATION is granted more widely than
+# PROCESS_QUERY_INFORMATION and is all GetProcessTimes and GetExitCodeProcess need.
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_ERROR_ACCESS_DENIED = 5
+_ERROR_INVALID_PARAMETER = 87
+_STILL_ACTIVE = 259
+# FILETIME counts 100-nanosecond intervals from this instant, UTC.
+_FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
+
+_KERNEL32 = None
+
+
+def _kernel32():
+    """kernel32 with the three calls this module makes declared, loaded once.
+
+    Declared rather than left to ctypes' defaults, and this is not tidiness.
+    OpenProcess returns a HANDLE and ctypes' default restype is a signed int, so
+    a handle above 2**31 comes back negative and is sign-extended when passed
+    back to GetProcessTimes and CloseHandle, which would then be operating on a
+    handle nobody holds. Handles are small in practice, which is exactly the kind
+    of thing that works until it does not.
+
+    Loaded lazily so that importing this module on a machine with no kernel32
+    still works; every caller is behind a sys.platform check in any case.
+    """
+    global _KERNEL32
+    if _KERNEL32 is None:
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = ctypes.wintypes.HANDLE
+        k.OpenProcess.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.BOOL,
+                                  ctypes.wintypes.DWORD]
+        k.GetExitCodeProcess.restype = ctypes.wintypes.BOOL
+        k.GetExitCodeProcess.argtypes = [ctypes.wintypes.HANDLE,
+                                         ctypes.POINTER(ctypes.wintypes.DWORD)]
+        k.GetProcessTimes.restype = ctypes.wintypes.BOOL
+        k.GetProcessTimes.argtypes = [ctypes.wintypes.HANDLE] + [
+            ctypes.POINTER(ctypes.wintypes.FILETIME)] * 4
+        k.CloseHandle.restype = ctypes.wintypes.BOOL
+        k.CloseHandle.argtypes = [ctypes.wintypes.HANDLE]
+        _KERNEL32 = k
+    return _KERNEL32
+
+# How far after the lock's own started_at a process may have been created and
+# still be accepted as the process that wrote it. Zero would be correct on a
+# clock that never moves: a process must exist before it can write a lock, so
+# the genuine gap is negative. The allowance is for a clock adjustment between
+# the two readings, and it is small because every second of it is a second in
+# which Windows could have recycled the pid onto something unrelated.
+_LOCK_START_TOLERANCE_SECONDS = 5.0
+
+
 def _is_process_running(pid: int) -> bool:
-    try:
-        # os.kill(pid, 0) is the standard way to test process existence across platforms.
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
+    """Does a process with this pid exist right now.
+
+    **os.kill(pid, 0) cannot answer this on Windows and used to be what answered
+    it.** signal.CTRL_C_EVENT is 0, so os.kill(pid, 0) takes the console control
+    event branch rather than the TerminateProcess branch: for a pid that is not
+    reachable as a process group in the caller's own console it raises
+    OSError [WinError 87], which the old body caught and reported as "not
+    running". Every pipeline started from another window read as dead, so
+    acquire_lock() refused nothing in 67 starts across five weeks. See
+    2026-09-07_REPORT_claude_code_lock_out_of_onedrive.md sections 5 and 7.
+
+    OpenProcess answers it. A pid that does not exist fails with
+    ERROR_INVALID_PARAMETER; a process this account may not open fails with
+    ERROR_ACCESS_DENIED, **which means the process exists** and must read as
+    alive, per case F of 2026-09-06_REPORT_claude_code_lock_diagnostic.md. Any
+    other failure is treated as existence too, because the cost of a wrong
+    "alive" is a start that has to be unblocked by hand and the cost of a wrong
+    "dead" is two pipelines against one WAL database.
+
+    A handle can outlive its process, so an opened process is asked for its exit
+    code as well.
+    """
+    if sys.platform != "win32":
+        # POSIX, where os.kill(pid, 0) genuinely is an existence check. Kept for
+        # the cloud build; unexercised on this machine.
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
         return True
-    except OSError:
-        return False
-    return True
+
+    kernel32 = _kernel32()
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        err = ctypes.get_last_error()
+        if err == _ERROR_INVALID_PARAMETER:
+            return False
+        if err != _ERROR_ACCESS_DENIED:
+            logger.warning(
+                f"OpenProcess on pid {pid} failed with error {err}; treating the "
+                "process as alive, which blocks a start rather than allowing two"
+            )
+        return True
+
+    try:
+        exit_code = ctypes.wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return True
+        return exit_code.value == _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _process_started_at(pid: int):
+    """When this process was created, as an aware UTC datetime, or None.
+
+    None means the question could not be answered, not that the process is
+    young: a process this account cannot open has no readable creation time, and
+    on POSIX this returns None because nothing here needs it yet.
+
+    This is what tells a live pipeline from a recycled pid. A pid on its own
+    cannot: Windows reissues pids, a stale lock file is the normal state here
+    because closing the console window does not run release_lock(), and a lock
+    naming a pid that now belongs to something unrelated would otherwise refuse
+    a start with no pipeline running at all.
+    """
+    if sys.platform != "win32":
+        return None
+
+    kernel32 = _kernel32()
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        creation = ctypes.wintypes.FILETIME()
+        exited = ctypes.wintypes.FILETIME()
+        kernel_time = ctypes.wintypes.FILETIME()
+        user_time = ctypes.wintypes.FILETIME()
+        ok = kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(creation),
+            ctypes.byref(exited),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time),
+        )
+        if not ok:
+            return None
+        ticks = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+        return _FILETIME_EPOCH + timedelta(microseconds=ticks // 10)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _parse_lock(content: str):
+    """The pid and the started_at string a lock file names, or None for either.
+
+    A value outside the pid range comes back as None rather than reaching
+    OpenProcess. os.kill raised OverflowError on 4294967295, which nothing
+    caught, so a lock holding a number that large stopped the pipeline at
+    startup with a traceback: case G of
+    2026-09-06_REPORT_claude_code_lock_diagnostic.md, recorded there and not
+    fixed at the time.
+    """
+    pid = None
+    started_at = None
+    for line in content.splitlines():
+        if line.startswith("pid="):
+            raw = line.split("=", 1)[1].strip()
+            if raw.isdigit() and 0 < int(raw) <= 0xFFFFFFFF:
+                pid = int(raw)
+        elif line.startswith("started_at="):
+            started_at = line.split("=", 1)[1].strip() or None
+    return pid, started_at
+
+
+def _lock_describes_process(lock_started_at, process_started_at) -> bool:
+    """Is the live process at that pid the one this lock was written for.
+
+    True when it cannot be told apart, and that is deliberate in both
+    directions. An unrecorded or unparseable started_at, or a process whose
+    creation time this account may not read, falls back to the pid being alive,
+    which blocks a start. Blocking a start that did not need blocking leaves a
+    file to delete; not blocking one leaves two pipelines writing one database.
+    """
+    if lock_started_at is None or process_started_at is None:
+        return True
+    try:
+        recorded = datetime.fromisoformat(lock_started_at)
+    except ValueError:
+        return True
+    if recorded.tzinfo is None:
+        recorded = recorded.replace(tzinfo=timezone.utc)
+    tolerance = timedelta(seconds=_LOCK_START_TOLERANCE_SECONDS)
+    return process_started_at <= recorded + tolerance
 
 
 def acquire_lock() -> bool:
     lock_path = config.PIPELINE_LOCKFILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     if lock_path.exists():
+        # Why the lock was judged stale, so that the log distinguishes the four
+        # ways it can happen. All four logged one sentence until 2026-09-07,
+        # which is why the two-instance runs of 2026-09-06 cannot be
+        # reconstructed from run.log.
+        stale_reason = None
         try:
             content = lock_path.read_text(encoding="utf-8")
-            pid_line = next((line for line in content.splitlines() if line.startswith("pid=")), None)
-            existing_pid = int(pid_line.split("=", 1)[1]) if pid_line else None
-        except Exception:
-            existing_pid = None
+        except OSError as exc:
+            content = None
+            stale_reason = f"the lock file could not be read ({exc})"
 
-        if existing_pid is not None and _is_process_running(existing_pid):
-            logger.error("Another pipeline process is already running")
-            return False
+        if content is not None:
+            existing_pid, existing_started_at = _parse_lock(content)
+            if existing_pid is None:
+                stale_reason = "the lock file names no usable pid"
+            elif not _is_process_running(existing_pid):
+                stale_reason = f"pid {existing_pid} is not running"
+            else:
+                holder_started_at = _process_started_at(existing_pid)
+                if _lock_describes_process(existing_started_at, holder_started_at):
+                    logger.error(
+                        f"Another pipeline process is already running: pid {existing_pid}, "
+                        f"started at {existing_started_at or 'a time the lock did not record'}"
+                    )
+                    return False
+                stale_reason = (
+                    f"pid {existing_pid} is alive but was created at "
+                    f"{holder_started_at.isoformat()}, so it is not the process this lock "
+                    f"describes ({existing_started_at}); the pid has been reused"
+                )
 
-        logger.warning("Stale pipeline lock detected, removing")
+        logger.warning(f"Stale pipeline lock detected, removing: {stale_reason}")
         try:
             lock_path.unlink()
         except OSError:
@@ -644,10 +846,36 @@ def acquire_lock() -> bool:
 
 
 def release_lock() -> None:
+    """Delete the lock only if it names this process.
+
+    It deleted whatever was there until 2026-09-07, so one pipeline could unlock
+    another: observed at 10:05:36 that day, when a second pipeline's stop removed
+    a lock the first had created. Doing nothing is the right answer when the file
+    names somebody else, because that somebody is still holding it.
+    """
+    lock_path = config.PIPELINE_LOCKFILE
     try:
-        config.PIPELINE_LOCKFILE.unlink()
+        content = lock_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        logger.warning(f"Could not read the pipeline lock to release it: {exc}")
+        return
+
+    existing_pid, _ = _parse_lock(content)
+    if existing_pid != os.getpid():
+        logger.warning(
+            f"Not releasing the pipeline lock: it names pid {existing_pid} and this "
+            f"process is {os.getpid()}"
+        )
+        return
+
+    try:
+        lock_path.unlink()
     except FileNotFoundError:
         pass
+    except OSError as exc:
+        logger.error(f"Unable to remove the pipeline lock: {exc}")
 
 
 def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, stats: dict, run_id: str, pipeline_version: str) -> None:

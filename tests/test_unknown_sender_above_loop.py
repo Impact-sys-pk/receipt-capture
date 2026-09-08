@@ -191,7 +191,7 @@ class TheEventIsLoggedOncePerEmailTest(unittest.TestCase):
             stranger(self, ["a.pdf", "b.pdf"])
             entry = events("unknown_sender")[0]
             self.assertIn("filename", entry,
-                          "the key must be present and null, not absent")
+                          "the key must be present and null rather than absent")
             self.assertIsNone(entry["filename"])
 
     def test_the_event_still_exists_for_an_unsupported_only_email(self):

@@ -132,10 +132,12 @@ REVIEW_STATUSES = ("needs_review", "possible_duplicate")
 # semantic duplicate check. It is in the table because the ranking is a decision
 # about outcomes rather than about which path can currently produce them.
 EMAIL_OUTCOME_FOLDERS = (
+    ("unsupported", "INBOX.Unsupported Files"),
     ("failed", "INBOX.Failed Processing"),
     ("needs_review", "INBOX.Needs Review"),
     ("possible_duplicate", "INBOX.Possible Duplicate"),
     ("ok", "INBOX.Processed Receipts"),
+    ("duplicate", "INBOX.Duplicates"),
 )
 
 
@@ -1135,7 +1137,7 @@ def process_once():
                 # Process embedded images like normal attachments
                 # One email can carry several, with different outcomes. The worst
                 # wins, and _worst_outcome_folder() below is where that is decided.
-                embedded_outcomes = []
+                email_outcomes = []
                 for embedded_img in embedded_images:
                     att_id = embedded_img["id"]
                     filename = embedded_img["name"]
@@ -1159,7 +1161,12 @@ def process_once():
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
                         repo.mark_processed(message_id, att_id, file_hash, existing, firm_id)
-                        move_email_to_folder(uid, "INBOX.Duplicates")
+                        # 10f.33. Recorded rather than moved on. It used to move
+                        # the email the moment it decided, so a duplicate won by
+                        # arriving first; `duplicate` now ranks below `ok`,
+                        # because an email holding one duplicate and one filed
+                        # receipt has both accounted for.
+                        email_outcomes.append("duplicate")
                         continue
 
                     receipt_id = str(uuid.uuid4())
@@ -1224,13 +1231,13 @@ def process_once():
                         # is the shared function's answer now rather than one this
                         # path worked out for itself, which is the point: there
                         # was no reason for two answers to the same question.
-                        embedded_outcomes.append(status)
+                        email_outcomes.append(status)
                     except Exception as exc:
                         logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
                         stats["extraction_failures"] += 1
                         # The same word the row below records, and the same folder
                         # the attachment path sends a raised extraction to.
-                        embedded_outcomes.append("failed")
+                        email_outcomes.append("failed")
                         repo.save_extraction(
                             extraction_id=str(uuid.uuid4()),
                             receipt_id=receipt_id,
@@ -1272,7 +1279,7 @@ def process_once():
                 # None means do not move: either every image was a duplicate, in
                 # which case the duplicate branch has already put the email in
                 # INBOX.Duplicates, or the outcome is one the table does not name.
-                outcome_folder = _worst_outcome_folder(embedded_outcomes)
+                outcome_folder = _worst_outcome_folder(email_outcomes)
                 if outcome_folder:
                     move_email_to_folder(uid, outcome_folder)
                 continue
@@ -1532,6 +1539,13 @@ def process_once():
             # the answer to an unattributable event at 10d.19.
             msg_firm_id = firm_id if client_id != config.UNKNOWN_CLIENT_ID else config.UNATTRIBUTED_FIRM_ID
 
+            # Sub-step 10f.33. One email, one outcome, decided after the loop
+            # by the same ranking the embedded-image path uses. This loop used to
+            # move the email from inside itself, and move_email_to_folder()
+            # expunges, so the FIRST attachment's outcome won while the embedded
+            # path's worst one did.
+            email_outcomes = []
+
             for att in fetch_attachments(message_id, msg.get("msg")):
                 att_id = att["id"]
                 filename = att.get("name", "unknown")
@@ -1543,7 +1557,7 @@ def process_once():
                         str(uuid.uuid4()), message_id, filename, "unsupported_file_type",
                         firm_id=msg_firm_id, run_id=run_id
                     )
-                    move_email_to_folder(uid, "INBOX.Unsupported Files")
+                    email_outcomes.append("unsupported")
                     continue
 
                 if repo.is_duplicate(message_id, att_id):
@@ -1554,7 +1568,7 @@ def process_once():
                         firm_id=msg_firm_id, duplicate_reason="message_id_match",
                         run_id=run_id
                     )
-                    move_email_to_folder(uid, "INBOX.Duplicates")
+                    email_outcomes.append("duplicate")
                     continue
 
                 file_data = base64.b64decode(att.get("contentBytes", ""))
@@ -1573,7 +1587,7 @@ def process_once():
                         run_id=run_id
                     )
                     repo.mark_processed(message_id, att_id, file_hash, existing, msg_firm_id)
-                    move_email_to_folder(uid, "INBOX.Duplicates")
+                    email_outcomes.append("duplicate")
                     continue
                 # If file_hash matches a failed/needs_review receipt, allow reprocessing
 
@@ -1644,15 +1658,9 @@ def process_once():
                         pipeline_version=pipeline_version
                     )
 
-                    # Route email based on outcome
-                    if status == "ok":
-                        move_email_to_folder(uid, "INBOX.Processed Receipts")
-                    elif status == "possible_duplicate":
-                        move_email_to_folder(uid, "INBOX.Possible Duplicate")
-                    elif status == "needs_review":
-                        move_email_to_folder(uid, "INBOX.Needs Review")
-                    elif status == "failed":
-                        move_email_to_folder(uid, "INBOX.Failed Processing")
+                    # 10f.33. Recorded rather than acted on, and ranked after
+                    # the loop. This was a four-branch move inside the loop.
+                    email_outcomes.append(status)
 
                 except Exception as exc:
                     logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
@@ -1679,9 +1687,18 @@ def process_once():
                         review_reason=str(exc),
                         run_id=run_id
                     )
-                    move_email_to_folder(uid, "INBOX.Failed Processing")
+                    email_outcomes.append("failed")
                     # Mark processed even on failure (extraction error)
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
+
+            # 10f.33. One move for the email, on the worst outcome across its
+            # attachments. None means nothing to rank, which on this path is an
+            # unknown sender: that branch is deliberately unranked and moves the
+            # email itself, because resolve_client_info() runs once per message
+            # so every attachment reaches the same answer.
+            outcome_folder = _worst_outcome_folder(email_outcomes)
+            if outcome_folder:
+                move_email_to_folder(uid, outcome_folder)
 
     except Exception as exc:
         errors = exc

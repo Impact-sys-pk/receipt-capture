@@ -244,18 +244,13 @@ class TheWorstOutcomeWinsTest(unittest.TestCase):
             self.assertEqual(self._mixed(["ok", "ok"]),
                              "INBOX.Possible Duplicate")
 
-    def test_the_ranking_is_stated_once_and_is_worst_first(self):
-        """Read off `app.py` rather than inferred from the tests above.
-
-        Five behavioural tests cannot show that the order is complete, only that
-        the pairs they try come out right.
-        """
-        self.assertEqual(
-            [status for status, _ in app.EMAIL_OUTCOME_FOLDERS],
-            ["failed", "needs_review", "possible_duplicate", "ok"])
-        self.assertEqual(
-            dict(app.EMAIL_OUTCOME_FOLDERS)["possible_duplicate"],
-            "INBOX.Possible Duplicate")
+    # The assertion on the order of EMAIL_OUTCOME_FOLDERS lived here until
+    # 2026-09-08. It moved to
+    # tests/test_one_ranking_both_paths.py::test_the_ranking_is_paul_s_and_is_worst_first
+    # when sub-step 10f.33 gave the table two more entries and made it serve
+    # both email paths. One assertion about the order, in the file about the
+    # order: two copies would drift, and this one was already stale within a
+    # day of being written.
 
 
 class AllImagesDuplicateTest(unittest.TestCase):
@@ -296,14 +291,21 @@ class AllImagesDuplicateTest(unittest.TestCase):
                 "trailing unconditional move this change removes")
 
     def test_a_duplicate_and_a_good_image_together(self):
-        """The interaction the ranking cannot reach, asserted as it behaves.
+        """Rewritten 2026-09-08 by sub-step 10f.33, which is what it flagged.
 
-        The duplicate branch moves the email the moment it decides, so it wins
-        by being first even though `ok` would rank below it. **This is not the
-        ranking being wrong**: the brief of 2026-09-07 keeps the duplicate
-        branch outside the ranking deliberately, because it is a per-image
-        decision taken before extraction. It is recorded here so the behaviour
-        is known rather than discovered, and it is flagged in the report.
+        **It used to assert `INBOX.Duplicates` and two move attempts.** The
+        duplicate branch moved the email the moment it decided, so a duplicate
+        won by arriving first, and the ranked move afterwards failed against an
+        expunged uid. This file's own report flagged that as flag 2 and 10f.33
+        subsumed it.
+
+        Now the branch records `duplicate` and ranks like everything else.
+        `duplicate` sits below `ok`, Paul's decision of 2026-09-08: an email
+        holding one duplicate and one filed receipt has both accounted for, so
+        `INBOX.Processed Receipts` is the true statement about it.
+
+        **One move, not two.** Nothing is attempted against an expunged email
+        any more, which is the part that used to write a warning per duplicate.
         """
         with TempEnvironment():
             with_email_client(self, CLIENT)
@@ -313,12 +315,11 @@ class AllImagesDuplicateTest(unittest.TestCase):
             routes.embedded_image(names=("dup.pdf", "new.pdf"),
                                   data=[DOCUMENT, DOCUMENT + b"different"])
 
-            self.assertEqual(routes.only_landing(), "INBOX.Duplicates")
+            self.assertEqual(routes.only_landing(), "INBOX.Processed Receipts")
             self.assertEqual(
-                routes.moved_to,
-                ["INBOX.Duplicates", "INBOX.Processed Receipts"],
-                "the ranked move should still be attempted and should fail, "
-                "because the duplicate branch has already expunged the email")
+                routes.moved_to, ["INBOX.Processed Receipts"],
+                "a second move was attempted, so something still moves the "
+                "email from inside the loop")
 
 
 class BothPathsAgreeTest(unittest.TestCase):

@@ -156,7 +156,7 @@ class Mutation:
     def __post_init__(self):
         if self.expect not in EXPECTED:
             raise ValueError(
-                f"{self.name}: expect must be one of {EXPECTED}, not "
+                f"{self.name}: expect must be one of {EXPECTED}. It read "
                 f"{self.expect!r}")
 
     def apply(self, source: str) -> str:

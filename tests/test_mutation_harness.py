@@ -255,7 +255,7 @@ class ExpectedOutcomeTest(unittest.TestCase):
     def test_a_prose_mutation_that_survives_is_as_expected(self):
         result = self._run(QUIET, SURVIVES)
         self.assertTrue(result.as_expected,
-                        "a prose mutation passing is the answer, not an alarm")
+                        "a prose mutation passing is the answer rather than an alarm")
         self.assertIn("survived, as expected", result.verdict)
 
     def test_a_prose_mutation_that_is_caught_says_what_it_means(self):

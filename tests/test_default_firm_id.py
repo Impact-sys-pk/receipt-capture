@@ -47,6 +47,7 @@ observe its absence, and a dead function holding two more statements of the
 fallback is exactly the kind of thing that gets copied back in later.
 """
 
+import ast
 import json
 import tempfile
 import unittest
@@ -212,44 +213,112 @@ class SentinelDefaultFirmIdTest(unittest.TestCase):
 
 
 class NoHardcodedFirmIdTest(unittest.TestCase):
-    """No literal fallback firm_id survives in app.py."""
+    """No literal fallback firm_id survives in app.py.
+
+    **Rewritten 2026-09-08 to parse rather than to match text.** Both tests read
+    `app.py` as a string and asked whether one appeared in the other, and on
+    2026-09-08 that failed on **a comment explaining why
+    `config.DEFAULT_FIRM_ID` is deliberately not used** at the embedded path's
+    unknown-sender branch. The comment was reworded to get past the guard, which
+    is the wrong way round, and this is the correction.
+
+    **It keeps happening on this project rather than elsewhere**, because the
+    convention is that superseded wording is kept beside the correction and
+    every rule carries the incident that produced it. So the prose is always a
+    few lines from the code, and **a check on what the code does must never read
+    prose about that code.** `CLAUDE.md`'s standard-of-evidence section, added
+    the same day.
+
+    The module docstring above calls the third test "a text count over `app.py`",
+    and that description is now out of date rather than wrong: what has to be
+    absent is still absence from the source, and it is now absence from the
+    source's syntax tree, which is a stricter claim about the same thing.
+    """
+
+    def setUp(self):
+        self.tree = ast.parse(APP_PY.read_text(encoding="utf-8"))
+
+    def _attribute_uses(self, owner, attribute):
+        """Line numbers where `owner.attribute` is read. Code only."""
+        return sorted(
+            node.lineno for node in ast.walk(self.tree)
+            if isinstance(node, ast.Attribute) and node.attr == attribute
+            and isinstance(node.value, ast.Name) and node.value.id == owner
+        )
 
     def test_app_py_passes_no_firm_id_literal(self):
-        source = APP_PY.read_text(encoding="utf-8")
-        count = source.count('firm_id="INTELLITAX"')
-        self.assertEqual(
-            count, 0,
-            f'app.py still passes firm_id="INTELLITAX" {count} time(s); every call '
-            f"site must read config.DEFAULT_FIRM_ID so the intake event log cannot "
-            f"split into two files for one firm",
-        )
+        """No call passes a string literal as `firm_id`.
 
-    def test_the_count_is_looking_at_the_right_file(self):
-        # If app.py moved or the read silently returned nothing, the count above
-        # would be zero for the wrong reason and the guard would guard nothing.
-        # assertTrue rather than assertIn on purpose: assertIn prints the whole
-        # haystack, and app.py is 1200 lines.
-        source = APP_PY.read_text(encoding="utf-8")
+        Wider than the text count it replaces, which looked only for
+        `firm_id="INTELLITAX"`. Any literal is the defect: the fault was one
+        firm's intake history landing in two files because two writers were
+        handed different words, and a second literal would do it again.
+        """
+        offenders = []
+        for node in ast.walk(self.tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for keyword in node.keywords:
+                if (keyword.arg == "firm_id"
+                        and isinstance(keyword.value, ast.Constant)
+                        and isinstance(keyword.value.value, str)):
+                    offenders.append(
+                        f"{ast.unparse(node.func)}(firm_id="
+                        f"{keyword.value.value!r}) at app.py:{node.lineno}")
+        self.assertEqual(
+            offenders, [],
+            "app.py passes a literal firm_id. Every call site must take the "
+            "firm off the receipt in hand or name config.UNATTRIBUTED_FIRM_ID, "
+            f"so the intake event log cannot split into two files: {offenders}")
+
+    def test_the_tree_is_the_right_file_and_is_not_empty(self):
+        """The guard above returns an empty list for a file it failed to read.
+
+        Renamed from `test_the_count_is_looking_at_the_right_file`: there is no
+        count any more. `_log_receipt()` is the marker because it is the writer
+        the whole module is about.
+        """
+        functions = {node.name for node in ast.walk(self.tree)
+                     if isinstance(node, ast.FunctionDef)}
+        self.assertIn("_log_receipt", functions,
+                      "app.py defines no _log_receipt(), so the guards above are "
+                      "reading the wrong file or an empty one")
+
+    def test_app_py_names_the_unattributed_firm_id(self):
+        # Sub-step 10d.19. The four call sites that used to take the fallback
+        # now take either the firm on the receipt in hand or
+        # config.UNATTRIBUTED_FIRM_ID, the reserved id for an event nobody can
+        # attribute. Amendment 128. Without this the test below is satisfied by
+        # a file that names neither.
         self.assertTrue(
-            "def _log_receipt(" in source,
-            "app.py does not define _log_receipt(), so the count above is reading "
-            "the wrong file or an empty one",
-        )
-        # Sub-step 10d.19. app.py no longer names config.DEFAULT_FIRM_ID at all:
-        # the four call sites that used to take it now take either the firm on
-        # the receipt in hand or config.UNATTRIBUTED_FIRM_ID, which is the
-        # reserved id for an event nobody can attribute. Amendment 128.
-        self.assertTrue(
-            "config.UNATTRIBUTED_FIRM_ID" in source,
-            "app.py names config.UNATTRIBUTED_FIRM_ID nowhere, so the four call "
-            "sites have not been converted, only emptied",
-        )
-        self.assertNotIn(
-            "config.DEFAULT_FIRM_ID", source,
-            "app.py still reads the fallback firm id. 10d.19: an event that "
-            "cannot be attributed to a firm goes to UNATTRIBUTED, and a receipt's "
-            "firm comes off the receipt.",
-        )
+            self._attribute_uses("config", "UNATTRIBUTED_FIRM_ID"),
+            "app.py reads config.UNATTRIBUTED_FIRM_ID nowhere, so the call "
+            "sites have not been converted, only emptied")
+
+    def test_app_py_does_not_read_the_fallback_firm_id(self):
+        uses = self._attribute_uses("config", "DEFAULT_FIRM_ID")
+        self.assertEqual(
+            uses, [],
+            "app.py reads the fallback firm id at these lines. 10d.19: an event "
+            "that cannot be attributed to a firm goes to UNATTRIBUTED, and a "
+            f"receipt's firm comes off the receipt: {uses}")
+
+    def test_a_comment_naming_the_constant_is_not_a_use(self):
+        """The specific fault this rewrite exists for, asserted directly.
+
+        Without this, a future rewrite back to a string match would pass every
+        other test in the class. The check is that the parser and a naive text
+        search disagree about this source, and that the parser is the one that
+        is right.
+        """
+        source = "# config.DEFAULT_FIRM_ID is deliberately not used here\nx = 1\n"
+        self.assertIn("config.DEFAULT_FIRM_ID", source,
+                      "the fixture must be one a text match would fail on")
+        tree = ast.parse(source)
+        uses = [node for node in ast.walk(tree)
+                if isinstance(node, ast.Attribute)
+                and node.attr == "DEFAULT_FIRM_ID"]
+        self.assertEqual(uses, [], "a comment was read as a use")
 
 
 class DeadResolverIsGoneTest(unittest.TestCase):

@@ -343,37 +343,98 @@ class EmbeddedImageGuardTest(unittest.TestCase):
             self.assertIn("INBOX.Duplicates", routes.moved_to)
 
     def test_all_three_hash_call_sites_read_the_same_way(self):
-        """The set claim, read off `app.py` rather than trusted to three tests.
+        """The set claim, read off `app.py`'s syntax tree.
 
-        Every `find_by_hash()` call in `app.py` must sit in a condition that also
-        calls `is_recorded_and_filed()`. Reading the source catches a fourth call
-        site being added later without the guard, which no behavioural test would.
+        Every `find_by_hash()` call in `app.py` must be followed by a statement
+        that calls `is_recorded_and_filed()`. Reading the source catches a
+        fourth call site being added later without the guard, which no
+        behavioural test would.
+
+        **Rewritten 2026-09-08 to look at the tree rather than at three lines of
+        text.** It found the call sites by parsing and then asserted
+        `"is_recorded_and_filed" in window`, where `window` was the call's line
+        and the two after it. **A comment mentioning the guard within two lines
+        of a `find_by_hash()` call would have satisfied it**, and on this project
+        the comment beside a call is usually about exactly that call.
+
+        **The structural rule is the statement after the assignment**, which
+        covers both shapes `app.py` uses: `if existing and
+        repo.is_recorded_and_filed(existing):` on the two email paths, and `if
+        existing:` with the check nested inside on the folder-intake path.
+        Searching the whole following statement rather than only its condition
+        is what makes one rule cover both.
         """
         import ast
         from pathlib import Path
 
-        source = (Path(__file__).resolve().parent.parent / "app.py").read_text(
-            encoding="utf-8")
-        tree = ast.parse(source)
-        lines = source.splitlines()
+        tree = ast.parse(
+            (Path(__file__).resolve().parent.parent / "app.py").read_text(
+                encoding="utf-8"))
 
-        call_lines = [
-            node.lineno for node in ast.walk(tree)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "find_by_hash"
-        ]
-        self.assertEqual(len(call_lines), 3,
-                         f"the number of find_by_hash call sites moved: {call_lines}")
+        def calls_the_guard(node):
+            return any(
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "is_recorded_and_filed"
+                for inner in ast.walk(node))
 
-        for lineno in call_lines:
-            with self.subTest(line=lineno):
-                # The call, then the `if` that acts on it. Two lines is enough
-                # for both shapes app.py uses.
-                window = "\n".join(lines[lineno - 1:lineno + 2])
-                self.assertIn(
-                    "is_recorded_and_filed", window,
-                    f"the find_by_hash call at app.py:{lineno} treats a match as "
-                    "a duplicate without checking it was ever filed")
+        BLOCKS = ("body", "orelse", "finalbody", "handlers")
+
+        def own_nodes(statement):
+            """Every node of `statement` except those in its nested blocks.
+
+            Without this, `ast.walk()` reports the call against every compound
+            statement enclosing it, so one call site was counted at eleven
+            places: the `for` loop, the `with`, the `try` and so on all the way
+            out. Caught on the first run of this rewrite.
+            """
+            seen = []
+            stack = [statement]
+            while stack:
+                node = stack.pop()
+                seen.append(node)
+                for name, value in ast.iter_fields(node):
+                    if node is statement and name in BLOCKS:
+                        continue
+                    items = value if isinstance(value, list) else [value]
+                    stack.extend(i for i in items if isinstance(i, ast.AST))
+            return seen
+
+        def uses_the_lookup(statement):
+            return any(
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "find_by_hash"
+                for inner in own_nodes(statement))
+
+        # Every statement holding a find_by_hash() call, with the statement that
+        # follows it in the same block. A call in the last statement of a block
+        # has no follower, which is itself a failure: nothing can be guarding it.
+        found, offenders = [], []
+        for parent in ast.walk(tree):
+            for field in ("body", "orelse", "finalbody"):
+                block = getattr(parent, field, None)
+                if not isinstance(block, list):
+                    continue
+                for index, statement in enumerate(block):
+                    if not uses_the_lookup(statement):
+                        continue
+                    found.append(statement.lineno)
+                    following = block[index + 1] if index + 1 < len(block) else None
+                    if following is None or not calls_the_guard(following):
+                        offenders.append(
+                            f"app.py:{statement.lineno}, followed by "
+                            + ("nothing" if following is None
+                               else f"line {following.lineno}"))
+
+        self.assertEqual(sorted(found), sorted(set(found)),
+                         f"a statement was counted twice: {found}")
+        self.assertEqual(len(found), 3,
+                         f"the number of find_by_hash call sites moved: {found}")
+        self.assertEqual(
+            offenders, [],
+            "a find_by_hash call treats a match as a duplicate without checking "
+            f"it was ever filed: {offenders}")
 
 
 class StatementHashLookupIsScopedToTheClientTest(unittest.TestCase):

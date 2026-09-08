@@ -42,6 +42,7 @@ import unittest
 from pathlib import Path
 
 import live_paths
+import source_guards
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -239,13 +240,26 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         Named individually rather than by pattern, because these three strings
         are the actual defect: one firm's mail server, port and sending address
         living in a module every installation shares.
+
+        **Rewritten 2026-09-08 to look for a string constant rather than for
+        quotation marks.** It searched the text for `"mail.lastingimpact.co.uk"`
+        **with the double quotes attached**, which is what let `config.py`'s own
+        comment name all three values without failing it. That comment is
+        correct and should stay; the guard was approximating "is this hardcoded"
+        with "does this appear in quotes", and the approximation missed a
+        single-quoted form and a concatenated one as well.
+
+        Docstrings are excluded from the constants searched, because a docstring
+        is a string constant and this project records removed values in prose.
         """
-        source = (REPO_ROOT / "config.py").read_text(encoding="utf-8")
+        tree = source_guards.tree_of("config.py")
         for gone in ("mail.lastingimpact.co.uk", "alerts@lastingimpact.co.uk"):
             with self.subTest(literal=gone):
-                self.assertNotIn(
-                    f'"{gone}"', source,
-                    f"{gone} is back in config.py as a literal value")
+                lines = source_guards.string_constants_equal_to(tree, gone)
+                self.assertEqual(
+                    lines, [],
+                    f"{gone} is back in config.py as a literal value, at "
+                    f"{lines}")
 
     def test_the_shared_message_makes_no_claim_about_what_config_used_to_hold(self):
         """Scoped to `_required()`, and the scoping is the whole difficulty.

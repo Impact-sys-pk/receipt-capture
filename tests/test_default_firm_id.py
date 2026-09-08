@@ -23,11 +23,14 @@ Where the constant is still legitimately read is `resolve_client_info()`'s
 unresolved branch, which is a sender nobody can place rather than a client record
 missing a field, and that is where the sentinel test now points.
 
-The third test is a text count over `app.py` rather than a behavioural assertion,
-and that is deliberate. The defect was four literals in four branches, all on
-paths where no client has resolved. Nothing short of their absence from the source
-proves they are gone, and a behavioural test would have to reach an IMAP fetch to
-exercise any of them.
+~~The third test is a text count over `app.py`~~ **The third test reads
+`app.py`'s syntax tree, corrected 2026-09-08**, rather than a behavioural
+assertion, and that is deliberate. The defect was four literals in four
+branches, all on paths where no client has resolved. Nothing short of their
+absence from the source proves they are gone, and a behavioural test would have
+to reach an IMAP fetch to exercise any of them. **What changed is only how the
+source is read: a text count answered the question about comments as well as
+about code, and on this project the prose is always a few lines away.**
 
 **Amendment 93 adds two tests, and the first is the one that matters.**
 
@@ -41,10 +44,14 @@ appears nowhere else, so the comparison can only pass if `load_clients()` truly
 reads the global at call time. Amendment 83's lesson, restated: a suite that
 isolates a value and never asserts it is silent about the value.
 
-The second is a text count over `worker/database/repository.py`, for the deletion
-of `resolve_client_by_code()`. Nothing called it, so no behavioural test can
-observe its absence, and a dead function holding two more statements of the
-fallback is exactly the kind of thing that gets copied back in later.
+~~The second is a text count over `worker/database/repository.py`~~ **The second
+reads that file's syntax tree and asks whether it defines
+`resolve_client_by_code()`. Corrected 2026-09-08.** Nothing called it, so no
+behavioural test can observe its absence, and a dead function holding two more
+statements of the fallback is exactly the kind of thing that gets copied back in
+later. **"No behavioural test can observe it" was read for a year as "only a
+text count is available", and the two are different claims**: an uncalled
+function has no behaviour and it does have a definition.
 """
 
 import ast
@@ -54,6 +61,7 @@ import unittest
 from pathlib import Path
 
 import config
+import source_guards
 
 APP_PY = Path(__file__).resolve().parent.parent / "app.py"
 REPOSITORY_PY = Path(__file__).resolve().parent.parent / "worker" / "database" / "repository.py"
@@ -325,34 +333,62 @@ class DeadResolverIsGoneTest(unittest.TestCase):
     """resolve_client_by_code() is deleted. Amendment 93, test B.
 
     It held two of the eleven statements of the fallback and nothing called it.
-    A text count is the only available assertion: an uncalled function has no
-    behaviour to observe.
+
+    ~~A text count is the only available assertion: an uncalled function has no
+    behaviour to observe.~~ **Corrected 2026-09-08.** The first half is true and
+    the conclusion does not follow: **an uncalled function has no behaviour to
+    observe and it does have a definition**, so the narrower assertion was
+    available all along. This now asks whether `repository.py` defines a
+    function of that name.
+
+    **It was latent rather than live**, and the convention is what makes it
+    fragile. A deleted function leaves a tombstone comment naming it, and three
+    such comments already sit in production code: two in
+    `worker/database/repository.py` and one in `app.py`. **The next deletion
+    from this file recorded that way would have broken this guard**, and the fix
+    would have looked like rewording a comment to get past a test, which is
+    what happened to `NoHardcodedFirmIdTest` the day before.
     """
 
-    def test_repository_py_does_not_define_resolve_client_by_code(self):
-        source = REPOSITORY_PY.read_text(encoding="utf-8")
-        count = source.count("resolve_client_by_code")
-        self.assertEqual(
-            count, 0,
-            f"worker/database/repository.py still names resolve_client_by_code "
-            f"{count} time(s). Nothing called it and it restated the fallback "
-            f'firm_id as the literal "INTELLITAX" twice.',
-        )
+    def setUp(self):
+        self.tree = source_guards.tree_of("worker", "database", "repository.py")
 
-    def test_the_count_is_looking_at_the_right_file(self):
-        # A text count that reads a moved or empty file passes silently for ever.
-        # Same guard as test_app_py_passes_no_firm_id_literal's companion above.
-        source = REPOSITORY_PY.read_text(encoding="utf-8")
-        self.assertTrue(
-            "def resolve_client_info(" in source,
-            "repository.py does not define resolve_client_info(), so the count "
-            "above is reading the wrong file or an empty one",
-        )
-        self.assertTrue(
-            "def resolve_client_id(" in source,
-            "repository.py does not define resolve_client_id(), so the count "
-            "above is reading the wrong file or an empty one",
-        )
+    def test_repository_py_does_not_define_resolve_client_by_code(self):
+        self.assertFalse(
+            source_guards.defines(self.tree, "resolve_client_by_code"),
+            "worker/database/repository.py still defines "
+            "resolve_client_by_code(). Nothing called it and it restated the "
+            'fallback firm_id as the literal "INTELLITAX" twice.')
+
+    def test_the_tree_is_the_right_file_and_is_not_empty(self):
+        # A guard that reads a moved or empty file passes silently for ever.
+        # Renamed from test_the_count_is_looking_at_the_right_file: there is no
+        # count any more. The two survivors are named because they are the
+        # neighbours of the deleted one.
+        defined = source_guards.defined_functions(self.tree)
+        for name in ("resolve_client_info", "resolve_client_id"):
+            with self.subTest(function=name):
+                self.assertIn(
+                    name, defined,
+                    f"repository.py does not define {name}(), so the guard "
+                    "above is reading the wrong file or an empty one")
+
+    def test_a_tombstone_comment_is_not_a_definition(self):
+        """The fault this rewrite exists for, asserted on a fixture.
+
+        Without it, a rewrite back to a text count would pass every other test
+        in the class. The fixture is a tombstone comment of exactly the shape
+        this project writes.
+        """
+        source = ("# resolve_client_by_code() was here until 2026-09-01.\n"
+                  "# Nothing called it. Amendment 93.\n"
+                  "def resolve_client_info(self, email):\n"
+                  "    return None\n")
+        self.assertIn("resolve_client_by_code", source,
+                      "the fixture must be one a text count would fail on")
+        tree = ast.parse(source)
+        self.assertFalse(source_guards.defines(tree, "resolve_client_by_code"))
+        self.assertTrue(source_guards.defines(tree, "resolve_client_info"))
 
 
 if __name__ == "__main__":

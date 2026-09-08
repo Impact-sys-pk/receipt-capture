@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import config
+import source_guards
 
 fake_openai = types.ModuleType("openai")
 
@@ -299,9 +300,18 @@ class SchemaShapeTest(unittest.TestCase):
     def test_no_migration_survives(self):
         # 10d.34. Eleven ALTER TABLE ADD COLUMN guards, all removed, and the
         # columns they added are now in the CREATE statements.
-        source = (Path(__file__).resolve().parent.parent / "worker" / "database"
-                  / "schema.py").read_text(encoding="utf-8")
-        self.assertNotIn("ALTER TABLE", source)
+        #
+        # Read off the syntax tree from 2026-09-08, and looking only inside
+        # string constants, because that is where SQL lives. The text search it
+        # replaces would have failed on a comment recording the removal, which
+        # is exactly the comment this project writes; docstrings are excluded
+        # for the same reason, a docstring being a string constant.
+        tree = source_guards.tree_of("worker", "database", "schema.py")
+        migrations = source_guards.string_constants_containing(
+            tree, "ALTER TABLE", case_sensitive=False)
+        self.assertEqual(
+            [lineno for _, lineno in migrations], [],
+            f"schema.py still runs a migration, at {migrations}")
         for column in ("filed_at", "duplicate_of", "locked_at", "source"):
             with self.subTest(column=column):
                 self.assertIn(column, self._columns("receipts"))

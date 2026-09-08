@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import config
+import source_guards
 
 fake_openai = types.ModuleType("openai")
 class OpenAI:
@@ -349,12 +350,23 @@ class LayeringTest(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "", f"forbidden imports: {result.stdout!r}")
 
     def test_the_service_neither_prints_nor_reads_input(self):
-        source = (
-            Path(__file__).resolve().parent.parent
-            / "worker" / "resolution" / "service.py"
-        ).read_text(encoding="utf-8")
-        for banned in ("print(", "input(", "sys.exit"):
-            self.assertNotIn(banned, source, f"{banned} does not belong in the domain layer")
+        """Read off the syntax tree, so a docstring saying "print" is not a print.
+
+        Rewritten 2026-09-08. It searched the text for `print(`, `input(` and
+        `sys.exit`, and the domain layer's docstrings discuss what it must not
+        do: `parse_corrections()` explains that an error is returned rather
+        than printed. **The next such sentence containing `print(` would have
+        failed this**, and the fix would have looked like rewording a docstring
+        to get past a test.
+        """
+        tree = source_guards.tree_of("worker", "resolution", "service.py")
+        calls = source_guards.called_names(tree)
+        for banned in ("print", "input", "sys.exit"):
+            with self.subTest(call=banned):
+                self.assertNotIn(
+                    banned, calls,
+                    f"{banned}() does not belong in the domain layer; it is "
+                    f"called at {calls.get(banned)}")
 
 
 if __name__ == "__main__":

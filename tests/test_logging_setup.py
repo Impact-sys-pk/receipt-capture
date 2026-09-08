@@ -20,6 +20,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import config
+import source_guards
 from live_paths import live
 
 fake_openai = types.ModuleType("openai")
@@ -135,25 +136,42 @@ class AttachLogHandlerTest(unittest.TestCase):
 
 class ImportTimeTest(unittest.TestCase):
     def test_importing_the_module_attaches_nothing(self):
-        # Attaching at import was tried and reverted the same day: it put 29 lines
-        # of synthetic test output into data/run.log on every suite run.
-        source = (
-            Path(__file__).resolve().parent.parent / "worker" / "logging_setup.py"
-        ).read_text(encoding="utf-8")
-        tail = source.split("def attach_log_handler")[-1]
-        self.assertNotIn("\nattach_log_handler(", tail)
+        """No handler is attached at import, in the module or its three callers.
+
+        Attaching at import was tried and reverted the same day: it put 29 lines
+        of synthetic test output into `data/run.log` on every suite run.
+
+        **Read off the syntax tree from 2026-09-08.** Two text checks did this
+        before. One searched the part of `logging_setup.py` after the definition
+        for a newline followed by `attach_log_handler(`, which a comment or a
+        docstring line starting at column nought would satisfy. The other
+        scanned the three entry points for an unindented line, which is a
+        careful text check and still one: an unindented line inside a
+        triple-quoted string reads the same to it.
+
+        **Module scope is what both meant, and the tree says it directly**
+        rather than inferring it from indentation. A call inside `main()` is the
+        right place for one and does not count, which falls out of the same
+        question rather than needing a separate rule.
+        """
+        attaching = ("attach_log_handler", "attach_run_log_handler")
+
+        at_import = source_guards.module_level_calls(
+            source_guards.tree_of("worker", "logging_setup.py"))
+        self.assertEqual(
+            [name for name in attaching if name in at_import], [],
+            f"worker/logging_setup.py attaches at import: {at_import}")
+
         for module_name in ("app", "resolve_receipt", "discard_receipt"):
-            module_source = (
-                Path(__file__).resolve().parent.parent / f"{module_name}.py"
-            ).read_text(encoding="utf-8")
             with self.subTest(module=module_name):
-                # Unindented, so a call inside main() does not count. That is the
-                # correct place for it; module scope is the mistake.
-                for line in module_source.split("\n"):
-                    if line.startswith(("attach_log_handler(", "attach_run_log_handler(")):
-                        self.fail(
-                            f"{module_name}.py attaches a handler at module scope: {line!r}"
-                        )
+                calls = source_guards.module_level_calls(
+                    source_guards.tree_of(f"{module_name}.py"))
+                offenders = {name: calls[name] for name in attaching
+                             if name in calls}
+                self.assertEqual(
+                    offenders, {},
+                    f"{module_name}.py attaches a handler at module scope: "
+                    f"{offenders}")
 
 
 class SuiteWritesNoLogsTest(unittest.TestCase):

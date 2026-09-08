@@ -158,6 +158,68 @@ class RunOneTest(unittest.TestCase):
         self.assertEqual(self.target.read_text(encoding="utf-8"), self.original)
 
 
+class CarriageReturnsTest(unittest.TestCase):
+    """A multi-line anchor works on a CRLF file. Added 2026-09-08.
+
+    **This repository holds a mix**: `app.py` is LF and `config.py` is CRLF.
+    An anchor is written with `\\n`, so on a CRLF file it matched nothing and
+    the harness reported "the code moved", **which sent me to read a file that
+    was exactly as I thought it was.** Found by using the harness on `config.py`
+    for the first time, three briefs after writing it.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.target = self.root / "subject.py"
+
+    def _write(self, newline):
+        self.original = f"one{newline}two{newline}three{newline}"
+        self.target.write_bytes(self.original.encode("utf-8"))
+
+    def _run(self, old, new):
+        return run_one(Mutation(name="m", target="subject.py", old=old, new=new),
+                       command=QUIET, repo_root=self.root, echo=False)
+
+    def test_a_multi_line_anchor_matches_on_a_crlf_file(self):
+        self._write("\r\n")
+        result = self._run("one\ntwo", "one\nTWO")
+        self.assertEqual(result.changed, ["-two", "+TWO"])
+
+    def test_a_multi_line_anchor_still_matches_on_an_lf_file(self):
+        self._write("\n")
+        result = self._run("one\ntwo", "one\nTWO")
+        self.assertEqual(result.changed, ["-two", "+TWO"])
+
+    def test_a_crlf_file_comes_back_byte_for_byte(self):
+        # The restore is from the byte copy, so the translation cannot corrupt
+        # it. Asserted rather than reasoned, because a harness that silently
+        # rewrote every CRLF file it touched would be worse than the bug.
+        self._write("\r\n")
+        before = self.target.read_bytes()
+        self._run("one\ntwo", "one\nTWO")
+        self.assertEqual(self.target.read_bytes(), before)
+
+    def test_the_mutated_file_keeps_its_own_line_endings(self):
+        """What the suite under mutation actually sees.
+
+        If the harness wrote LF into a CRLF file, the diff would be the whole
+        file and any guard comparing text would fail for the wrong reason.
+        """
+        self._write("\r\n")
+        seen = {}
+        peek = (sys.executable, "-c",
+                "from pathlib import Path;"
+                "print('CRLF', b'\\r\\n' in Path('subject.py').read_bytes())")
+        result = run_one(
+            Mutation(name="m", target="subject.py", old="two", new="TWO"),
+            command=peek, repo_root=self.root, echo=False)
+        seen["last"] = result.last_line
+        self.assertEqual(seen["last"], "CRLF True",
+                         "the file was rewritten with LF while mutated")
+
+
 class ExpectedOutcomeTest(unittest.TestCase):
     """`expect` says which answer the mutation is asserting. Added 2026-09-08.
 

@@ -215,12 +215,25 @@ def run_one(mutation: Mutation, command=DEFAULT_COMMAND, repo_root=REPO_ROOT,
     """
     target = Path(repo_root) / mutation.target
     original = target.read_bytes()
-    original_text = original.decode("utf-8")
+    on_disk = original.decode("utf-8")
+
+    # This repository holds a mix of line endings: `app.py` is LF and
+    # `config.py` is CRLF. A multi-line anchor is written with "\n", so on a
+    # CRLF file it matched nothing and `replace_once()` reported "the code
+    # moved", which sent me to read a file that was exactly as I thought.
+    # Found 2026-09-08 by using the harness on `config.py` for the first time.
+    #
+    # So the edit sees LF whatever the file holds, and the file is written back
+    # in its own convention. The restore is from the byte copy below either way,
+    # so this cannot affect it.
+    crlf = "\r\n" in on_disk
+    original_text = on_disk.replace("\r\n", "\n") if crlf else on_disk
     mutated_text = mutation.apply(original_text)
     if mutated_text == original_text:
         raise AnchorNotUnique(
             f"{mutation.name}: the edit changed nothing, so there is nothing to "
             "measure")
+    to_write = mutated_text.replace("\n", "\r\n") if crlf else mutated_text
 
     diff = list(difflib.unified_diff(
         original_text.splitlines(), mutated_text.splitlines(), lineterm="", n=0))
@@ -231,7 +244,7 @@ def run_one(mutation: Mutation, command=DEFAULT_COMMAND, repo_root=REPO_ROOT,
     backup = target.with_suffix(target.suffix + ".pristine")
     shutil.copy2(target, backup)
     try:
-        target.write_text(mutated_text, encoding="utf-8", newline="")
+        target.write_text(to_write, encoding="utf-8", newline="")
         completed = subprocess.run(list(command), cwd=str(repo_root),
                                    capture_output=True, text=True)
         lines = [line for line in completed.stdout.splitlines() if line.strip()]

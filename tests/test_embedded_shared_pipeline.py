@@ -216,5 +216,84 @@ class TheSharedFunctionIsCalledTest(unittest.TestCase):
                       "extraction leaves a receipt with no extraction at all")
 
 
+class TheEmbeddedPathRetriesATransientFailureTest(unittest.TestCase):
+    """The retry swap, 2026-09-08. My flag, approved by Paul.
+
+    The embedded-image path was the only one of the four calling
+    `extractor.extract()` directly; the auto-retry, folder-intake and attachment
+    paths all wrap it in `extract_with_transient_retry()`. So a transient OpenAI
+    error on an emailed photo failed at the first attempt where the identical
+    error on an attachment was retried three times with backoff.
+
+    **Not part of sub-step 10f.33** and it has its own commit.
+    """
+
+    def test_a_raising_extractor_is_called_three_times_not_once(self):
+        with TempEnvironment():
+            with_email_client(self, CLIENT)
+            extractor = Extractor({"shared.pdf": OUTCOMES["raised"]})
+            Routes(extractor).embedded_image(names=("shared.pdf",))
+            self.assertEqual(
+                extractor.calls, 3,
+                "the embedded path gave up after one attempt, so a transient "
+                "API error loses the receipt where an attachment would survive")
+
+    def test_a_transient_failure_that_clears_produces_a_filed_receipt(self):
+        """What the swap actually buys, rather than a call count.
+
+        The first attempt raises and the second succeeds, which is what a rate
+        limit or a network blip looks like. Before the swap this receipt was
+        `failed` and its email went to `INBOX.Failed Processing`.
+        """
+        with TempEnvironment():
+            with_email_client(self, CLIENT)
+
+            class FlakyOnce:
+                name = "fake_extractor"
+
+                def __init__(self):
+                    self.calls = 0
+
+                def extract(self, file_path, filename):
+                    self.calls += 1
+                    if self.calls == 1:
+                        raise RuntimeError("rate limited")
+                    return OUTCOMES["ok"]
+
+            extractor = FlakyOnce()
+            routes = Routes(extractor)
+            routes.embedded_image(names=("shared.pdf",))
+
+            self.assertEqual(extractor.calls, 2)
+            self.assertEqual(routes.only_landing(), "INBOX.Processed Receipts")
+            self.assertIsNotNone(snapshot()["filed_path"],
+                                 "the receipt was lost to a blip that cleared")
+
+    def test_every_intake_path_uses_the_retry_wrapper(self):
+        """The set claim, read off `app.py`.
+
+        Four paths extract. A fifth added later without the wrapper is what this
+        catches, and it is how this one went unnoticed.
+        """
+        import ast
+        from pathlib import Path as _Path
+
+        tree = ast.parse(
+            (_Path(__file__).resolve().parent.parent / "app.py").read_text(
+                encoding="utf-8"))
+        wrapped, bare = [], []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = ast.unparse(node.func)
+                if name == "extract_with_transient_retry":
+                    wrapped.append(node.lineno)
+                elif name == "extractor.extract":
+                    bare.append(node.lineno)
+        self.assertEqual(bare, [],
+                         f"app.py extracts without the retry wrapper at {bare}")
+        self.assertEqual(len(wrapped), 4,
+                         f"expected four extracting paths, found {wrapped}")
+
+
 if __name__ == "__main__":
     unittest.main()

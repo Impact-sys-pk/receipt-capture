@@ -1190,7 +1190,14 @@ def process_once():
 
                     # Extract and process
                     try:
-                        extraction = extractor.extract(str(file_path), filename)
+                        # The same transient-error retry the other three
+                        # paths use. This was a bare extractor.extract()
+                        # until 2026-09-08, so a transient OpenAI error on
+                        # an emailed photo failed at the first attempt
+                        # where the identical error on an attachment was
+                        # retried with backoff.
+                        extraction = extract_with_transient_retry(
+                            extractor, file_path, filename)
 
                         # Sub-step 10f.32. Through the shared pipeline, like the
                         # other three intake paths: validate, duplicate-check,

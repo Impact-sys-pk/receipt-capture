@@ -318,6 +318,14 @@ class Routes:
         stubs.update(overrides)
         patches = [patch.object(app, name, value) for name, value in stubs.items()]
         patches.append(patch.object(config, "get_pipeline_version", lambda: VERSION))
+        # Every intake path wraps extraction in extract_with_transient_retry(),
+        # which retries ANY exception three times with 2s and 4s of real sleep.
+        # A test driving a raising extractor otherwise costs six seconds per
+        # item. Added 2026-09-08 when the embedded-image path gained the wrapper
+        # and the suite went from 69 to 135 seconds;
+        # tests/test_embedded_image_pipeline_version.py already did this.
+        patches.append(patch("worker.extraction.retry_helper.time.sleep",
+                             lambda seconds: None))
         for p in patches:
             p.start()
         try:

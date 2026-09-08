@@ -79,7 +79,7 @@ class ReplaceOnceTest(unittest.TestCase):
 
 
 class RunOneTest(unittest.TestCase):
-    """Apply, measure, restore. The restore is asserted, not hoped for."""
+    """Apply, measure, restore. The restore is asserted rather than hoped for."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

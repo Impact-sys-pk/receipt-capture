@@ -1,7 +1,8 @@
 # Cloud multi-firm: design inbox
 
 **Date:** 2026-09-01
-**Version:** 1.0
+**Version:** 1.1, amended 2026-09-07
+~~**Version:** 1.0~~
 **Status:** Not started. Nothing in this document is scheduled and nothing here is a decision except where it says so.
 **Authority:** `2026-07-25_CONSOLE_DESIGN.md` is the build authority for Intellibills and IntelliBooks. This document has no authority over either and describes a product that does not exist.
 
@@ -45,6 +46,17 @@ Each is a limit of the local system that no local work removes. The numbers are 
 | 44 | **`email_delta` holds one `delta_link` and one `last_uid` as global singletons.** Rests on section 2 |
 | 45 | **`email_alerts` carries `firm_name`, a copied string, and no `firm_id`.** Rests on section 2 |
 | 46 | **`statements` carries `client_id` and no `firm_id`, unlike `receipts`.** Rests on section 2 |
+
+### 3.1 A ninth constraint, added 2026-09-07
+
+**It carries no item number because it was never an item.** It came out of a working exchange with
+Paul on sub-step 10e.14 and is recorded here the same day, per section 6: a constraint or a
+question, not a task. **Section 4 below still accounts for eight plus one, and its arithmetic is
+untouched.**
+
+| Was item | Constraint |
+|---|---|
+| none | **A service on AWS cannot write into a folder on the customer's own machine.** **Paul, 2026-09-07: "On AWS the firm may well choose to save to a top folder locally."** The client top folder is the firm's own filing structure, per section 18.2 of `2026-07-25_CONSOLE_DESIGN.md`, and not storage this product owns, **so it does not move to the cloud when our storage does.** A firm on the cloud version that wants the copy filed into their own folder needs something running on their side to receive it: an agent, a synced drive, or a pull rather than a push. **The local version has this for nothing**, because the pipeline runs on the same machine as the folder. **What is NOT a constraint here**: the setting itself. F17 is one absolute path on the firm record and it ports unchanged, which is why sub-step 10e.14 is worth doing properly now rather than as a local workaround. Section 18.11 of the design document records F17 as durable for the same reason |
 
 ---
 

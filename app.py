@@ -1131,6 +1131,22 @@ def process_once():
                         if send_unknown_sender_alert(recipient_email, firm_name):
                             repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
 
+                    # This path wrote no event at all until 2026-09-08, so a stranger
+                    # sending a photo from a share button left no trace where one
+                    # attaching a file left a row. Same shape as the attachment
+                    # path's: one per email, a null filename because there is no one
+                    # image it is about, and a synthetic receipt id.
+                    #
+                    # UNATTRIBUTED is named here rather than passing `firm_id`, and
+                    # the difference is not cosmetic: resolve_client_info() returns
+                    # the DEFAULT_FIRM_ID constant when it cannot place the sender,
+                    # so `firm_id` is FIRM001 on this branch and the event lands in
+                    # a real firm's log. The attachment path never had that problem
+                    # because it derives msg_firm_id, which folds the unresolved case
+                    # into UNATTRIBUTED; this path derives no such thing. Amendment
+                    # 128 created receipt_events_UNATTRIBUTED.ndjson for exactly this.
+                    _log_receipt(str(uuid.uuid4()), message_id, None, "unknown_sender",
+                                 firm_id=config.UNATTRIBUTED_FIRM_ID, run_id=run_id)
                     move_email_to_folder(uid, "INBOX.Unknown Sender")
                     continue
 

@@ -64,14 +64,22 @@ def stranger(test_case, names, alert_result=False, path="email_attachment"):
     return routes
 
 
-def events(action=None):
-    """The unattributed event log, which is where an unknown sender lands."""
-    path = config.LOGS_DIR / "receipt_events_UNATTRIBUTED.ndjson"
+def events(action=None, firm="UNATTRIBUTED"):
+    """One firm's event log. UNATTRIBUTED is where an unknown sender lands."""
+    path = config.LOGS_DIR / f"receipt_events_{firm}.ndjson"
     if not path.exists():
         return []
     entries = [json.loads(line) for line in
                path.read_text(encoding="utf-8").splitlines() if line.strip()]
     return [e for e in entries if action is None or e["action"] == action]
+
+
+def event_logs():
+    """Every per-firm log file that exists, by firm id."""
+    if not config.LOGS_DIR.is_dir():
+        return {}
+    return {p.stem.removeprefix("receipt_events_"): p
+            for p in config.LOGS_DIR.glob("receipt_events_*.ndjson")}
 
 
 class AStrangerIsAlwaysToldTest(unittest.TestCase):
@@ -236,6 +244,103 @@ class TheCheckIsAboveBothLoopsTest(unittest.TestCase):
             inside, {},
             "an unknown-sender check sits inside an email loop, so a message-level "
             f"question is being answered per item: {inside}")
+
+
+class BothPathsLogTheSameEventTest(unittest.TestCase):
+    """The last asymmetry between the two email paths, closed 2026-09-08.
+
+    The attachment path writes one `unknown_sender` event per email from
+    sub-step 10f.35. **The embedded path wrote none and never had**: its branch
+    sent the alert, moved the email and `continue`d without calling
+    `_log_receipt()`. So a stranger sending a photo from a share button left no
+    trace where one attaching a file left a row.
+
+    The alert and the folder already agreed on both. Only the audit trail did
+    not.
+    """
+
+    def _one(self, path, names=("a.pdf",)):
+        stranger(self, list(names), path=path)
+        found = events("unknown_sender")
+        self.assertEqual(len(found), 1,
+                         f"{path} wrote {len(found)} unknown_sender events")
+        return found[0]
+
+    def test_the_embedded_path_writes_an_unknown_sender_event(self):
+        with TempEnvironment():
+            stranger(self, ["a.pdf"], path="embedded_image")
+            self.assertEqual(
+                len(events("unknown_sender")), 1,
+                "a stranger sending a photo left no trace in the event log")
+
+    def test_the_two_paths_write_the_same_event_shape(self):
+        shapes = {}
+        for path in ("email_attachment", "embedded_image"):
+            with TempEnvironment():
+                shapes[path] = self._one(path)
+
+        print("\nunknown_sender, one event per path, from a stranger:")
+        for path, entry in shapes.items():
+            print(f"  {path}")
+            for key in sorted(entry):
+                value = entry[key]
+                # The id and the timestamp are unique per run by design.
+                if key in ("receipt_id", "timestamp", "run_id"):
+                    value = f"<{key}>" if value is not None else None
+                print(f"      {key:<12} {value!r}")
+
+        attachment, embedded = shapes.values()
+        self.assertEqual(sorted(attachment), sorted(embedded),
+                         "the two events carry different keys")
+        for key in ("action", "filename"):
+            with self.subTest(key=key):
+                self.assertEqual(attachment[key], embedded[key])
+
+        # `message_id` is deliberately NOT compared across the two. The driver
+        # gives each path its own message, so comparing them would be comparing
+        # the fixture rather than the code. What matters is that each event
+        # names the message that produced it, which is asserted here instead.
+        # The first draft compared it and failed on 'msg-att' != 'msg-emb'.
+        self.assertEqual(shapes["email_attachment"]["message_id"], "msg-att")
+        self.assertEqual(shapes["embedded_image"]["message_id"], "msg-emb")
+
+    def test_one_event_per_email_on_the_embedded_path_too(self):
+        with TempEnvironment():
+            stranger(self, ["a.pdf", "b.pdf"], path="embedded_image")
+            self.assertEqual(len(events("unknown_sender")), 1)
+
+    def test_the_embedded_event_carries_no_filename(self):
+        with TempEnvironment():
+            stranger(self, ["a.pdf", "b.pdf"], path="embedded_image")
+            entry = events("unknown_sender")[0]
+            self.assertIn("filename", entry)
+            self.assertIsNone(entry["filename"])
+
+    def test_neither_path_writes_the_event_into_a_real_firms_log(self):
+        """The firm id, and it is not the same expression on the two paths.
+
+        `resolve_client_info()` returns `config.DEFAULT_FIRM_ID` when it cannot
+        place the sender, so the embedded branch's local `firm_id` is `FIRM001`
+        and **not** `UNATTRIBUTED`. The attachment path never had that problem
+        because it derives `msg_firm_id`, which folds the unresolved case into
+        `UNATTRIBUTED` before anything uses it; the embedded path derives no
+        such thing.
+
+        So the branch has to name `config.UNATTRIBUTED_FIRM_ID` itself.
+        Passing its `firm_id` would put a stranger's event into a real firm's
+        log, which is the fault amendment 128 created
+        `receipt_events_UNATTRIBUTED.ndjson` to prevent.
+        """
+        for path in ("email_attachment", "embedded_image"):
+            with self.subTest(path=path):
+                with TempEnvironment():
+                    stranger(self, ["a.pdf"], path=path)
+                    logs = event_logs()
+                    self.assertIn("UNATTRIBUTED", logs)
+                    self.assertEqual(
+                        sorted(logs), ["UNATTRIBUTED"],
+                        f"a stranger's event reached a real firm's log: "
+                        f"{sorted(logs)}")
 
 
 if __name__ == "__main__":

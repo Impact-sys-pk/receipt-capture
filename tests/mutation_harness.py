@@ -110,6 +110,24 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new)
 
 
+#: A mutation that changes behaviour. The suite must notice.
+CAUGHT = "caught"
+
+#: A mutation that changes only prose: a comment, a docstring, a string that
+#: nothing reads. **The suite must NOT notice**, and a failure here means a
+#: guard is reading prose as though it were code.
+#:
+#: Added 2026-09-08. Before it, `main()` returned 1 whenever nothing caught a
+#: mutation, which is right for `CAUGHT` and exactly inverted for this: a
+#: prose mutation's whole point is to pass, so the harness reported the desired
+#: result as an alarm and a reader had to know which kind they were looking at
+#: to read the exit code. Both kinds are in use, three real and two prose in
+#: one report on 2026-09-08, so it was a live ambiguity.
+SURVIVES = "survives"
+
+EXPECTED = (CAUGHT, SURVIVES)
+
+
 @dataclass
 class Mutation:
     """One change to one file, named so a report can quote it.
@@ -119,6 +137,13 @@ class Mutation:
     `replace_once()` for each anchor it touches; it exists for the mutations
     that need two co-ordinated edits, such as removing a call and putting back
     what it replaced.
+
+    `expect` says which outcome this mutation is asserting, `CAUGHT` or
+    `SURVIVES`. It defaults to `CAUGHT` because that is what most mutations are
+    and because it is the one that fails loudly if you forget: a prose mutation
+    left at the default reports its pass as an alarm, which is the old
+    behaviour, where a real mutation wrongly marked `SURVIVES` would report a
+    genuine gap as success.
     """
 
     name: str
@@ -126,6 +151,13 @@ class Mutation:
     old: str | None = None
     new: str | None = None
     edit: object = None
+    expect: str = CAUGHT
+
+    def __post_init__(self):
+        if self.expect not in EXPECTED:
+            raise ValueError(
+                f"{self.name}: expect must be one of {EXPECTED}, not "
+                f"{self.expect!r}")
 
     def apply(self, source: str) -> str:
         if self.edit is not None:
@@ -142,10 +174,26 @@ class Result:
     changed: list[str] = field(default_factory=list)
     caught: list[str] = field(default_factory=list)
     last_line: str = ""
+    expect: str = CAUGHT
 
     @property
     def one_place(self) -> bool:
         return self.hunks == 1
+
+    @property
+    def as_expected(self) -> bool:
+        """Did the suite do what this mutation asserted it would?"""
+        return bool(self.caught) if self.expect == CAUGHT else not self.caught
+
+    @property
+    def verdict(self) -> str:
+        if self.as_expected:
+            return ("OK: caught, as expected" if self.expect == CAUGHT
+                    else "OK: survived, as expected")
+        return ("NOTHING CAUGHT IT, and this mutation had to be caught"
+                if self.expect == CAUGHT else
+                "CAUGHT, and this mutation had to survive: a guard is reading "
+                "prose as though it were code")
 
 
 def _failures(stdout: str) -> list[str]:
@@ -193,6 +241,7 @@ def run_one(mutation: Mutation, command=DEFAULT_COMMAND, repo_root=REPO_ROOT,
             changed=changed,
             caught=_failures(completed.stdout),
             last_line=lines[-1] if lines else "(no output)",
+            expect=mutation.expect,
         )
     finally:
         shutil.copy2(backup, target)
@@ -209,7 +258,7 @@ def run_one(mutation: Mutation, command=DEFAULT_COMMAND, repo_root=REPO_ROOT,
 
 
 def report(result: Result) -> None:
-    print(f"=== {result.name} ===")
+    print(f"=== {result.name} ===  expects: {result.expect}")
     print(f"one place changed: {result.hunks} hunk(s), {len(result.changed)} line(s)")
     for line in result.changed[:12]:
         print(f"    {line}")
@@ -221,8 +270,7 @@ def report(result: Result) -> None:
         print(f"  {name}")
     if len(result.caught) > 15:
         print(f"  ... {len(result.caught) - 15} more")
-    if not result.caught:
-        print("  NOTHING CAUGHT IT")
+    print(f"verdict: {result.verdict}")
     print("restored, byte for byte")
 
 
@@ -235,14 +283,17 @@ def main(mutations, argv=None) -> int:
     args = parser.parse_args(argv)
 
     chosen = [by_name[args.name]] if args.name else list(mutations)
-    uncaught = []
+    wrong = []
     for mutation in chosen:
         result = run_one(mutation)
-        if not result.caught:
-            uncaught.append(mutation.name)
+        if not result.as_expected:
+            wrong.append(f"{mutation.name} (expected {mutation.expect})")
         print()
-    if uncaught:
-        print(f"NOTHING CAUGHT: {', '.join(uncaught)}")
+    if wrong:
+        # The exit code answers "did every mutation do what it said it would",
+        # which is the same question for both kinds. It used to answer "did
+        # everything get caught", which inverted for a prose mutation.
+        print(f"NOT AS EXPECTED: {', '.join(wrong)}")
         return 1
     return 0
 

@@ -17,6 +17,8 @@ import unittest
 from pathlib import Path
 
 from mutation_harness import (  # noqa: E402
+    CAUGHT,
+    SURVIVES,
     AnchorNotUnique,
     Mutation,
     replace_once,
@@ -154,6 +156,82 @@ class RunOneTest(unittest.TestCase):
             command=QUIET, repo_root=self.root, echo=False)
         self.assertEqual(result.changed, ["-three", "+THREE"])
         self.assertEqual(self.target.read_text(encoding="utf-8"), self.original)
+
+
+class ExpectedOutcomeTest(unittest.TestCase):
+    """`expect` says which answer the mutation is asserting. Added 2026-09-08.
+
+    Before it, the harness's exit code answered "did everything get caught",
+    which is right for a real mutation and **exactly inverted for a prose
+    one**, whose whole point is to pass. Both kinds are in use, so a reader had
+    to know which they were looking at to read the result.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.target = self.root / "subject.py"
+        self.target.write_text("one\ntwo\n", encoding="utf-8", newline="")
+
+    def _run(self, command, expect):
+        return run_one(
+            Mutation(name="m", target="subject.py", old="two", new="TWO",
+                     expect=expect),
+            command=command, repo_root=self.root, echo=False)
+
+    def test_a_real_mutation_that_is_caught_is_as_expected(self):
+        result = self._run(NOISY, CAUGHT)
+        self.assertTrue(result.as_expected)
+        self.assertIn("caught, as expected", result.verdict)
+
+    def test_a_real_mutation_that_survives_is_not_as_expected(self):
+        result = self._run(QUIET, CAUGHT)
+        self.assertFalse(result.as_expected)
+        self.assertIn("had to be caught", result.verdict)
+
+    def test_a_prose_mutation_that_survives_is_as_expected(self):
+        result = self._run(QUIET, SURVIVES)
+        self.assertTrue(result.as_expected,
+                        "a prose mutation passing is the answer, not an alarm")
+        self.assertIn("survived, as expected", result.verdict)
+
+    def test_a_prose_mutation_that_is_caught_says_what_it_means(self):
+        """The finding a prose mutation exists to produce.
+
+        Something caught a change to prose, so a guard is reading prose as
+        though it were code. The verdict says that rather than leaving the
+        reader to work it out from a bare failure.
+        """
+        result = self._run(NOISY, SURVIVES)
+        self.assertFalse(result.as_expected)
+        self.assertIn("reading prose as though it were code", result.verdict)
+
+    def test_the_default_is_caught(self):
+        # The safer default of the two. A prose mutation left at the default
+        # reports its pass as an alarm, which is merely the old behaviour; a
+        # real mutation wrongly marked SURVIVES would report a genuine gap in
+        # the suite as success.
+        self.assertEqual(
+            Mutation(name="m", target="x", old="a", new="b").expect, CAUGHT)
+
+    def test_an_unrecognised_expectation_is_refused_at_construction(self):
+        with self.assertRaises(ValueError) as caught:
+            Mutation(name="m", target="x", old="a", new="b", expect="maybe")
+        self.assertIn("expect must be one of", str(caught.exception))
+
+    def test_the_verdict_appears_in_the_printed_report(self):
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            run_one(Mutation(name="m", target="subject.py", old="two",
+                             new="TWO", expect=SURVIVES),
+                    command=QUIET, repo_root=self.root)
+        printed = buffer.getvalue()
+        self.assertIn("expects: survives", printed)
+        self.assertIn("survived, as expected", printed)
 
 
 class NotCollectedTest(unittest.TestCase):

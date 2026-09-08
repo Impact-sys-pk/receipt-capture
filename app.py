@@ -1184,46 +1184,47 @@ def process_once():
                     # Extract and process
                     try:
                         extraction = extractor.extract(str(file_path), filename)
-                        validation = validate(extraction)
 
-                        extraction_id = str(uuid.uuid4())
-                        repo.save_extraction(
-                            extraction_id=extraction_id,
+                        # Sub-step 10f.32. Through the shared pipeline, like the
+                        # other three intake paths: validate, duplicate-check,
+                        # categorise, file.
+                        #
+                        # This loop used to validate and save an extraction for
+                        # itself and stop there, so a receipt arriving as a photo
+                        # in an email body was written to the database as `ok`
+                        # with filed_path NULL: never categorised, never copied
+                        # into the client folder, never seen by IntelliBooks, and
+                        # reported nowhere. Amendment 269.
+                        #
+                        # Nothing here is new behaviour. Everything the call adds
+                        # is what the other three paths already do, including
+                        # filing a review item into Intellibills\Review\ and
+                        # sending an unresolved client there rather than filing
+                        # into a guessed folder, per 10d.18.
+                        status, _filed_path = process_extraction_result(
                             receipt_id=receipt_id,
-                            engine=extraction.engine,
-                            supplier_name=extraction.supplier_name,
-                            invoice_date=extraction.invoice_date,
-                            net_amount=extraction.net_amount,
-                            vat_amount=extraction.vat_amount,
-                            gross_amount=extraction.gross_amount,
-                            currency=extraction.currency,
-                            raw_response=extraction.raw_response,
-                            validation_status=validation.status,
-                            validation_notes=validation.notes,
-                            details=getattr(extraction, 'details', None),
-                            # Without this the column is NULL and
-                            # find_failed_by_version() re-selects the receipt on
-                            # the next poll whatever the version. Design
-                            # document 3.12.
-                            pipeline_version=pipeline_version,
-                        )
-                        logger.info(f"{receipt_id[:8]}... [{filename}] -> {validation.status}")
-
-                        embedded_outcomes.append(validation.status)
-                        if validation.status == "ok":
-                            stats["extractions_succeeded"] += 1
-                        else:
-                            stats["review_flags_issued"] += 1
-
-                        _log_receipt(
-                            receipt_id, message_id, filename, "extracted",
+                            extraction=extraction,
+                            file_path=file_path,
+                            filename=filename,
                             firm_id=firm_id,
-                            extraction_status=validation.status,
-                            supplier_name=extraction.supplier_name,
-                            invoice_date=extraction.invoice_date,
-                            gross_amount=extraction.gross_amount,
-                            run_id=run_id
+                            client_id=client_id,
+                            source=EMAIL_SOURCE,
+                            message_id=message_id,
+                            attachment_id=att_id,
+                            file_hash=file_hash,
+                            asserted_values=None,
+                            repo=repo,
+                            categorisation_engine=engine,
+                            stats=stats,
+                            run_id=run_id,
+                            pipeline_version=pipeline_version
                         )
+
+                        # Amendment 268's ranked move reads this list. The status
+                        # is the shared function's answer now rather than one this
+                        # path worked out for itself, which is the point: there
+                        # was no reason for two answers to the same question.
+                        embedded_outcomes.append(status)
                     except Exception as exc:
                         logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
                         stats["extraction_failures"] += 1

@@ -103,6 +103,17 @@ OUTCOMES = {
     "needs_review": result(gross_amount=99.0),
     "failed": result(gross_amount=None),
     "raised": RuntimeError("the model returned nothing readable"),
+    # A second good receipt that is a different purchase, for the mixed cases.
+    #
+    # **Added 2026-09-08 by sub-step 10f.32, and the reason is the sub-step.**
+    # Two images both returning `OUTCOMES["ok"]` are the same supplier, date and
+    # amount, so once this path went through process_extraction_result() the
+    # semantic duplicate check ran and the second one became
+    # `possible_duplicate`. That is correct, and the attachment path had always
+    # done it; what was wrong was a test calling two identical receipts "all
+    # good".
+    "ok_other": result(supplier_name="Other Ltd", gross_amount=34.0,
+                       net_amount=30.0, vat_amount=4.0),
 }
 
 #: Where each outcome must send the email, on either path.
@@ -207,9 +218,31 @@ class TheWorstOutcomeWinsTest(unittest.TestCase):
                              "INBOX.Failed Processing")
 
     def test_all_good_still_goes_to_processed_receipts(self):
+        # Two different purchases. Two images returning the same supplier, date
+        # and amount are a possible duplicate of each other from 10f.32 onwards,
+        # which the test below pins.
+        with TempEnvironment():
+            self.assertEqual(self._mixed(["ok", "ok_other"]),
+                             "INBOX.Processed Receipts")
+
+    def test_two_identical_good_receipts_are_a_possible_duplicate(self):
+        """Newly reachable at sub-step 10f.32, and worth pinning.
+
+        `possible_duplicate` could not arise on this path before, because
+        `find_by_transaction_loose()` requires `filed_path IS NOT NULL` and
+        nothing on this path was ever filed. Now that the path goes through the
+        shared pipeline, two images of the same purchase in one email behave as
+        two attachments of it always did.
+
+        Driven on both paths on 2026-09-08 and the statuses agree,
+        `['ok', 'possible_duplicate']`. **Only the folder differs**, because the
+        attachment path routes inside its loop so the first outcome wins, and
+        this path ranks so the worst does. That divergence is sub-step 10f.33
+        and is deliberately not addressed here.
+        """
         with TempEnvironment():
             self.assertEqual(self._mixed(["ok", "ok"]),
-                             "INBOX.Processed Receipts")
+                             "INBOX.Possible Duplicate")
 
     def test_the_ranking_is_stated_once_and_is_worst_first(self):
         """Read off `app.py` rather than inferred from the tests above.

@@ -304,7 +304,7 @@ class AllImagesDuplicateTest(unittest.TestCase):
         holding one duplicate and one filed receipt has both accounted for, so
         `INBOX.Processed Receipts` is the true statement about it.
 
-        **One move, not two.** Nothing is attempted against an expunged email
+        **One move rather than two.** Nothing is attempted against an expunged email
         any more, which is the part that used to write a warning per duplicate.
         """
         with TempEnvironment():

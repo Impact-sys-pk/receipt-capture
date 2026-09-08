@@ -254,12 +254,21 @@ class TheTableTest(unittest.TestCase):
 
 
 class UnknownSenderIsNotRankedTest(unittest.TestCase):
-    """Section 4 of the brief: the branch stays as it is, and that is a no-op.
+    """The unknown-sender branch is outside the ranking, and still is.
 
-    `resolve_client_info(email_from)` runs **once per message, above the loop**,
-    so every attachment in one email gets the same answer. Where the sender is
-    unknown and every attachment is supported, every one of them takes that
-    branch, nothing is recorded, and `_worst_outcome_folder([])` returns None.
+    **Rewritten 2026-09-08 by sub-step 10f.35, which moved the branch above the
+    loop.** It is still unranked and still moves the email itself; what changed
+    is that it is now reached before any attachment is looked at, so nothing can
+    `continue` past it.
+
+    Where the sender is unknown, the loop is never entered at all, so nothing
+    reaches the outcome list and `_worst_outcome_folder([])` returns None. That
+    is a stronger version of what this class asserted before, when the same held
+    only for an email whose attachments were all supported.
+
+    The alert and the event log belong to
+    `tests/test_unknown_sender_above_loop.py`; what is asserted here is that
+    10f.33's ranking is not involved.
     """
 
     def _unknown(self, names):
@@ -288,16 +297,27 @@ class UnknownSenderIsNotRankedTest(unittest.TestCase):
                 set(routes.moved_to), {"INBOX.Unknown Sender"},
                 f"a ranked move was attempted: {routes.moved_to}")
 
-    def test_an_unsupported_file_from_an_unknown_sender_is_unsupported(self):
-        """Section 5. The ordering that exists today and must not change.
+    def test_an_unsupported_file_from_an_unknown_sender_reaches_the_sender_branch(self):
+        """**Reversed 2026-09-08 by sub-step 10f.35, and the reversal is the point.**
 
-        `is_supported()` is checked before the unknown-sender branch, so a lone
-        `.docx` from a stranger records `unsupported` and never reaches it. No
-        registration alert is sent, which is today's behaviour under first-wins.
+        This asserted `INBOX.Unsupported Files` and recorded, as behaviour to
+        preserve, that `is_supported()` `continue`d before the sender was ever
+        considered. **That is the silent case**: a stranger sending only a
+        `.docx` got no registration alert and their email was filed as a format
+        problem, and the alert is the only thing an unregistered sender ever
+        hears back.
+
+        The check now runs above the loop, so the sender is settled before any
+        attachment is looked at. The alert firing is asserted in
+        `tests/test_unknown_sender_above_loop.py`; what matters here is that the
+        ranking played no part in it.
         """
         with TempEnvironment():
             routes = self._unknown(["a.docx"])
-            self.assertEqual(routes.only_landing(), "INBOX.Unsupported Files")
+            self.assertEqual(routes.only_landing(), "INBOX.Unknown Sender")
+            self.assertEqual(
+                routes.moved_to, ["INBOX.Unknown Sender"],
+                "a ranked move was attempted as well, so the loop was entered")
 
 
 class OneRankingNotTwoTest(unittest.TestCase):

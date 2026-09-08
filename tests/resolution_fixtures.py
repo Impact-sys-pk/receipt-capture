@@ -258,10 +258,23 @@ class Routes:
     below, which is subtle and was wrong once already.
     """
 
-    def __init__(self, extractor):
+    def __init__(self, extractor, alert_result=False):
         self.extractor = extractor
         self.moved_to = []
         self._landed = {}
+        #: Every unknown-sender alert the run tried to send, as (recipient, firm).
+        #:
+        #: `alert_result` is what the send is told to return, and it defaults to
+        #: False so nothing that existed before 2026-09-08 changes: a False send
+        #: means record_alert_sent() is not called and no email_alerts row is
+        #: written. A test that wants the has_alert_been_sent() guard exercised
+        #: passes True.
+        self.alerts = []
+        self.alert_result = alert_result
+
+    def _send_unknown_sender_alert(self, recipient, firm_name=None):
+        self.alerts.append((recipient, firm_name))
+        return self.alert_result
 
     def _move(self, uid, folder):
         """Model what `move_email_to_folder()` actually does to a mailbox.
@@ -312,7 +325,7 @@ class Routes:
             "fetch_attachments": lambda *a, **k: [],
             "move_email_to_folder": self._move,
             "send_no_attachment_alert": lambda *a, **k: False,
-            "send_unknown_sender_alert": lambda *a, **k: False,
+            "send_unknown_sender_alert": self._send_unknown_sender_alert,
             "get_extractor": lambda *a, **k: self.extractor,
         }
         stubs.update(overrides)

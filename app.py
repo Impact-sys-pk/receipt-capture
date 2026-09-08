@@ -1546,6 +1546,43 @@ def process_once():
             # the answer to an unattributable event at 10d.19.
             msg_firm_id = firm_id if client_id != config.UNKNOWN_CLIENT_ID else config.UNATTRIBUTED_FIRM_ID
 
+            # Sub-step 10f.35. Whose email this is, is a question about the email
+            # rather than about an attachment, and resolve_client_info() has just
+            # answered it. This check sat INSIDE the loop below until 2026-09-08,
+            # beneath is_supported() and the two duplicate checks, each of which
+            # `continue`s: so a stranger who sent only an unsupported file was
+            # never reached by it and heard nothing at all, while their email was
+            # filed as a format problem. The registration alert is the only thing
+            # an unregistered sender ever gets back.
+            #
+            # The embedded-image path above already had it here, so this makes
+            # the two agree rather than moving both. Amendment 274.
+            if client_id == config.UNKNOWN_CLIENT_ID:
+                logger.info(f"unknown sender: {email_from}")
+                stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
+
+                # One alert per email, whatever it carried.
+                if not repo.has_alert_been_sent(message_id, "unknown_sender"):
+                    # Extract email address (handle "Name <email>" format)
+                    recipient_email = email_from
+                    if "<" in email_from and ">" in email_from:
+                        recipient_email = email_from.split("<")[1].split(">")[0].strip()
+
+                    firm_name = _mailbox_firm_name()
+                    if send_unknown_sender_alert(recipient_email, firm_name):
+                        repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
+
+                # One event for the email, with no filename, because there is no
+                # one attachment this is about. The key is written as null rather
+                # than omitted, and the receipt id is synthetic, which is the
+                # shape the other two message-level events already use:
+                # unsupported_file_type and duplicate_skipped both pass a fresh
+                # uuid because no receipt exists for them either.
+                _log_receipt(str(uuid.uuid4()), message_id, None, "unknown_sender",
+                             firm_id=config.UNATTRIBUTED_FIRM_ID, run_id=run_id)
+                move_email_to_folder(uid, "INBOX.Unknown Sender")
+                continue
+
             # Sub-step 10f.33. One email, one outcome, decided after the loop
             # by the same ranking the embedded-image path uses. This loop used to
             # move the email from inside itself, and move_email_to_folder()
@@ -1599,29 +1636,6 @@ def process_once():
                 # If file_hash matches a failed/needs_review receipt, allow reprocessing
 
                 receipt_id = str(uuid.uuid4())
-
-                # Check for unknown sender
-                if client_id == config.UNKNOWN_CLIENT_ID:
-                    logger.info(f"unknown sender: {email_from}")
-                    stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
-
-                    # Skip if alert already sent
-                    if not repo.has_alert_been_sent(message_id, "unknown_sender"):
-                        # Extract email address (handle "Name <email>" format)
-                        recipient_email = email_from
-                        if "<" in email_from and ">" in email_from:
-                            recipient_email = email_from.split("<")[1].split(">")[0].strip()
-
-                        # Send alert
-                        firm_name = _mailbox_firm_name()
-                        if send_unknown_sender_alert(recipient_email, firm_name):
-                            repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
-
-                    # Move to Unknown Sender folder
-                    move_email_to_folder(uid, "INBOX.Unknown Sender")
-                    _log_receipt(receipt_id, message_id, filename, "unknown_sender",
-                                firm_id=config.UNATTRIBUTED_FIRM_ID, run_id=run_id)
-                    continue
 
                 file_path = save_file(receipt_id, client_id, filename, file_data)
                 stats["receipts_created"] += 1

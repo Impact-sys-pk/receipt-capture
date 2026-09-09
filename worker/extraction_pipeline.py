@@ -5,6 +5,7 @@ All three call sites (email, folder, Part 1 retry) use this function to avoid co
 """
 
 import json
+import logging
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
@@ -16,6 +17,51 @@ from worker.categorisation.fallback import resolve_against_chart
 from worker.filing import file_receipt, file_review, make_enriched_sidecar, determine_tax_year
 from worker.publish import publish_receipt
 from worker.validation.rules import validate
+
+logger = logging.getLogger(__name__)
+
+
+def report_validation_outcome(receipt_id, client_id, status, notes):
+    """One `run.log` line for a receipt that did not reach `ok`. Returns the reason.
+
+    **Paul's instruction, 2026-09-09: "I need a reason in the log."** An emailed
+    receipt failed that morning and everything the two logs held about it said
+    that it had failed and not one word said why: `run.log` had the OpenAI
+    request and `Moved email uid=26 to INBOX.Failed Processing`, the event log
+    had `extraction_status: failed`, and the reason, `missing gross_amount`,
+    existed only in `extractions.validation_notes`. Reading it meant opening
+    SQLite.
+
+    **It returns the reason as well as logging it, deliberately.** The event log
+    below wants the same string, and two builders of one string eventually
+    disagree. Built once, so a search for `missing gross_amount` finds the
+    process log, the event log and the database row.
+
+    **The notes go in verbatim, joined the way `save_extraction()` joins them**,
+    `", "`. `validate()`'s note strings are already written for a person and are
+    the strings the row carries, and two wordings for one condition is how a
+    search for the reason stops finding it.
+
+    **`WARNING`, not `ERROR`.** A receipt that fails validation is an outcome
+    this pipeline is designed to produce. `ERROR` is what `publish_receipt()`
+    uses, and that is the pipeline failing to do its job.
+
+    **`ok` logs nothing and returns None.** A warning on the ordinary case is
+    noise and stops the line being read; None then leaves `review_reason` out of
+    the event log entry altogether.
+
+    Nothing reaching here has an empty `notes` today: `validate()` leaves the
+    status `ok` unless it wrote a note, and both overrides in
+    `process_extraction_result()` write one. The fallback string is there
+    because a line reading `failed:` with nothing after the colon would be read
+    as the reason.
+    """
+    if status == "ok":
+        return None
+    reason = ", ".join(notes or []) or "no reason recorded"
+    logger.warning("receipt %s for client %s is %s: %s",
+                   receipt_id, client_id, status, reason)
+    return reason
 
 
 def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
@@ -405,6 +451,20 @@ def process_extraction_result(
     if message_id and attachment_id and file_hash:
         repo.mark_processed(message_id, attachment_id, file_hash, receipt_id, firm_id)
 
+    # Why this receipt did not reach `ok`, in run.log as well as in the event
+    # log and the database. Paul's instruction, 2026-09-09.
+    #
+    # **Here rather than in either filing branch above**, because the status is
+    # overridden twice after `validate()` returns, by the semantic duplicate
+    # check and by the unresolved-client gate of 10d.16 and 10d.18, so this is
+    # the first point at which it is final. A line written from `validate()`'s
+    # own answer would call a receipt the gate sent to Review `ok`.
+    #
+    # **One call, feeding both logs**, so the reason in `run.log` and the
+    # reason in the event log cannot come to differ.
+    review_reason = report_validation_outcome(
+        receipt_id, client_id, validation.status, validation.notes)
+
     # Log
     _log_receipt(
         receipt_id,
@@ -417,6 +477,7 @@ def process_extraction_result(
         supplier_name=extraction.supplier_name,
         invoice_date=extraction.invoice_date,
         gross_amount=extraction.gross_amount,
+        review_reason=review_reason,
         duplicate_of=duplicate_of,
         run_id=run_id,
         chart_outcome=chart_outcome,

@@ -418,11 +418,21 @@ validation notes and the id it duplicates.
 Sub-steps 10f.11 to 10f.13 and 10f.16, amendments 290, 292, 293 and 296.
 ```
 
-**The tree also carries two documents another session is editing**,
+~~**The tree also carries two documents another session is editing**,
 `2026-07-25_CONSOLE_DESIGN.md` and `2026-07-31_PLAN_reset_and_restructure.md`. I did not touch, stage
 or commit either. **So the working tree is not clean and
 `config.check_git_status_on_startup()` will warn**, and the `pipeline_version` a run records will not
-describe the tree until they are committed.
+describe the tree until they are committed.~~
+
+**Corrected minutes after writing it, and the correction matters because Paul would have acted on the
+original.** Those two documents were modified in the working tree while I worked and **the consultant
+session committed them as `ac5e331` before I finished**, so **the tree is clean at
+`0a60a11` and `config.check_git_status_on_startup()` will not warn.** A run started now records a
+`pipeline_version` that describes the code that ran. I did not touch, stage or commit either file.
+
+**Disclosed rather than quietly fixed**, per `CLAUDE.md`: what I got wrong is not the reading, which
+was right when taken, but treating a repository shared with another live session as a state that holds
+still between one command and the next.
 
 ---
 

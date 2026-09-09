@@ -685,9 +685,13 @@ before 2026-09-04 still holds `email_delta`, empty~~. **Corrected 2026-09-09: th
 `C:\Intellibills\db\receipts.db` holds NO `email_delta`.** Read directly with sqlite3 in read-only
 mode on 2026-09-09: **ten tables, `email_delta` absent and `publish_events` absent.** The backup
 `receipts-backup-2026-09-05-pre-email-delta-drop.db` names what happened, so it was dropped by hand
-rather than by `schema.py`. **So the live database has ten tables and `schema.py` creates eleven**, and
-the difference is `publish_events`, which is created the first time the pipeline starts on `ee9cb59`
-or later.
+rather than by `schema.py`. ~~**So the live database has ten tables and `schema.py` creates eleven**,
+and the difference is `publish_events`, which is created the first time the pipeline starts on
+`ee9cb59` or later.~~ **CORRECTED 2026-09-09, later the same day: THE LIVE DATABASE HOLDS ELEVEN
+TABLES AND `publish_events` IS ONE OF THEM.** Paul restarted the pipeline at 11:18:25 on a commit
+after `ee9cb59` and the table was created then, read read-only the same day with 4 rows in it. **The
+paragraph above is the state before that restart and is kept because it is what the reading found at
+the time.** `email_delta` is still absent.
 
 **There is no `client_code` on any table.** Removed by sub-step 10d.23 and Paul's ruling of
 2026-09-02: it appears nowhere, in either product. **There is no `coa_accounts` table and there will
@@ -1017,7 +1021,7 @@ If all pass → status = `ok`, receipt ready
   `check_client_match.py`, `check_ids.py` and `export_bookkeeping.py`. **Never hardcode the database
   path in a script: `config.DB_PATH` is the one place it lives**
 - Manual test: send an email with a PDF to `capture@lastingimpact.co.uk`, wait for the next poll
-- **The suite:** `.\.venv\Scripts\python.exe -m pytest -q`. **389 passed, 190 subtests on 2026-09-05**, after item 163 added `tests\test_vat_rates.py`. ~~367 passed, 191 subtests on 2026-09-04~~ **Corrected 2026-09-05, amendment 220.** That line was written at 13:32 on 2026-09-04 and went stale at 14:00 the same day: removing the `email_delta` table took the subtest count from 191 to 190, because `test_no_table_carries_a_client_code` subtests every table `schema.py` creates. **A figure in a document that a run has since moved is the shape of staleness this section is most likely to carry, so quote the run and its date, and expect to move it.**
+- **The suite:** `.\.venv\Scripts\python.exe -m pytest -q`. **944 passed, 670 subtests on 2026-09-09**, after step 10f's publish step, stage 4 and the duplicate work. ~~389 passed, 190 subtests on 2026-09-05, after item 163 added `tests\test_vat_rates.py`.~~ **The figure more than doubled in four days and that is the shape this section already predicts: read it as an order of magnitude and measure before quoting.** ~~367 passed, 191 subtests on 2026-09-04~~ **Corrected 2026-09-05, amendment 220.** That line was written at 13:32 on 2026-09-04 and went stale at 14:00 the same day: removing the `email_delta` table took the subtest count from 191 to 190, because `test_no_table_carries_a_client_code` subtests every table `schema.py` creates. **A figure in a document that a run has since moved is the shape of staleness this section is most likely to carry, so quote the run and its date, and expect to move it.**
 
 ---
 

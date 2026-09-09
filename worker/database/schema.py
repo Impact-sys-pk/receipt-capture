@@ -212,8 +212,20 @@ def init_db():
         -- it describes has gone is worse than a dangling id. receipt_id's key
         -- also made this table refuse a row about a receipt the rebuild had
         -- dropped, which is exactly when somebody wants the history.
+        --
+        -- event_id says NOT NULL as well as PRIMARY KEY, added 2026-09-09 by
+        -- flag 2 of 2026-09-09_REPORT_claude_code_stage1_piece3_publish.md.
+        -- **Only an INTEGER PRIMARY KEY rejects NULL in SQLite**, so without
+        -- the phrase a TEXT key accepts one, and an audit row with no id is the
+        -- kind of thing an audit trail should not permit. Nothing could reach
+        -- it: every caller passes a uuid4(). **A database created before that
+        -- date keeps the old definition**, because this module creates and does
+        -- not migrate, per 10d.34, and adding a NOT NULL in SQLite means
+        -- rebuilding the table. So the live receipts.db keeps a nullable
+        -- event_id here until it is next rebuilt, and publish_events below gets
+        -- the constraint on every installation because it does not exist yet.
         CREATE TABLE IF NOT EXISTS resolution_events (
-            event_id            TEXT PRIMARY KEY,
+            event_id            TEXT PRIMARY KEY NOT NULL,
             receipt_id          TEXT NOT NULL,
             extraction_id       TEXT,
             actor               TEXT NOT NULL,
@@ -249,7 +261,7 @@ def init_db():
         -- neither can be NOT NULL. No column carries a default, per 10d.23 to
         -- 10d.28: the writer states every value.
         CREATE TABLE IF NOT EXISTS publish_events (
-            event_id            TEXT PRIMARY KEY,
+            event_id            TEXT PRIMARY KEY NOT NULL,
             receipt_id          TEXT NOT NULL,
             destination         TEXT NOT NULL,
             outcome             TEXT NOT NULL,

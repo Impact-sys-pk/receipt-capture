@@ -84,16 +84,19 @@ class PublishEventsSchemaTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_the_four_columns_a_row_must_have_are_not_null(self):
+    def test_the_five_columns_a_row_must_have_are_not_null(self):
         """`item_path` is null on a failure and `reason` on a success.
 
-        Neither can be NOT NULL, so four columns are and two are not.
+        Neither can be NOT NULL, so five columns are and two are not.
 
-        **`event_id` is the primary key and the pragma reports it nullable**,
-        which is SQLite's long-standing quirk: only an INTEGER PRIMARY KEY
-        rejects NULL, and a TEXT one does not unless it says NOT NULL as well.
-        `resolution_events` is the same and this table matches it. Expected
-        wrongly here on the first run, which is how the quirk was noticed.
+        **`event_id` is among them and it says NOT NULL as well as PRIMARY KEY.
+        Changed 2026-09-09, flag 2 of the report, Paul's word.** ~~Four columns.
+        `event_id` is the primary key and the pragma reports it nullable, and
+        `resolution_events` is the same and this table matches it.~~ Only an
+        `INTEGER PRIMARY KEY` rejects NULL in SQLite, so a TEXT one needs the
+        phrase spelling out. Both tables carry it now. The quirk was found by
+        this test expecting five and getting four on its first run, and the
+        first fix was to expect four.
         """
         with TempDb():
             repo = Repository()
@@ -102,7 +105,27 @@ class PublishEventsSchemaTest(unittest.TestCase):
                     "PRAGMA table_info(publish_events)").fetchall() if row[3]}
                 self.assertEqual(
                     notnull,
-                    {"receipt_id", "destination", "outcome", "created_at"})
+                    {"event_id", "receipt_id", "destination", "outcome", "created_at"})
+            finally:
+                repo.close()
+
+    def test_a_null_event_id_is_refused(self):
+        """The declaration driven rather than read off PRAGMA output.
+
+        **`publish_events` does not exist in the live database yet**, so unlike
+        `resolution_events` this table gets the constraint on every installation
+        rather than only on a fresh one: it is created the first time the
+        pipeline starts after this change.
+        """
+        with TempDb():
+            repo = Repository()
+            try:
+                with self.assertRaises(sqlite3.IntegrityError):
+                    repo.save_publish_event(
+                        event_id=None, receipt_id="r-1",
+                        destination="intellibooks", outcome=publish.PUBLISHED,
+                        created_at="2026-09-09T10:00:00+00:00",
+                        item_path="r-1.json")
             finally:
                 repo.close()
 

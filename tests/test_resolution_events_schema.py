@@ -10,6 +10,7 @@ a foreign key would make the event row fail on an outcome with no extraction,
 which is the same class of bug as b480a7e.
 """
 
+import sqlite3
 import sys
 import tempfile
 import types
@@ -192,3 +193,65 @@ class ListResolutionEventsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EventIdCannotBeNullTest(unittest.TestCase):
+    """A TEXT PRIMARY KEY accepts NULL in SQLite unless it says NOT NULL too.
+
+    **Added 2026-09-09, flag 2 of
+    `2026-09-09_REPORT_claude_code_stage1_piece3_publish.md`, Paul's word.**
+    Only an `INTEGER PRIMARY KEY` rejects NULL, which is a long-standing quirk
+    of SQLite rather than of this schema. Found while writing the same table's
+    younger sibling `publish_events`, when a test expected `event_id` among the
+    NOT NULL columns and was red.
+
+    **Nothing could reach it**: `save_resolution_event()`'s callers all pass a
+    `uuid4()`. It is closed because a primary key that can be absent is the kind
+    of thing an audit trail should not permit, and because the fix is one phrase.
+
+    **A database created before today keeps the old definition.** `schema.py`
+    creates and does not migrate, which is the shape sub-step 10d.34 settled
+    when it removed eleven `ALTER TABLE` guards, and adding a NOT NULL to an
+    existing SQLite table means rebuilding it. So this protects a fresh
+    installation and every test database, and the live `receipts.db` keeps a
+    nullable `event_id` on this table until it is next rebuilt.
+    """
+
+    def test_the_column_is_declared_not_null(self):
+        with TempDb():
+            repo = Repository()
+            try:
+                info = {row[1]: row for row in repo._conn.execute(
+                    "PRAGMA table_info(resolution_events)").fetchall()}
+                self.assertEqual(info["event_id"][3], 1)
+                self.assertEqual(info["event_id"][5], 1, "and it is still the key")
+            finally:
+                repo.close()
+
+    def test_a_null_event_id_is_refused(self):
+        # The declaration driven rather than read, because PRAGMA output is a
+        # description and this is the behaviour it is meant to describe.
+        with TempDb():
+            repo = Repository()
+            try:
+                with self.assertRaises(sqlite3.IntegrityError):
+                    repo.save_resolution_event(
+                        event_id=None, receipt_id="r-1", actor="tester",
+                        source="test", action="resolve", outcome="resolved",
+                        created_at="2026-09-09T10:00:00+00:00")
+            finally:
+                repo.close()
+
+    def test_a_real_event_id_still_inserts(self):
+        # The control. Without it the test above passes against a table that
+        # refuses every row.
+        with TempDb():
+            repo = Repository()
+            try:
+                repo.save_resolution_event(
+                    event_id="e-1", receipt_id="r-1", actor="tester",
+                    source="test", action="resolve", outcome="resolved",
+                    created_at="2026-09-09T10:00:00+00:00")
+                self.assertEqual(len(repo.list_resolution_events("r-1")), 1)
+            finally:
+                repo.close()

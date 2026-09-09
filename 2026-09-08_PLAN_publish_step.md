@@ -76,12 +76,16 @@ is today.
 
 ### Stage 3: the acceptance test
 
-**Sub-step 10f.29.** Section 0.5.1's six checks in
-`2026-07-31_PLAN_reset_and_restructure.md`, run against both routes live.
+**Sub-step 10f.29.** Section 0.5.1's ~~six~~ **five** checks in
+`2026-07-31_PLAN_reset_and_restructure.md`, **being checks 2, 3, 4, 5 and 6**, run against both
+routes live. **Corrected 2026-09-09 by amendment 290: CHECK 1 IS STAGE 4'S COMPLETION TEST AND NOT
+STAGE 3'S.** It requires a listing of `Clients\` before and after to be identical, and stages 1 and
+2 deliberately keep the on-arrival write that sub-step 10f.13 stops in stage 4, so check 1 needed
+stage 4 done while stage 4 needed check 1 passed.
 
 **Paul's, not a session's.** It needs a real receipt from the phone, a Review item, and a post.
 
-**Passing it is what releases 18.2b's freeze.** Nothing in stage 4 may start before it passes.
+**Passing the five is what releases 18.2b's freeze FOR STAGE 4'S WORK and for nothing else.** Nothing in stage 4 may start before those five pass. **The freeze's other protections stand, and the interim in section 0.5 closes when check 1 passes at the end of stage 4.** Amendment 290, which narrows this freeze on amendment 113's precedent.
 
 ### Stage 4: the old route is switched off
 
@@ -95,6 +99,11 @@ also the largest: three codebases in one window, which is what sub-step 10a.2 an
 needed and both survived.
 
 **Two briefs at least, and they land together or not at all.**
+
+**Its completion test is check 1**, being a full listing of `Clients\` before and after a pipeline
+run, identical. Amendment 290. **And the portal gap the reset plan asks about does not arise**:
+sub-step 10f.12 builds F16 in this same window and its first trigger is on a successful publish, so
+the client folder keeps filling.
 
 ## 3. What is not in any stage, and why
 

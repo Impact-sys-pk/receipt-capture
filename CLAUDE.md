@@ -472,7 +472,7 @@ Added 2026-09-07. **Name the constant or the function instead.** `config.py` gai
 
   **Take the flag as a mitigation, not a guarantee, and this is the safe way to hold it.** The git manual defines `--no-optional-locks` only as "do not perform optional operations that require locks" and names no command it does or does not cover, at https://git-scm.com/docs/git. So rather than keeping a list of which commands are safe with it: **`git log`, `git show` and `git ls-files` never touch the index and are safe unconditionally. Treat everything else as able to take the lock**, use the flag when you must run it, and run anything that writes on Windows. `git add`, `git commit` and `git mv` are unaffected by the flag in any case. Flagged by the implementation session on 2026-08-01, which reported that `git --no-optional-locks diff` can still write the index on some paths. **Neither confirmed nor refuted here**: the only test is to run it and see whether a lock appears, and the consultant session had already left that lock behind twice in one day. The sandbox can create a file in the mounted folder but cannot unlink one, so git leaves `.git\index.lock` behind and cannot clean it up, and every git write in the repository fails until somebody notices and deletes it by hand. That is worse than the trap above, which only misleads. Clear it with `del .git\index.lock` from the repository root, after checking with `tasklist /FI "IMAGENAME eq git.exe"` that no git process is running.
 
-- ~~**Never import `config.py` from the Linux sandbox.**~~ **CLOSED 2026-09-06 by the code, and kept here because the reasoning is still worth reading and a stale trap is worse than none.** `INTELLIBILLS_PRACTICE_ROOT` and `INTELLIBILLS_UNSYNCED_ROOT` are now required and must be absolute, checked by `_required_root()`, which is defined above the `mkdir` block and therefore runs before it. ~~`PRACTICE_ROOT` and `INTELLIBILLS_UNSYNCED_ROOT` ... at `config.py:38-69`, 92 lines above the `mkdir` block.~~ **Corrected 2026-09-07: the variable was renamed to `INTELLIBILLS_PRACTICE_ROOT` hours after this was written, and the line numbers are dropped rather than refreshed, per the rule below.** **The Python constant is still `config.PRACTICE_ROOT`; only the environment variable carries the prefix.** **A Windows path string has no leading separator on Linux, so `Path(...).is_absolute()` is `False` there**, which means an import from the sandbox now raises `RuntimeError` and creates nothing, whether or not `.env` is present. Verified with `PurePosixPath` against the real `.env` values by Claude Code, and independently here. **`python3 -m py_compile config.py` is still the cheaper check and needs no environment.** **Reading a constant's value still needs Windows**, and now also needs the two variables set. Commit `f52675b`, amendment 245 of `2026-07-25_CONSOLE_DESIGN.md`. **The history below is what the trap was.** Added 2026-08-03 after finding the folder it made on 29 July. `config.py:117-121` calls `mkdir(parents=True, exist_ok=True)` on five paths at import, and `PRACTICE_ROOT` and `UNSYNCED_ROOT` default to Windows path strings at `:33-37`. **Those two were `ONEDRIVE_ROOT` and `LOCAL_ROOT` until sub-step 10d.21 renamed them on 2026-09-03. The trap is unchanged; only the names are.** **A backslash is an ordinary filename character on Linux**, so those strings become relative folder names and the mkdir block builds them inside the repository. The one it built on 29 July is **no longer at the repository root**, checked 2026-09-03, and nothing records when it went. It was:
+- ~~**Never import `config.py` from the Linux sandbox.**~~ **CLOSED 2026-09-06 by the code FOR THE LINUX SANDBOX ONLY, and NARROWED 2026-09-09 because that wording read as closed everywhere and it bit the same day.** **On Windows an `import config` outside pytest still reads `.env` and still runs the `mkdir` block against the LIVE roots.** On 2026-09-09 at 09:56 Claude Code imported it to check a setting against the live firm record and created `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\Incoming\`, which is the folder 18.2a specifies and was still a write outside the repository nobody had asked for. **It disclosed it, and the folder is kept because `INTELLIBOOKS_PUBLISH_DIR` is one of the six mkdir targets and the next pipeline start would make it anyway.** **So the live rule is: never `import config` to read a value. Read the constant out of the file, or run it under pytest, where `tests/live_paths.py` redirects both roots before the import.** `python3 -m py_compile config.py` remains the safe check and needs no environment. **The Linux half is genuinely closed and the reasoning below is still worth reading.** `INTELLIBILLS_PRACTICE_ROOT` and `INTELLIBILLS_UNSYNCED_ROOT` are now required and must be absolute, checked by `_required_root()`, which is defined above the `mkdir` block and therefore runs before it. ~~`PRACTICE_ROOT` and `INTELLIBILLS_UNSYNCED_ROOT` ... at `config.py:38-69`, 92 lines above the `mkdir` block.~~ **Corrected 2026-09-07: the variable was renamed to `INTELLIBILLS_PRACTICE_ROOT` hours after this was written, and the line numbers are dropped rather than refreshed, per the rule below.** **The Python constant is still `config.PRACTICE_ROOT`; only the environment variable carries the prefix.** **A Windows path string has no leading separator on Linux, so `Path(...).is_absolute()` is `False` there**, which means an import from the sandbox now raises `RuntimeError` and creates nothing, whether or not `.env` is present. Verified with `PurePosixPath` against the real `.env` values by Claude Code, and independently here. **`python3 -m py_compile config.py` is still the cheaper check and needs no environment.** **Reading a constant's value still needs Windows**, and now also needs the two variables set. Commit `f52675b`, amendment 245 of `2026-07-25_CONSOLE_DESIGN.md`. **The history below is what the trap was.** Added 2026-08-03 after finding the folder it made on 29 July. `config.py:117-121` calls `mkdir(parents=True, exist_ok=True)` on five paths at import, and `PRACTICE_ROOT` and `UNSYNCED_ROOT` default to Windows path strings at `:33-37`. **Those two were `ONEDRIVE_ROOT` and `LOCAL_ROOT` until sub-step 10d.21 renamed them on 2026-09-03. The trap is unchanged; only the names are.** **A backslash is an ordinary filename character on Linux**, so those strings become relative folder names and the mkdir block builds them inside the repository. The one it built on 29 July is **no longer at the repository root**, checked 2026-09-03, and nothing records when it went. It was:
 
   ```
   C:\LastingImpact\receipt_capture\C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\IntelliBooks\Backups
@@ -675,11 +675,19 @@ Status assignment:
 ## Database Schema
 
 **`worker\database\schema.py` is the authority and this section is a reading of it.** Reconciled with
-it on 2026-09-04, step 10h of section 16 of `2026-07-25_CONSOLE_DESIGN.md`. **Ten tables.** This
-section named seven and described five of those wrongly, which is what the step existed to fix.
-~~Eleven tables.~~ **`email_delta` was removed the same day by outstanding item 159**, so
-`schema.py` creates ten; **a database created before 2026-09-04 still holds `email_delta`, empty**,
-because dropping a table is a migration and `schema.py` only creates.
+it on 2026-09-04, step 10h of section 16 of `2026-07-25_CONSOLE_DESIGN.md`, and again on 2026-09-09.
+~~**Ten tables.**~~ **ELEVEN tables from 2026-09-09**, `publish_events` having been added by sub-step
+10f.36 in commit `ee9cb59`. **Counted from `schema.py`'s own `CREATE TABLE` statements, not carried
+from this line.** This section named seven and described five of those wrongly, which is what step
+10h existed to fix. ~~Eleven tables.~~ **`email_delta` was removed on 2026-09-04 by outstanding item
+159**, and dropping a table is a migration while `schema.py` only creates, ~~so a database created
+before 2026-09-04 still holds `email_delta`, empty~~. **Corrected 2026-09-09: the live
+`C:\Intellibills\db\receipts.db` holds NO `email_delta`.** Read directly with sqlite3 in read-only
+mode on 2026-09-09: **ten tables, `email_delta` absent and `publish_events` absent.** The backup
+`receipts-backup-2026-09-05-pre-email-delta-drop.db` names what happened, so it was dropped by hand
+rather than by `schema.py`. **So the live database has ten tables and `schema.py` creates eleven**, and
+the difference is `publish_events`, which is created the first time the pipeline starts on `ee9cb59`
+or later.
 
 **There is no `client_code` on any table.** Removed by sub-step 10d.23 and Paul's ruling of
 2026-09-02: it appears nowhere, in either product. **There is no `coa_accounts` table and there will
@@ -823,6 +831,36 @@ corrected in `schema.py`: an audit row that cannot be written because the thing 
 is worse than a dangling id. `receipt_id`'s key also made this table refuse a row about a receipt a
 rebuild had dropped, **which is exactly when somebody wants the history**.
 
+### publish_events
+
+**Added 2026-09-09 by sub-step 10f.36, commit `ee9cb59`. The eleventh table.** One row per receipt per
+destination per attempt, on the `resolution_events` pattern.
+
+| Column      | Type          | Notes                                                              |
+| ----------- | ------------- | ------------------------------------------------------------------ |
+| event_id    | TEXT PRIMARY KEY NOT NULL | `uuid4()`. **`NOT NULL` is stated because a `TEXT PRIMARY KEY` in SQLite accepts NULL**: only an `INTEGER PRIMARY KEY` rejects one. Added 2026-09-09 |
+| receipt_id  | TEXT NOT NULL |                                                                    |
+| destination | TEXT NOT NULL | `intellibooks` today. 18.3 gives the pipeline three eventually     |
+| outcome     | TEXT NOT NULL | `published` or `failed`, the constants in `worker\publish.py`       |
+| item_path   | TEXT          | The item on a success, null on a failure                           |
+| reason      | TEXT          | The reason on a failure, null on a success                         |
+| created_at  | TEXT NOT NULL |                                                                    |
+
+Indexed on `(receipt_id, created_at)`.
+
+**Three states and the third is the absence of a row.** No row means the receipt was never offered to
+a destination; a `failed` row means it was tried and did not land; a `published` row means it landed.
+**That is what sub-step 10f.13's repointed recovery sweep asks**, being "publish anything that was
+read and never published", and `filed_path` served the same purpose for filing.
+
+**No foreign key on `receipt_id`**, for the reason `resolution_events` already gives above.
+
+**No column carries a SQL default**, per sub-steps 10d.23 to 10d.28. `item_path` and `reason` are each
+null in one of the two outcomes, so neither can be NOT NULL.
+
+**Not in the live database yet.** Read directly on 2026-09-09: it is created the first time Paul starts
+the pipeline on `ee9cb59` or later, and it is created with the `NOT NULL`.
+
 ### ~~email_delta~~ Removed 2026-09-04
 
 **Not created any more, and nothing reads or writes it.** Outstanding item 159. It held a
@@ -831,7 +869,7 @@ incremental IMAP fetch that does not exist: **`fetch_new_messages()` searches `A
 deduplicates on the header `message_id`**, per rule 6 below, because an IMAP UID cannot be carried
 between polls. `Repository.get_delta_link()`, `save_delta_link()`, `get_last_uid()` and
 `save_last_uid()` went with it, and `fetch_new_messages()` no longer takes the `repo` it never used.
-**A database created before 2026-09-04 still has the table, empty.**
+~~A database created before 2026-09-04 still has the table, empty.~~ **Corrected 2026-09-09: the live database does not have it.** Read directly with sqlite3 in read-only mode: ten tables and no `email_delta`. The backup `receipts-backup-2026-09-05-pre-email-delta-drop.db` in `C:\Intellibills\db\` names the drop, so it was done by hand on or about 2026-09-05. **The general statement was true of `schema.py` and false of this machine**, which is the difference between what a file creates and what a database holds.
 
 ### email_alerts
 

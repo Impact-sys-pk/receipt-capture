@@ -64,13 +64,15 @@ what `scanFiledReceipts()` already does, with a visible manual control and a wai
 0.5.1's check 5 is reworded for one folder.
 
 **What does not change.** The pipeline still files into `Clients\` and Desktop still reads that too.
-**A receipt now arrives by two routes, and Desktop has to take one and ignore the other.** How it
-tells them apart is the one design question in this stage and it is not yet answered.
+**A receipt now arrives by two routes, and Desktop has to take one and ignore the other.** ~~How it
+tells them apart is the one design question in this stage and it is not yet answered.~~ **Answered
+2026-09-09 by amendment 285: it tells them apart on `receipt_id`, which both payloads carry, and
+`ingestReceiptFiles()` already skips a receipt the books hold. No new mechanism.**
 
 **Why it is safe.** The old route is untouched, so a drain that fails leaves the system exactly as it
 is today.
 
-**Desktop only. One brief. The consultant session writes it, per amendment 242.**
+**Desktop only. One brief. The consultant session writes it, per amendment 242. Unblocked 2026-09-09 by amendment 285, and it is written after stage 1 lands rather than now, so that Claude Code's report on piece 3 can correct it first.**
 
 ### Stage 3: the acceptance test
 
@@ -106,10 +108,24 @@ needed and both survived.
 
 ## 4. The open questions, and each is Paul's
 
-1. **How Desktop tells an inbox receipt from the same receipt arriving the old way**, during stage 2
-   when both routes run. **This is the one that blocks stage 2 from being briefed.**
-2. **Which of the three client-folder-copy triggers Intellitax itself uses**, per 10f.12: on
-   successful publish, at Post, or never. It is a firm setting and Paul is a firm.
+1. ~~**How Desktop tells an inbox receipt from the same receipt arriving the old way**, during stage 2
+   when both routes run. **This is the one that blocks stage 2 from being briefed.**~~ **ANSWERED
+   2026-09-09 by amendment 285, from the code rather than by a decision: both payloads carry the same
+   `receipt_id`, `books.receipts` is keyed on it, and `ingestReceiptFiles()` skips a receipt it
+   already holds. Whichever route arrives first wins. Stage 2 is no longer blocked.** Its brief
+   carries three things that follow: the drain shares one insert rather than adding a sixth id check,
+   it filters by `client_id` rather than warning about a foreign one, and the embedded image is
+   ignored where the existing row already holds a non-image file.
+2. ~~**Which of the three client-folder-copy triggers Intellitax itself uses**, per 10f.12: on
+   successful publish, at Post, or never. It is a firm setting and Paul is a firm.~~ **RECLASSIFIED
+   2026-09-09, and it was never an open design question. It is a VALUE, not a decision this plan
+   needs: F16 is the setting, sub-step 10f.12 builds the box in stage 4, and Paul types a value into
+   it then, exactly as he typed `Incoming` into F14's box at piece 2 of stage 1.** **It blocks
+   nothing and it cannot be answered before the box exists.** **The consultant session's error, and
+   it is the same one this plan already records at question 3:** it was put to Paul as a decision to
+   take now, and this plan's own sentence, that it is a firm setting and Paul is a firm, already said
+   what it was. **So the four questions are one open design question at most, and question 1 closed
+   on 2026-09-09.**
 3. ~~**Whether stage 1's destination work is worth building now**, given one destination exists.
    10f.1 to 10f.3 are the settings model for something with one member.~~ **ANSWERED 2026-09-08. Paul: build F14, defer 10f.1.** ~~build F14 and F15~~ **Corrected the same day by amendment 280, which defers 10f.3 and F15 as well, because a switch with no defined output is not a setting yet.** Amendment 279 carries the reasoning for 10f.1 and amendment 280 for 10f.3. **The address becomes a setting rather than a literal, the per-client column waits for a second destination, and the CSV switch waits for a defined output.**
 4. **Whether the test estate is cleared before stage 3 or before 10i**, which is item 168. It says

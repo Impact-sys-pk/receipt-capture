@@ -655,6 +655,90 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
             logger.error(f"failed to publish recovered receipt {receipt_id}: {exc}", exc_info=True)
 
 
+def _copy_missing_client_copies(repo: Repository) -> None:
+    """Retry the client folder copy for anything that published without one.
+
+    **Claude Code's flag 6 of `2026-09-09_REPORT_claude_code_stage4_pipeline.md`,
+    briefed once stage 4 was complete and 18.2b's freeze closed by amendment
+    298.** `copy_for_published_receipt()` swallows its own failures, and the
+    repointed sweep above asks "was this published", so a receipt whose publish
+    succeeded and whose copy failed was never offered again. The document never
+    reached the client folder and the only trace was an ERROR in `run.log`.
+
+    **The trigger is asked here, above the query, and that is the deliverable
+    rather than a detail.** On `never` and on `post` no receipt ever gets a
+    `filed_path`, so the query would answer with every `ok` receipt in the
+    database every five minutes. `copy_for_published_receipt()` would no-op on
+    each, so nothing would be written; the cost would be a pointless query and a
+    sweep line that means nothing.
+
+    **It publishes nothing and categorises nothing.** Both already happened for
+    every receipt it can see. Republishing would overwrite an item Desktop may
+    have drained, and a second `categorisations` row for one receipt would be a
+    duplicate nobody asked for. Held on the syntax tree by
+    `tests/test_client_copy_retry.py`.
+
+    **It takes no `stats` and that is deliberate.** `stats` goes into
+    `runs.ndjson`, which is the run summary, and the brief says nothing goes
+    into the run summary. Taking no parameter makes that structural rather than
+    a thing to remember. What a reader sees instead is the line below and
+    `copy_for_published_receipt()`'s own INFO line per receipt.
+    """
+    if config.CLIENT_COPY_TRIGGER != config.CLIENT_COPY_ON_PUBLISH:
+        return
+
+    waiting = repo.get_published_receipts_without_client_copy()
+    if not waiting:
+        return
+
+    logger.info(
+        f"retrying the client folder copy for {len(waiting)} published receipt(s) "
+        f"that have none")
+    for receipt in waiting:
+        receipt_id = receipt["receipt_id"]
+        try:
+            extraction = repo.get_extraction_for_receipt(receipt_id)
+            if not extraction:
+                logger.warning(
+                    f"receipt {receipt_id} published but has no extraction "
+                    "record, so there is nothing to name the copy from")
+                continue
+
+            source_path = Path(receipt["file_path"])
+            if not source_path.exists():
+                logger.warning(
+                    f"source file missing for receipt {receipt_id}: "
+                    f"{source_path}, so its client folder copy cannot be made")
+                continue
+
+            # The same gated function every other route reaches. It holds the
+            # trigger, the one-copy rule and the missing-folder-name refusal,
+            # and it records filed_path itself when it writes.
+            copy_for_published_receipt(
+                repo,
+                receipt_id=receipt_id,
+                client_id=receipt["client_id"],
+                source_file=source_path,
+                invoice_date=(extraction.get("invoice_date")
+                              or datetime.now(timezone.utc).date().isoformat()),
+                supplier=extraction.get("supplier_name") or "unknown",
+                gross=(extraction.get("gross_amount")
+                       if extraction.get("gross_amount") is not None else 0.0),
+                validation_status="ok",
+                # The row's own value rather than None. The query guarantees it
+                # is NULL, and passing the row means the one-copy gate still
+                # holds if that query ever changes.
+                filed_path=receipt["filed_path"],
+            )
+        except Exception as exc:
+            # copy_for_published_receipt() swallows a failing copy already, so
+            # reaching here means something above it went wrong. One receipt
+            # must not take the poll down either way.
+            logger.error(
+                f"could not retry the client folder copy for {receipt_id}: "
+                f"{exc}", exc_info=True)
+
+
 def _cleanup_old_backups():
     backups = sorted(config.BACKUPS_ROOT.glob("receipts-*.db"))
     if len(backups) <= 14:
@@ -1129,6 +1213,10 @@ def process_once():
         _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)
 
         _publish_unpublished_receipts(repo, engine, stats)
+        # Immediately after, so the two recovery clauses read together here and
+        # in run.log. A receipt this poll publishes gets its copy in the clause
+        # above; this one is for the copies that failed on an earlier poll.
+        _copy_missing_client_copies(repo)
 
         intake_records = scan_inbox()
         logger.info(f"capture inbox files found: {len(intake_records)}")

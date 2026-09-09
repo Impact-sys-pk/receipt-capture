@@ -318,7 +318,12 @@ class ClientFolderWritersTest(unittest.TestCase):
                                  f"::{innermost_owner(tree, node)}")
         self.assertEqual(
             sorted(sites),
-            ["app.py::_publish_unpublished_receipts",
+            # The fourth arrived 2026-09-09 with the client-copy retry, which
+            # is flag 6 of this stage's report. It reaches the same gated
+            # function rather than writing anything of its own, which is what
+            # keeps 10f.11's "one writer" true.
+            ["app.py::_copy_missing_client_copies",
+             "app.py::_publish_unpublished_receipts",
              "worker/extraction_pipeline.py::process_extraction_result",
              "worker/resolution/service.py::resolve_receipt"])
 

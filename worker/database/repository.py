@@ -237,6 +237,54 @@ class Repository:
         """).fetchall()
         return [dict(row) for row in rows]
 
+    def get_published_receipts_without_client_copy(self) -> list[dict]:
+        """Every `ok` receipt that published and whose client folder copy never
+        happened. Claude Code's flag 6 of the stage 4 report, 2026-09-09.
+
+        `copy_for_published_receipt()` swallows its own failures, which is right:
+        by the time it runs the item is already in the folder IntelliBooks
+        drains and `Intellibills\\Documents\\` holds the archive of record, so a
+        folder in the firm's own tree being unavailable must not fail a complete
+        receipt. **On OneDrive a locked or syncing folder is the ordinary case.**
+        Nothing retried it: `get_unpublished_ok_receipts()` asks "was this
+        published", and this receipt was.
+
+        **THE CALLER MUST CHECK THE FIRM'S TRIGGER FIRST, and there is one
+        caller.** On `never` and on `post` no receipt ever gets a `filed_path`,
+        so this query would answer with every `ok` receipt in the database on
+        every poll. `_copy_missing_client_copies()` in `app.py` returns before
+        reaching it unless the trigger is `publish`, and
+        `tests/test_client_copy_retry.py` asserts the query is never executed on
+        the other two rather than executed and discarded.
+
+        **The cutover is the same one `get_unpublished_ok_receipts()` carries**,
+        and for the same reason: amendment 283 is Paul's decision that the first
+        run publishes only what arrives from then on, and 18.2b says a copy is
+        never withdrawn, so a backfill into live client folders could not be
+        undone by the product. An empty `publish_events` offers nothing, because
+        `created_at >= NULL` is NULL in SQL.
+
+        **What the cutover does NOT protect against, stated rather than
+        discovered:** nothing in the database records WHY a receipt was not
+        copied, so this query cannot tell "the copy failed" from "the trigger
+        said `never` when it published". A firm moving from `never` to `publish`
+        offers its whole backlog on the next poll. Recorded in
+        `2026-09-09_REPORT_claude_code_client_copy_retry.md`.
+        """
+        rows = self._conn.execute("""
+            SELECT receipt_id, client_id, file_path, filename, filed_path
+            FROM receipts
+            WHERE status = 'ok'
+              AND filed_path IS NULL
+              AND created_at >= (SELECT MIN(created_at) FROM publish_events)
+              AND EXISTS (
+                  SELECT 1 FROM publish_events
+                  WHERE publish_events.receipt_id = receipts.receipt_id
+                    AND publish_events.outcome = 'published'
+              )
+        """).fetchall()
+        return [dict(row) for row in rows]
+
     def get_filed_path(self, receipt_id: str) -> Optional[str]:
         """Where this receipt's client folder copy is, or None if there is none.
 

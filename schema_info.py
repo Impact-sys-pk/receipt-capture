@@ -14,7 +14,7 @@ if not db.exists():
 conn = sqlite3.connect(db)
 c = conn.cursor()
 
-# All ten tables in worker/database/schema.py, which is the authority. This list
+# All eleven tables in worker/database/schema.py, which is the authority. This list
 # named four of them until 2026-09-04, so seven tables could be in the database
 # and absent from this script's output. Item 158. email_delta was removed from
 # the schema the same day by item 159; a database created before then still
@@ -26,6 +26,7 @@ tables = [
     ("statements", "PHV platform statements: uber, bolt, freenow. Never a bank statement"),
     ("processed_attachments", "Duplicate prevention, keyed (message_id, attachment_id)"),
     ("resolution_events", "The audit trail: one row per resolution, whatever the entry point"),
+    ("publish_events", "One row per publish attempt, per receipt per destination. 10f.36"),
     ("email_alerts", "One row per alert sent, keyed (message_id, alert_type)"),
     ("categorisations_client_vendors", "Layer 1: this client's learned mappings"),
     ("categorisations_firm_vendors", "Layer 2: the firm's shared pool"),

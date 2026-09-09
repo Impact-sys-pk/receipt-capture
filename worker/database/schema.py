@@ -228,6 +228,38 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_resolution_events_receipt
             ON resolution_events(receipt_id, created_at);
+
+        -- Sub-step 10f.36 and amendment 283. One row per receipt per
+        -- destination per attempt, so three states can be told apart without
+        -- looking in a folder that Desktop drains: no row at all means the
+        -- receipt was never offered, a `failed` row means it was tried and did
+        -- not land, and a `published` row means it did.
+        --
+        -- On resolution_events' pattern, which 10f.36 names, and no foreign key
+        -- on receipt_id for that table's reason: an audit row that cannot be
+        -- written because the thing it describes has gone is worse than a
+        -- dangling id, and a receipt a rebuild has dropped is exactly when
+        -- somebody wants its history.
+        --
+        -- Not a column on receipts. A column holds the latest answer and loses
+        -- the failure that preceded it, and while nothing drains the folder the
+        -- failures are the half worth keeping.
+        --
+        -- item_path is null on a failure and reason is null on a success, so
+        -- neither can be NOT NULL. No column carries a default, per 10d.23 to
+        -- 10d.28: the writer states every value.
+        CREATE TABLE IF NOT EXISTS publish_events (
+            event_id            TEXT PRIMARY KEY,
+            receipt_id          TEXT NOT NULL,
+            destination         TEXT NOT NULL,
+            outcome             TEXT NOT NULL,
+            item_path           TEXT,
+            reason              TEXT,
+            created_at          TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_publish_events_receipt
+            ON publish_events(receipt_id, created_at);
     """)
     conn.commit()
     conn.close()

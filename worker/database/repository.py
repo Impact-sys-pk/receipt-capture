@@ -537,6 +537,38 @@ class Repository:
               corrections_json, gl_override_code, outcome, reason, created_at))
         self._conn.commit()
 
+    def save_publish_event(
+        self, event_id: str, receipt_id: str, destination: str, outcome: str,
+        created_at: str, item_path: Optional[str] = None,
+        reason: Optional[str] = None,
+    ):
+        """Append one row per publish attempt. Sub-step 10f.36.
+
+        `item_path` on a success and `reason` on a failure. Neither is stated
+        for the other case, so a row says which it is by its outcome and
+        carries only what that outcome has.
+        """
+        self._conn.execute("""
+            INSERT INTO publish_events
+                (event_id, receipt_id, destination, outcome, item_path,
+                 reason, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (event_id, receipt_id, destination, outcome, item_path,
+              reason, created_at))
+        self._conn.commit()
+
+    def list_publish_events(self, receipt_id: str) -> list[dict]:
+        """Every publish attempt for a receipt, newest first.
+
+        An empty list is the third state 10f.36 asks for: the receipt was never
+        offered to any destination.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM publish_events WHERE receipt_id = ? ORDER BY created_at DESC",
+            (receipt_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def list_resolution_events(self, receipt_id: str) -> list[dict]:
         """Every resolution event for a receipt, newest first."""
         rows = self._conn.execute(

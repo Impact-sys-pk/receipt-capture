@@ -73,6 +73,11 @@ MEDIA_TYPES = {
     ".bmp": "image/bmp",
 }
 
+#: The two outcomes a `publish_events` row can carry, sub-step 10f.36. The
+#: third state is no row at all, which is why neither word is "not attempted".
+PUBLISHED = "published"
+FAILED = "failed"
+
 #: The suffix a part-written item carries. **It must not end in `.json`**: the
 #: whole point of renaming into place is that a reader globbing the folder
 #: cannot see a half-written file, and a temporary name ending in `.json` would

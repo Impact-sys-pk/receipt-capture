@@ -260,9 +260,24 @@ section 5.
 `test_the_line_is_written_after_the_status_is_final` proves the call is inside no branch, not that it
 is after the overrides. Disclosed in section 5 and left as it is.
 
-**5. My first attempt to write the test file used a shell heredoc and bash rejected it**, so I used
+**5. I wrote a commit hash into a file and then amended the commit that contained it.** The report
+commit was `b090ed9` when I wrote that hash into section 10; the amend that put the hash there gave
+the commit a new one, so the file named a commit that no longer existed. Fixed by a further commit
+rather than a third amend, which would have repeated it. **The lesson is small and the shape is
+familiar: I verified the hash against the thing itself and then invalidated the thing.**
+
+**6. My first attempt to write the test file used a shell heredoc and bash rejected it**, so I used
 the file-writing tool instead. No file was created by the failed attempt, and I did not diagnose why
 bash broke, so **if a later session sees the same thing, this report offers no cause.**
+
+**7. Two documents another session is editing appeared as modified in `git status` while I worked**,
+`2026-07-25_CONSOLE_DESIGN.md` and `2026-07-31_PLAN_reset_and_restructure.md`. **I did not touch
+either and neither is staged or committed by me.** Recorded because a reader comparing this report's
+"the tree is clean" claim in section 11 against `git status` will see them: that claim is about my two
+files and the three commits, not about the working tree as a whole. **The tree is NOT clean, and
+`CLAUDE.md`'s rule about `pipeline_version` therefore still bites: a run started before those two
+documents are committed records a version that does not describe the code that ran, even though the
+code itself is committed.**
 
 ---
 
@@ -285,8 +300,15 @@ Both on `feat/console-phase0`, the current branch. **Nothing was pushed.**
 
 | Commit | What |
 |---|---|
-| `9c424e9` | `worker\extraction_pipeline.py` and `tests\test_validation_reason_logged.py` |
-| `b090ed9` | This report. **Amended after the first write, to carry these two hashes rather than a pointer to the section below.** Unpushed at the time, so nothing published was rewritten |
+| `9c424e9` | `worker\extraction_pipeline.py` and `tests\test_validation_reason_logged.py`. **This is the change.** |
+| the two after it | This report, and one correction to it |
+
+**A report commit cannot name its own hash, and trying to cost me two commits.** The first write of
+this table pointed at the sections below; I then amended the report commit to put the real hashes in,
+which **changed that commit's own hash and made the one I had just written wrong**. The correction is
+a further commit rather than a third amend, because a third amend would have done it again.
+**`git log` is the authority for the last two hashes. `9c424e9` is the one that matters and it is
+stable, because nothing was amended after it.** Recorded in section 8 as well.
 
 The code and its test are one commit deliberately: a commit holding only the test would leave the
 tree red, and a commit holding only the code would leave 18 tests unwritten in a repository whose
@@ -327,5 +349,9 @@ that line says why.** A receipt that reaches `ok` writes nothing new.
 **Nothing else changes.** No receipt changes status, nothing files or publishes differently, and no
 database column moves.
 
-**Per `CLAUDE.md`, commit before a run whose `pipeline_version` matters**: the tree is clean after the
-two commits above, so a run started now records a version that describes the code that ran.
+**Per `CLAUDE.md`, commit before a run whose `pipeline_version` matters. My files are committed and
+the working tree is still not clean**, because another session has `2026-07-25_CONSOLE_DESIGN.md` and
+`2026-07-31_PLAN_reset_and_restructure.md` open and modified. **They are documents and no code is
+uncommitted, but `config.check_git_status_on_startup()` does not know that and will warn**, and the
+`pipeline_version` recorded on every receipt from such a run does not describe the tree. Committing
+those two is the consultant session's to do, not mine. See flag 7 in section 8.

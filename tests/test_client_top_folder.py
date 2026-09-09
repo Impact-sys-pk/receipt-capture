@@ -82,6 +82,60 @@ def write_firms(practice_root: Path, records) -> Path:
     return path
 
 
+def _swallowed_calls(function):
+    """The names called inside a `try` that has a handler, in this function.
+
+    A call whose exception is caught does not make its caller refuse, which is
+    what separates `load_clients()` from `reload_clients_if_changed()`: both
+    call something that raises, and only the second catches it.
+    """
+    swallowed = set()
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Try) or not node.handlers:
+            continue
+        for guarded in node.body:
+            for inner in ast.walk(guarded):
+                if isinstance(inner, ast.Call):
+                    swallowed.add(ast.unparse(inner.func))
+    return swallowed
+
+
+def refusing_functions(tree):
+    """Every module-level function in `config.py` that can refuse.
+
+    **Derived rather than listed, and that is the point of it.** The guard
+    below used to hold five names typed out by hand, and its own docstring
+    said a refusal of an unlisted shape would pass in silence. It did: a
+    mutation adding a fresh refusing helper below the `mkdir` block passed all
+    822 tests on 2026-09-09.
+
+    A function refuses if it contains a `raise`, or if it calls one that does
+    and does not catch it. The delegation pass runs to a fixpoint, so a chain
+    of any length is followed.
+
+    **Over-including is safe here and under-including is not**, which is why
+    the rule is the loose one. An extra name can only add lines that must sit
+    above the `mkdir` block, so at worst the guard becomes stricter and fails
+    loudly. A missing name is the silence this replaces.
+    """
+    functions = {node.name: node for node in tree.body
+                 if isinstance(node, ast.FunctionDef)}
+    refusing = {name for name, node in functions.items()
+                if any(isinstance(inner, ast.Raise) for inner in ast.walk(node))}
+    changed = True
+    while changed:
+        changed = False
+        for name, node in functions.items():
+            if name in refusing:
+                continue
+            called = {ast.unparse(call.func) for call in ast.walk(node)
+                      if isinstance(call, ast.Call)}
+            if (called - _swallowed_calls(node)) & refusing:
+                refusing.add(name)
+                changed = True
+    return refusing
+
+
 def import_config(tmp: Path, records, cwd=None):
     """Import config in a fresh process against a practice root we control."""
     practice = tmp / "practice"
@@ -355,14 +409,25 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         is the set claim, and it catches a **new** refusal being added below the
         `mkdir` block rather than only this one moving back.
 
-        **What it does not catch, stated because a check whose limits are
-        unwritten gets trusted too far**: a refusal of a shape not listed here.
-        The four helper calls and `os.environ[...]` are every way this module
-        raises today, enumerated from its own AST below rather than remembered.
-        A new shape needs adding here, and the failure would be silence.
+        **The helper names are derived from the module, not listed here.
+        Changed 2026-09-09.** ~~The four helper calls and `os.environ[...]` are
+        every way this module raises today. A new shape needs adding here, and
+        the failure would be silence.~~ **They were listed by hand and the
+        silence was real**: adding `_publish_destination` on 2026-09-09 was a
+        manual step nothing would have prompted, and a mutation adding a fresh
+        refusing helper below the `mkdir` block passed all 822 tests. See
+        `refusing_functions()` above.
+
+        **What it still does not catch, stated because a check whose limits are
+        unwritten gets trusted too far.** Two things. A refusal that is neither
+        a call to a module-level function nor `os.environ[...]`, an inline
+        `raise` at module level for instance. And a refusal reached through a
+        call this test cannot see, such as a method on an imported object.
         """
-        helpers = {"_required_root", "_required", "_required_int",
-                   "_client_top_folder", "_publish_destination"}
+        helpers = refusing_functions(self.tree)
+        self.assertIn("_required_root", helpers,
+                      "the derivation found no known refusal, so it has broken "
+                      "and this test is passing for the wrong reason")
         refusals = {}
         mkdirs = {}
         for node in self.tree.body:
@@ -390,6 +455,52 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
             f"{refusals[last_refusal]} at line {last_refusal} can refuse, so a "
             f"misconfigured installation makes folders and then fails. "
             f"Refusals: {sorted(refusals.items())}. mkdirs: {sorted(mkdirs.items())}.")
+
+    def test_the_derivation_finds_every_helper_that_was_listed_by_hand(self):
+        """The five names the guard used to carry, so nothing was lost.
+
+        A derivation that returned an empty set would make
+        `test_every_refusal_sits_above_every_mkdir` pass against anything, and
+        that test's own guard against it only checks one name.
+        """
+        was_listed_by_hand = {"_required_root", "_required", "_required_int",
+                              "_client_top_folder", "_publish_destination"}
+        self.assertEqual(was_listed_by_hand - refusing_functions(self.tree), set())
+
+    def test_the_derivation_also_finds_the_two_registry_loaders(self):
+        """What the hand-written list was missing on the day it was replaced.
+
+        `_read_registry()` raises on unreadable JSON and neither loader catches
+        it, read in `config.py`, so both can stop an import. Both are called at
+        module level and both sit above the `mkdir` block already, so nothing
+        moves; the guard simply now holds them there.
+        """
+        found = refusing_functions(self.tree)
+        self.assertIn("_read_registry", found)
+        self.assertIn("load_clients", found)
+        self.assertIn("load_firms", found)
+
+    def test_a_function_that_catches_what_it_calls_does_not_refuse(self):
+        """`reload_clients_if_changed()` is the case that separates the two.
+
+        It calls `load_clients()`, which can raise, and catches it, because it
+        runs inside the poll loop and an exception there would end the run. A
+        delegation rule that ignored `try` would call it a refusal, and the
+        over-inclusion would be harmless but wrong.
+        """
+        self.assertNotIn("reload_clients_if_changed", refusing_functions(self.tree))
+
+    def test_the_derivation_follows_a_chain(self):
+        # Driven on a module written here, because config.py has no three-deep
+        # chain today and a rule with no test is a rule nobody can rely on.
+        tree = ast.parse(
+            "def a():\n    raise ValueError('no')\n\n"
+            "def b():\n    return a()\n\n"
+            "def c():\n    return b()\n\n"
+            "def d():\n    return 1\n\n"
+            "def e():\n    try:\n        return c()\n    except Exception:\n        return None\n"
+        )
+        self.assertEqual(refusing_functions(tree), {"a", "b", "c"})
 
     def test_the_field_name_is_stated_once(self):
         # Two products built by two sessions that cannot see each other have to

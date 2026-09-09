@@ -23,10 +23,13 @@ matches. Two other test files already carried that warning in as many words.
 
 **A comment in two files is not a guard. It is a hope that the next author reads
 those two files.** This is the guard: the two roots are redirected in the
-environment before `config` computes anything from them, so **seventeen of the
-eighteen Path constants land in temp**, including the five no fixture pins at
+environment before `config` computes anything from them, so **nineteen of the
+twenty Path constants land in temp**, including the five no fixture pins at
 all: `FIRMS_JSON`, `INTELLIBILLS_ROOT`, `PIPELINE_LOCKFILE`, `UNSYNCED_ROOT` and
-`RESOLUTIONS_DIR`.
+`RESOLUTIONS_DIR`. ~~seventeen of the eighteen~~ **Moved 2026-09-09 by stage 1
+piece 3, which added `INTELLIBOOKS_ROOT` and `INTELLIBOOKS_PUBLISH_DIR`. The
+count is asserted next door, so a figure in this prose going stale is caught
+rather than believed.**
 
 **Both of those figures were wrong here until 2026-09-07 and the test next door
 was right.** ~~all eighteen Path constants land in temp, including the five no
@@ -126,7 +129,7 @@ import tempfile
 from pathlib import Path
 
 # **The whole file depends on this.** If `config` has already been imported, its
-# eighteen constants are computed from the live roots and setting the environment
+# twenty constants are computed from the live roots and setting the environment
 # now moves nothing. Every test would then run against the practice root and
 # every test would still pass, which is the failure this file exists to prevent
 # arriving by a different door.
@@ -252,8 +255,21 @@ TEMP_CLIENT_TOP_FOLDER = TEMP_PRACTICE_ROOT / "Client Folders"
 #: config.CLIENT_TOP_FOLDER_FIELD, which this file may not import to ask.
 CLIENT_TOP_FOLDER_FIELD = "client_top_folder"
 
+#: The same again for the publish destination, sub-step 10f.2. Matching
+#: config.PUBLISH_DESTINATIONS_FIELD and config.INTELLIBOOKS_DESTINATION, which
+#: this file may not import to ask for the same reason.
+PUBLISH_DESTINATIONS_FIELD = "publish_destinations"
+INTELLIBOOKS_DESTINATION = "intellibooks"
 
-def write_firm_record(practice_root=None, client_top_folder=None) -> Path:
+#: The folder under the temp practice root's `IntelliBooks\` that the suite
+#: publishes into. Deliberately not `Incoming`: as with the client top folder
+#: above, a value differing from the live one is what proves the pipeline reads
+#: the setting rather than a literal.
+TEMP_PUBLISH_FOLDER = "Published"
+
+
+def write_firm_record(practice_root=None, client_top_folder=None,
+                      publish_folder=None) -> Path:
     """Write the one firm record `config` requires, before `config` is imported.
 
     Sub-step 10e.14: `CLIENTS_ROOT` is `client_top_folder` off the firm record
@@ -271,6 +287,7 @@ def write_firm_record(practice_root=None, client_top_folder=None) -> Path:
     """
     practice_root = Path(practice_root or TEMP_PRACTICE_ROOT)
     client_top_folder = Path(client_top_folder or TEMP_CLIENT_TOP_FOLDER)
+    publish_folder = publish_folder or TEMP_PUBLISH_FOLDER
     directory = practice_root / "Intellibills"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "firms.json"
@@ -282,6 +299,13 @@ def write_firm_record(practice_root=None, client_top_folder=None) -> Path:
                     "firm_id": "FIRM001",
                     "name": "Test Firm",
                     CLIENT_TOP_FOLDER_FIELD: str(client_top_folder),
+                    # Sub-step 10f.2, added 2026-09-09. `config` refuses a firm
+                    # record without it, so without this line every test errors
+                    # during collection, which is the same reason the field
+                    # above is here.
+                    PUBLISH_DESTINATIONS_FIELD: {
+                        INTELLIBOOKS_DESTINATION: publish_folder,
+                    },
                 }],
             },
             indent=2,

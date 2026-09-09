@@ -194,18 +194,56 @@ class NothingLeftInIntelliBooksTest(unittest.TestCase):
 
     A sweep rather than a list, so a constant added later is covered without
     anyone remembering to add it here.
+
+    **Two constants are now allowed in and the test is not weakened by it.
+    Changed 2026-09-09 by stage 1 piece 3, sub-steps 10f.2 and 10f.4, and
+    changed deliberately rather than made to pass.** ~~No path constant resolves
+    inside IntelliBooks.~~ The pipeline now **pushes** each receipt into
+    `IntelliBooks\\{publish folder}\\` instead of leaving IntelliBooks to pull it
+    out of the client folder, per 18.3, so a path pointing there is the
+    deliverable rather than a stray.
+
+    **What amendment 72 was actually about survives intact**: it moved
+    `clients.csv`, `firms.csv`, `pipeline-status.json`, `Receipt Inbox` and
+    `Resolutions` out of IntelliBooks' folder because they are ours and sat
+    there by accident. Nothing here is ours. The publish folder is IntelliBooks'
+    own, and Intellibills writes into it the way one product hands work to
+    another.
+
+    **So the two are named rather than the rule dropped**, and a third would
+    still fail. That is the difference between a test that was updated and one
+    that was deleted.
     """
 
-    def test_no_path_constant_resolves_inside_intellibooks(self):
+    #: The only constants that may sit inside IntelliBooks' folder, and why.
+    #: Both are the handoff of 18.3. Adding a name here is a design decision.
+    ALLOWED = {"INTELLIBOOKS_ROOT", "INTELLIBOOKS_PUBLISH_DIR"}
+
+    def test_no_unexpected_path_constant_resolves_inside_intellibooks(self):
         intellibooks = config.PRACTICE_ROOT / "IntelliBooks"
-        strays = [
+        strays = sorted(
             name for name, value in vars(config).items()
             if isinstance(value, Path) and value.is_relative_to(intellibooks)
-        ]
+            and name not in self.ALLOWED
+        )
         self.assertEqual(
             strays, [],
             f"these still point inside IntelliBooks' own folder: {strays}",
         )
+
+    def test_the_two_allowed_constants_are_still_there(self):
+        """The control, so the test above cannot pass by the constants vanishing.
+
+        Without it, a rename would empty the sweep and both halves would read
+        as green, which is `CLAUDE.md`'s rule that a check which cannot fail is
+        not a check.
+        """
+        intellibooks = config.PRACTICE_ROOT / "IntelliBooks"
+        for name in sorted(self.ALLOWED):
+            with self.subTest(constant=name):
+                value = getattr(config, name, None)
+                self.assertIsInstance(value, Path, f"config has no {name}")
+                self.assertTrue(value.is_relative_to(intellibooks))
 
 
 if __name__ == "__main__":

@@ -57,6 +57,13 @@ FIRM = {
     "name": "Test Firm",
     "email": "bills@example.com",
     "phone_app_url": "https://example.invalid",
+    # Added 2026-09-09 by stage 1 piece 3. `_publish_destination()` refuses a
+    # record without it, and this file's whole AcceptedTest class asks for an
+    # import that succeeds, so the field has to be here for those tests to be
+    # about the field they name. It is deliberately not the live `Incoming`:
+    # nothing here reads the value and a distinct one keeps the two files'
+    # failures apart.
+    "publish_destinations": {"intellibooks": "Published"},
 }
 
 
@@ -355,7 +362,7 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         A new shape needs adding here, and the failure would be silence.
         """
         helpers = {"_required_root", "_required", "_required_int",
-                   "_client_top_folder"}
+                   "_client_top_folder", "_publish_destination"}
         refusals = {}
         mkdirs = {}
         for node in self.tree.body:

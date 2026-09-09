@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import pathlib
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -510,9 +511,119 @@ def _client_top_folder(firms: dict) -> Path:
     return Path(value)
 
 
+# The second key `IntelliBooks-Desktop-v3.html` and this module both have to
+# know, held for CLIENT_TOP_FOLDER_FIELD's reason: two products built by
+# sessions that cannot see each other either agree on a field name or the two
+# halves silently stop meeting. Sub-step 10f.2, amendment 280.
+PUBLISH_DESTINATIONS_FIELD = "publish_destinations"
+
+# The one destination there is. The setting is an object keyed by destination
+# rather than a bare string, so a second consumer can be added later without
+# moving the first. Amendment 280 fixes the spelling of the key.
+INTELLIBOOKS_DESTINATION = "intellibooks"
+
+
+def _is_single_folder_name(value: str) -> bool:
+    """True when `value` names one folder and cannot escape its parent.
+
+    **Not a search for slashes**, which is the check anyone writes first and it
+    is not enough. `PureWindowsPath("IntelliBooks") / "C:"` is `C:`, so a bare
+    drive letter carries no separator and still leaves the tree, and `..`
+    carries none either and climbs out of it.
+
+    Both flavours of PurePath are asked, because the fourth trap in `CLAUDE.md`
+    is that a Windows path string has no leading separator on Linux. Asking only
+    the native flavour would make this refuse on Windows and accept on the
+    machine the cloud version runs on.
+    """
+    if value in (".", ".."):
+        return False
+    if "/" in value or "\\" in value:
+        return False
+    if pathlib.PureWindowsPath(value).anchor or pathlib.PurePosixPath(value).anchor:
+        return False
+    return pathlib.PureWindowsPath(value).name == value
+
+
+def _publish_destination(firms: dict) -> str:
+    """The folder name Intellibills publishes into, off the firm record.
+
+    Sub-steps 10f.2 and 10f.4. **The setting is the leaf and nothing else.** The
+    `IntelliBooks` level above it is composed in code below, because design
+    document 18.2 gives that whole tree to IntelliBooks and a firm does not get
+    to move somebody else's root. A value carrying a separator would compose
+    into somewhere nobody looks, so it is refused rather than joined.
+
+    **There is no default and no fallback**, which is `_client_top_folder()`'s
+    reasoning: amendment 245 made both roots required and absolute, sub-steps
+    10d.13, 10d.17 and 10d.19 removed silent fallbacks one at a time, and
+    amendment 253 made all four SMTP settings required. A default would put the
+    literal `"Incoming"` into this module, which is what 10f.2 exists to keep
+    out of it. **What it costs is stated rather than discovered: a firms.json
+    with no publish_destinations will not start the pipeline, and that includes
+    a fresh checkout.**
+
+    **The record is taken because there is exactly one, never because it is
+    named**, as above. Local multi-firm is not built and will not be, Paul's
+    decision of 2026-08-20 recorded as amendment 117.
+    """
+    where = (f"Set it on the Firm Settings page in IntelliBooks Desktop, which "
+             f"writes {FIRMS_JSON}.")
+    if not firms:
+        raise RuntimeError(
+            f"{FIRMS_JSON} names no firm, so {PUBLISH_DESTINATIONS_FIELD} "
+            f"cannot be read and there is no default for it. It is the folder "
+            f"under IntelliBooks that this pipeline publishes each receipt "
+            f"into, per sub-step 10f.2. {where}"
+        )
+    if len(firms) > 1:
+        raise RuntimeError(
+            f"{FIRMS_JSON} names {len(firms)} firms, {', '.join(sorted(firms))}, "
+            f"and one pipeline serves one firm, so which "
+            f"{PUBLISH_DESTINATIONS_FIELD} to use cannot be decided here. Local "
+            f"multi-firm is not built: see amendment 117 and section 1 of "
+            f"2026-09-01_DESIGN_cloud_multi_firm.md. Leave one firm in the file."
+        )
+    firm_id, firm = next(iter(firms.items()))
+    destinations = firm.get(PUBLISH_DESTINATIONS_FIELD)
+    if not isinstance(destinations, dict):
+        raise RuntimeError(
+            f"{PUBLISH_DESTINATIONS_FIELD} on firm {firm_id} in {FIRMS_JSON} is "
+            f"required and must be an object keyed by destination, holding at "
+            f"least {INTELLIBOOKS_DESTINATION!r}. It read {destinations!r}. "
+            f"There is no default: the folder this pipeline publishes into is "
+            f"the firm's setting and is not written into the code, per sub-step "
+            f"10f.2. {where}"
+        )
+    value = destinations.get(INTELLIBOOKS_DESTINATION)
+    value = value.strip() if isinstance(value, str) else value
+    if not value or not isinstance(value, str) or not _is_single_folder_name(value):
+        raise RuntimeError(
+            f"{PUBLISH_DESTINATIONS_FIELD}[{INTELLIBOOKS_DESTINATION!r}] on firm "
+            f"{firm_id} in {FIRMS_JSON} is required and must be a single folder "
+            f"name. It read {value!r}. It is a leaf, not a path: it sits under "
+            f"IntelliBooks in the practice root, so a value carrying a "
+            f"separator, a drive or a dot would compose into a folder nobody "
+            f"looks in. There is no default, per sub-step 10f.2. {where}"
+        )
+    return value
+
+
 CLIENTS, CLIENTS_BY_ID = load_clients()
 FIRMS = load_firms()
 CLIENTS_ROOT = _client_top_folder(FIRMS)
+
+# IntelliBooks' own top-level folder, per the tree in design document 18.2a:
+# three folders under the practice root, one per owner. **Derived from
+# PRACTICE_ROOT and deliberately not from INTELLIBILLS_ROOT**, which is two
+# letters away and is a folder that already exists, so the wrong one would put
+# published items in Intellibills\IntelliBooks\ and nothing would fail loudly.
+# tests/test_publish_destination.py reads this assignment to hold that.
+INTELLIBOOKS_ROOT = PRACTICE_ROOT / "IntelliBooks"
+
+# Where each receipt is published, per sub-steps 10f.2 and 10f.4. One folder for
+# every client: the client identity travels inside the item, per 10f.5.
+INTELLIBOOKS_PUBLISH_DIR = INTELLIBOOKS_ROOT / _publish_destination(FIRMS)
 
 # Created at import, which means a casual `import config` makes these folders.
 # Only the new locations appear here: the old block created IntelliBooks\Backups\,
@@ -544,6 +655,10 @@ FILES_DIR.mkdir(parents=True, exist_ok=True)
 BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+# Sub-step 10f.2. Nothing else creates it: Desktop does not drain the folder
+# until stage 2, and the pipeline is its only writer, so an absent folder would
+# show up as the first publish failing rather than as a missing folder.
+INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _registry_mtime():

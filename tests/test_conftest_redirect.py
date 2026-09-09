@@ -2,11 +2,11 @@
 
 **This is the test the whole arrangement needs and would otherwise not have.**
 `tests/live_paths.py` redirects the two roots in the environment before `config`
-computes eighteen paths from them. If that ever stops working, every test runs
+computes twenty paths from them. If that ever stops working, every test runs
 against the live practice root and **every test still passes**, which is exactly
 the failure the redirect was built to remove, arriving through a different door.
 
-So the redirect is asserted, not assumed. Enumerated over all 18 constants rather
+So the redirect is asserted, not assumed. Enumerated over all 20 constants rather
 than a sample of them, because "every config path is redirected" is a set claim
 and the way that claim has gone wrong on this project is by checking its members.
 """
@@ -28,9 +28,9 @@ class RedirectIsInForceTest(unittest.TestCase):
             name: value for name, value in vars(config).items()
             if isinstance(value, Path) and not name.startswith("_")
         }
-        self.assertEqual(len(constants), 18,
+        self.assertEqual(len(constants), 20,
                          "the number of config Path constants moved; this test "
-                         "and tests/live_paths.py both describe 18")
+                         "and tests/live_paths.py both describe 20")
 
         for name, value in sorted(constants.items()):
             with self.subTest(constant=name):

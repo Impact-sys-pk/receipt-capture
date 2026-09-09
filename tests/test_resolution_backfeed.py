@@ -16,12 +16,28 @@ target folder before and after.
 The other rule with no exceptions: **nothing in `Resolutions\\` is ever deleted.**
 A failure moves the note to `failed\\` with a `.error.txt` beside it, so a note that
 the pipeline could not apply is still on disk and still readable.
+
+## Two shapes of `filed` note since 2026-09-09, and the field decides
+
+**Sub-step 10f.14 and Paul's decision of 2026-09-09.** A note that carries
+`filed_path` still means "Desktop filed this at that path", and everything above
+about the second copy applies to it unchanged. **A note with no `filed_path`
+means "these are the corrected values, settle this receipt"**, and it goes
+through `resolve_receipt()`, which writes the client folder copy itself on the
+firm's trigger.
+
+**That second shape used to be refused, and the refusal was a live fault**:
+receipt `a587b166-35a1-473c-aa5a-409749f7b642` was in the books in Desktop and
+`status failed` in the database with no `resolution_events` row.
+`NoteWithNoFiledPathSettlesTest` and `TheTwoShapesTakeDifferentPathsTest` hold
+the new half; `ValidFiledNoteTest` still holds the old one.
 """
 
 import json
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 fake_openai = types.ModuleType("openai")
@@ -43,6 +59,7 @@ from resolution_fixtures import (  # noqa: E402
     rows,
     run_pipeline_once,
 )
+from worker import client_copy  # noqa: E402
 from worker.database.repository import Repository  # noqa: E402
 from worker.filing import _review_dir_for_client_id  # noqa: E402
 from worker.resolution.service import apply_resolution_note  # noqa: E402
@@ -86,6 +103,60 @@ def note_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def settle_payload(**overrides):
+    """The shape Desktop writes SINCE 2026-09-09: no `filed_path`.
+
+    Sub-step 10f.14 and amendment 296. `fileReviewReceipt()` stopped writing
+    into `Clients\\` and stopped naming a path, because the pipeline is the only
+    writer there and the firm's `client_copy_trigger` decides whether a copy
+    happens at all. **Everything else is `note_payload()`'s shape**, so the two
+    differ in exactly the field the pipeline chooses on.
+
+    `original_review_files` is the inbox item now rather than a review pair, per
+    the Desktop comment at `fileReviewReceipt()`, so it is written that way here.
+    """
+    payload = {k: v for k, v in note_payload().items() if k != "filed_path"}
+    payload["original_review_files"] = ["r-1.json"]
+    payload.update(overrides)
+    return payload
+
+
+#: The note that failed on Paul's machine at 17:16:48 on 2026-09-09, verbatim.
+#:
+#: Read from `Intellibills\Resolutions\failed\`. Kept as text rather than as a
+#: dict so nobody tidies it: `net_amount` and `vat_amount` are both null, the
+#: category is a four-digit code with its name beside it, and
+#: `original_review_files` names the published inbox item. `receipt_id` and
+#: `client_id` are replaced by the test, because `TempEnvironment` knows one
+#: client and it is not `Client_004`.
+LIVE_NOTE = (
+    '{"schema":1,"receipt_id":"a587b166-35a1-473c-aa5a-409749f7b642",'
+    '"client_id":"Client_004","action":"filed","resolved_by":"desktop",'
+    '"resolved_at":"2026-09-09T16:14:23.045Z","values":{'
+    '"supplier_name":"LA BELLA RESTAURANT","invoice_date":"2025-06-04",'
+    '"net_amount":null,"vat_amount":null,"gross_amount":27.5,"currency":"GBP",'
+    '"category_code":"7406","category_name":"Subsistence"},'
+    '"remember_gl_for_supplier":false,'
+    '"original_review_files":["a587b166-35a1-473c-aa5a-409749f7b642.json"]}'
+)
+
+
+@contextmanager
+def trigger(value):
+    """Set the firm's client copy trigger for one test, and put it back.
+
+    A third copy of `tests/test_stage4_client_copy.py`'s helper, and four lines
+    for the reason recorded there: importing a test module from a test module
+    makes the import order decide whether a fixture is in place.
+    """
+    saved = config.CLIENT_COPY_TRIGGER
+    config.CLIENT_COPY_TRIGGER = value
+    try:
+        yield
+    finally:
+        config.CLIENT_COPY_TRIGGER = saved
 
 
 class BackfeedTestCase(unittest.TestCase):
@@ -390,9 +461,12 @@ class MalformedNoteTest(BackfeedTestCase):
             "no resolved_at": {
                 k: v for k, v in note_payload().items() if k != "resolved_at"
             },
-            "filed with no filed_path": {
-                k: v for k, v in note_payload().items() if k != "filed_path"
-            },
+            # ~~"filed with no filed_path"~~ **Removed 2026-09-09 by sub-step
+            # 10f.14.** That shape is what Desktop writes now and is legal: it
+            # means "settle this receipt" and goes through resolve_receipt().
+            # `NoteWithNoFiledPathSettlesTest` holds it. **This case was the
+            # live fault asserted as correct**, which is why it is struck here
+            # rather than deleted quietly.
             "filed with no values": {
                 k: v for k, v in note_payload().items() if k != "values"
             },
@@ -702,6 +776,690 @@ class NeverDeleteTest(BackfeedTestCase):
 
             failed = [n for n in self.note_names("failed") if not n.endswith(".error.txt")]
             self.assertEqual(len(failed), 2, failed)
+
+
+class NoteWithNoFiledPathSettlesTest(BackfeedTestCase):
+    """Sub-step 10f.14 finished, and it began as a live fault.
+
+    **What happened.** Amendment 299 stopped `fileReviewReceipt()` writing into
+    `Clients\\` and removed `filed_path` from the note, correctly: the pipeline
+    is the only writer there and its `client_copy_trigger` decides whether a
+    copy happens at all. **The other half of the contract still refused a
+    `filed` note without that field**, so on 2026-09-09 at 17:16:48 receipt
+    `a587b166-35a1-473c-aa5a-409749f7b642` sat at `status failed` with no
+    `resolution_events` row while being in the books in Desktop as LA BELLA
+    RESTAURANT, GBP 27.50. That is the disagreement between the database and the
+    books that section 12 exists to prevent.
+
+    **What the note means now.** Paul's decision of 2026-09-09: not "Desktop
+    filed this" but "these are the corrected values, settle this receipt". So a
+    note with no `filed_path` goes through `resolve_receipt()`, the same path
+    the console and the CLI use, which applies the corrections, re-validates,
+    categorises, calls the one gated client folder copy on the firm's trigger,
+    sets the receipt to `ok` and records the event.
+
+    **Desktop's own comment already said so**, read in
+    `IntelliBooks-Desktop-v3.html` on 2026-09-09: "The copy still happens: the
+    resolution note below reaches the pipeline, `resolve_receipt()` applies the
+    corrections and calls the client copy on the firm's own trigger". The two
+    halves were built by sessions that cannot see each other and one of them was
+    written against a pipeline that did not exist yet.
+
+    **A note that DOES carry `filed_path` is unchanged**, held by
+    `ValidFiledNoteTest` above and by `TheTwoShapesTakeDifferentPathsTest` below.
+    """
+
+    def seed_awaiting_settlement(self, env, receipt_id="r-1", status="failed",
+                                 **extraction):
+        """The state Desktop leaves behind NOW: nothing on disk, nothing filed.
+
+        Contrast `seed_desktop_filed()` above, which writes the image into
+        `Clients\\` because Desktop used to put it there. Desktop removes the
+        inbox item and writes the note, and that is all.
+
+        `status` defaults to `failed` rather than `needs_review`, because that is
+        the live receipt's status: its only extraction had no gross amount, which
+        is exactly the case an operator settles by typing one in.
+        """
+        repo = Repository()
+        try:
+            return env.seed(repo, receipt_id=receipt_id, status=status, **extraction)
+        finally:
+            repo.close()
+
+    def client_receipts_dir(self, tax_year="2025-26"):
+        """`2025-26`, and it is computed rather than eyeballed.
+
+        The UK tax year starts on 6 April, so the note's `2026-04-01` falls in
+        2025-26. `FILED_RELATIVE` above says `2026-27` and is not wrong: that is
+        a path Desktop composed and this fixture writes verbatim, never a value
+        `determine_tax_year()` produced. The settle path computes it, so the two
+        legitimately differ.
+        """
+        return (config.CLIENTS_ROOT / "Test Client" /
+                config.CLIENT_INTELLIBOOKS_FOLDER_NAME /
+                config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year)
+
+    def everything_under_clients(self):
+        root = config.CLIENTS_ROOT
+        if not root.exists():
+            return []
+        return sorted(p.relative_to(root).as_posix()
+                      for p in root.rglob("*") if p.is_file())
+
+    def test_the_receipt_is_settled_and_the_note_is_processed(self):
+        """The live fault, driven through a real `_consume_resolution_notes()`.
+
+        The three assertions that were false on Paul's machine: `ok`, a
+        `resolution_events` row, and the note out of the queue rather than in
+        `failed\\`.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            note = self.write_note(settle_payload())
+
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_applied"), 1,
+                             f"the note was not applied: {stats}")
+            self.assertEqual(self.note_names("failed"), [])
+            self.assertIn(note.name, self.note_names("processed"))
+
+            repo = Repository()
+            try:
+                receipt = repo.get_receipt("r-1")
+                self.assertEqual(receipt["status"], "ok")
+                self.assertIsNone(receipt["locked_at"], "the lock is released")
+
+                events = rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual(len(events), 1, events)
+                self.assertEqual(events[0]["actor"], "desktop")
+                self.assertEqual(events[0]["source"], "desktop")
+                self.assertEqual(events[0]["action"], "resolve")
+                self.assertEqual(events[0]["outcome"], "filed")
+
+                manual = rows(
+                    repo, "SELECT * FROM extractions WHERE engine = 'manual_correction'")
+                self.assertEqual(len(manual), 1)
+                self.assertEqual(manual[0]["supplier_name"], "Apcoa Parking")
+                self.assertEqual(manual[0]["gross_amount"], 96.00)
+                self.assertEqual(manual[0]["validation_status"], "ok")
+            finally:
+                repo.close()
+
+    def test_the_original_extraction_is_kept_because_extractions_are_append_only(self):
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(settle_payload())
+            consume_notes()
+            repo = Repository()
+            try:
+                engines = [r["engine"] for r in rows(
+                    repo, "SELECT engine FROM extractions WHERE receipt_id = 'r-1' "
+                          "ORDER BY extracted_at")]
+                self.assertEqual(engines, ["openai_vision", "manual_correction"])
+            finally:
+                repo.close()
+
+    def test_the_client_folder_copy_is_written_on_the_publish_trigger(self):
+        """The copy Desktop stopped writing, written by the one gated function.
+
+        Named from the note's own values, which is 18.2b's convention, and
+        recorded in `filed_path`. **One file, not two**: the same count the
+        Desktop-filed tests make, for the same reason.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.assertEqual(self.everything_under_clients(), [],
+                             "the fixture pre-filed something")
+            self.write_note(settle_payload())
+
+            consume_notes()
+
+            self.assertEqual(
+                self.everything_under_clients(),
+                ["Test Client/IntelliBooks/Receipts/2025-26/"
+                 "2026-04-01_apcoa-parking_96.00.pdf"])
+            repo = Repository()
+            try:
+                receipt = repo.get_receipt("r-1")
+                self.assertEqual(
+                    receipt["filed_path"],
+                    str(self.client_receipts_dir() /
+                        "2026-04-01_apcoa-parking_96.00.pdf"))
+                self.assertIsNotNone(receipt["filed_at"])
+            finally:
+                repo.close()
+
+    def test_no_sidecar_lands_beside_it(self):
+        """18.2b: image only. Amendment 296 is why it matters.
+
+        `scanFiledReceipts()` pairs an image with a sidecar on the full
+        filename, so a sidecar here becomes a books row with a gross of nought.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(settle_payload())
+            consume_notes()
+            self.assertEqual(
+                [f for f in self.everything_under_clients() if f.endswith(".json")],
+                [])
+
+    def test_every_trigger_settles_the_receipt(self):
+        """The brief's own requirement, and `post` is here as well as `never`.
+
+        On `never` and on `post` no copy is written and the receipt must still
+        reach `ok`: the settling is the database's business and the copy is the
+        firm's setting, and conflating them is what put a receipt in the books
+        and not in the database.
+        """
+        for value in ("publish", "post", "never"):
+            with self.subTest(trigger=value):
+                with TempEnvironment() as env, trigger(value):
+                    client_copy._reset_post_warning()
+                    self.seed_awaiting_settlement(env)
+                    self.write_note(settle_payload())
+
+                    stats = consume_notes()
+
+                    self.assertEqual(stats.get("notes_applied"), 1, stats)
+                    repo = Repository()
+                    try:
+                        receipt = repo.get_receipt("r-1")
+                        self.assertEqual(receipt["status"], "ok")
+                        self.assertEqual(
+                            len(rows(repo, "SELECT * FROM resolution_events")), 1)
+                    finally:
+                        repo.close()
+                    if value == "publish":
+                        self.assertEqual(len(self.everything_under_clients()), 1)
+                        self.assertIsNotNone(receipt["filed_path"])
+                    else:
+                        self.assertEqual(self.everything_under_clients(), [])
+                        self.assertIsNone(receipt["filed_path"])
+
+    def test_the_notes_category_wins_and_the_engines_suggestion_is_kept(self):
+        """A decision the brief left open: both, exactly as today.
+
+        The engine re-categorises for the audit trail and its suggestion is
+        never overwritten; the note's category goes into the correction columns
+        beside it and is the effective code. That is what `_apply_filed_note()`
+        does and what `resolve_receipt()` does with a GL override, so routing
+        the note's category through the override reproduces it rather than
+        changing it.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(settle_payload(values=dict(
+                settle_payload()["values"],
+                category_code="7100", category_name="Rent")))
+
+            consume_notes()
+
+            repo = Repository()
+            try:
+                categorisation, = rows(repo, "SELECT * FROM categorisations")
+                self.assertEqual(categorisation["correction_code"], "7100")
+                self.assertEqual(categorisation["correction_name"], "Rent")
+                self.assertIn("IntelliBooks Desktop",
+                              categorisation["correction_reason"])
+                self.assertNotEqual(
+                    categorisation["suggested_code"], "7100",
+                    "the engine's suggestion was overwritten, which is the audit "
+                    "trail this column exists to be")
+            finally:
+                repo.close()
+
+    def test_a_note_with_no_category_at_all_still_settles(self):
+        """Desktop does not require a category before filing, so `""` is common."""
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            values = dict(settle_payload()["values"],
+                          category_code="", category_name="")
+            self.write_note(settle_payload(values=values))
+
+            self.assertEqual(consume_notes().get("notes_applied"), 1)
+
+            repo = Repository()
+            try:
+                self.assertEqual(repo.get_receipt("r-1")["status"], "ok")
+                categorisation, = rows(repo, "SELECT * FROM categorisations")
+                self.assertIsNone(categorisation["correction_code"])
+            finally:
+                repo.close()
+
+    def test_the_idempotency_key_is_recorded_so_a_replay_changes_nothing(self):
+        """12.3 step 3, and it needed carrying onto the new path.
+
+        `resolve_receipt()` writes the event and knew nothing about notes, so
+        without the `note_resolved_at` it now takes, a note put back by hand
+        would be applied twice: a second `manual_correction` row and a second
+        client folder copy.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            payload = settle_payload()
+            self.write_note(payload)
+            consume_notes()
+
+            repo = Repository()
+            try:
+                first = rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual(len(first), 1)
+                self.assertIn(
+                    "note_resolved_at", first[0]["corrections_json"] or "",
+                    "the note's own timestamp is not in corrections_json, so "
+                    "_note_already_applied() cannot find this event")
+            finally:
+                repo.close()
+
+            # The note put back by hand, which is what Paul does with anything in
+            # failed\, and what a retry after a crash looks like.
+            again = self.write_note(payload, name="r-1_1753452131000.json")
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_applied"), 1, stats)
+            self.assertIn(again.name, self.note_names("processed"))
+            repo = Repository()
+            try:
+                self.assertEqual(
+                    len(rows(repo, "SELECT * FROM resolution_events")), 1,
+                    "the note was applied a second time")
+                self.assertEqual(
+                    len(rows(repo, "SELECT * FROM extractions "
+                                   "WHERE engine = 'manual_correction'")), 1)
+            finally:
+                repo.close()
+            self.assertEqual(len(self.everything_under_clients()), 1,
+                             "a second client folder copy")
+
+    def test_a_receipt_that_is_already_filed_is_refused_rather_than_refiled(self):
+        """The double-filing guard, on the new path.
+
+        `resolve_receipt()` step 1a refuses a receipt that already has a
+        `filed_path`, and that refusal is what stops a settle note re-filing a
+        receipt the pipeline has already copied. The note goes to `failed\\`,
+        which is where a disagreement belongs.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            repo = Repository()
+            try:
+                repo.mark_receipt_filed("r-1", str(
+                    self.client_receipts_dir() / "already-there.pdf"))
+            finally:
+                repo.close()
+            note = self.write_note(settle_payload())
+
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_failed"), 1, stats)
+            self.assertIn(note.name, self.note_names("failed"))
+            repo = Repository()
+            try:
+                self.assertEqual(rows(repo, "SELECT * FROM resolution_events"), [])
+            finally:
+                repo.close()
+
+    def test_values_that_do_not_validate_are_refused_and_the_note_fails(self):
+        """**A behaviour change, and it is flagged in the report rather than
+        smoothed over.**
+
+        `_apply_filed_note()` forces `ok` when `validate()` disagrees, on the
+        reasoning that a human had already filed the document, and appends
+        "filed by decision in Desktop despite: ...". `resolve_receipt()` does
+        not: it appends the attempt, records `still_invalid` and leaves the
+        receipt a review item, so the note lands in `failed\\` for a person.
+
+        **Reachable, not theoretical.** `fileReviewReceipt()` requires a
+        supplier, a real date and a gross above nought and checks nothing else,
+        read in `IntelliBooks-Desktop-v3.html` on 2026-09-09, so a net and a VAT
+        that do not sum to the gross within a penny can be filed in Desktop
+        today. Asserted as it actually behaves; whether it should force `ok` is
+        Paul's, and flag 1 of
+        `2026-09-09_REPORT_claude_code_desktop_note.md` carries it.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            note = self.write_note(settle_payload(values=dict(
+                settle_payload()["values"],
+                net_amount=80, vat_amount=16, gross_amount=100)))
+
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_failed"), 1, stats)
+            self.assertIn(note.name, self.note_names("failed"))
+            error = (config.RESOLUTIONS_DIR / "failed" /
+                     (note.name + ".error.txt")).read_text(encoding="utf-8")
+            self.assertIn("still_invalid", error)
+            self.assertIn("gross mismatch", error)
+            repo = Repository()
+            try:
+                receipt = repo.get_receipt("r-1")
+                self.assertEqual(receipt["status"], "needs_review")
+                self.assertIsNone(receipt["filed_path"])
+                events = rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual([e["outcome"] for e in events], ["still_invalid"])
+                self.assertNotIn("note_resolved_at",
+                                 events[0]["corrections_json"] or "",
+                                 "a failed attempt must not carry the idempotency "
+                                 "key, or the retry would be reported as already "
+                                 "applied and the note moved to processed\\")
+            finally:
+                repo.close()
+            self.assertEqual(self.everything_under_clients(), [])
+
+    def test_the_live_note_from_pauls_machine_settles(self):
+        """The exact bytes from `Resolutions\\failed\\`, read on 2026-09-09.
+
+        Copied rather than paraphrased, because the shape a real Desktop writes
+        is the thing under test: `net_amount` and `vat_amount` are both null,
+        the category is a four-digit code with its name beside it, and
+        `original_review_files` names the inbox item.
+
+        `client_id` and `receipt_id` are the fixture's, because
+        `TempEnvironment` knows one client and it is not `Client_004`. Nothing
+        else is altered.
+        """
+        payload = json.loads(LIVE_NOTE)
+        payload["receipt_id"] = "r-1"
+        payload["client_id"] = "CLIENT001"
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(payload)
+
+            self.assertEqual(consume_notes().get("notes_applied"), 1)
+
+            repo = Repository()
+            try:
+                receipt = repo.get_receipt("r-1")
+                self.assertEqual(receipt["status"], "ok")
+                manual, = rows(repo, "SELECT * FROM extractions "
+                                     "WHERE engine = 'manual_correction'")
+                self.assertEqual(manual["supplier_name"], "LA BELLA RESTAURANT")
+                self.assertEqual(manual["gross_amount"], 27.5)
+                self.assertIsNone(manual["net_amount"])
+                self.assertIsNone(manual["vat_amount"])
+                categorisation, = rows(repo, "SELECT * FROM categorisations")
+                self.assertEqual(categorisation["correction_code"], "7406")
+                self.assertEqual(categorisation["correction_name"], "Subsistence")
+            finally:
+                repo.close()
+            self.assertEqual(
+                self.everything_under_clients(),
+                ["Test Client/IntelliBooks/Receipts/2025-26/"
+                 "2025-06-04_la-bella-restaurant_27.50.pdf"])
+
+    def test_a_null_amount_in_the_note_overwrites_a_figure_the_extractor_read(self):
+        """The stale-figure risk `_apply_filed_note()` guards against, on the
+        merging path, and it is handled by key presence rather than by not
+        merging.
+
+        `_merge_corrections()` merges by key presence, not truthiness, so a
+        `net_amount` of null in the note lands as NULL rather than inheriting
+        the extractor's number. Without that a corrected gross could sit beside
+        a stale net and `validate()` would call it a mismatch.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(
+                env, net_amount=70.0, vat_amount=14.0, gross_amount=84.0,
+                supplier_name="Apcoa Parking", validation_status="ok")
+            self.write_note(settle_payload(values=dict(
+                settle_payload()["values"],
+                net_amount=None, vat_amount=None, gross_amount=96)))
+
+            self.assertEqual(consume_notes().get("notes_applied"), 1)
+
+            repo = Repository()
+            try:
+                manual, = rows(repo, "SELECT * FROM extractions "
+                                     "WHERE engine = 'manual_correction'")
+                self.assertIsNone(manual["net_amount"])
+                self.assertIsNone(manual["vat_amount"])
+                self.assertEqual(manual["gross_amount"], 96.0)
+            finally:
+                repo.close()
+
+    def test_the_two_fields_desktop_never_sends_are_carried_forward(self):
+        """`receipt_ref_number` and `receipt_time`.
+
+        The extractor read them, Desktop has no input for either, and nobody has
+        contradicted them. `_apply_filed_note()` carries them forward
+        explicitly; `_merge_corrections()` does it by key presence, so this is
+        the same answer reached a different way and is worth pinning.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(
+                env, receipt_ref_number="INV-9001", receipt_time="13:45")
+            self.write_note(settle_payload())
+
+            consume_notes()
+
+            repo = Repository()
+            try:
+                manual, = rows(repo, "SELECT * FROM extractions "
+                                     "WHERE engine = 'manual_correction'")
+                self.assertEqual(manual["receipt_ref_number"], "INV-9001")
+                self.assertEqual(manual["receipt_time"], "13:45")
+            finally:
+                repo.close()
+
+
+class TheTwoShapesTakeDifferentPathsTest(BackfeedTestCase):
+    """Deliverable 2: the choice is on the field, and both paths survive.
+
+    Older notes exist on disk and the console may still send one, so
+    `_apply_filed_note()` is not deleted. **The discriminator is observable
+    rather than asserted on a mock**: the Desktop-filed path writes no client
+    folder copy and records the note's own path, while the settle path writes
+    one copy and records where it put it.
+    """
+
+    def test_a_note_with_filed_path_records_it_and_writes_no_copy(self):
+        with TempEnvironment() as env:
+            target = self.seed_desktop_filed(env)
+            before = self.folder_listing(target.parent)
+
+            self.write_note(note_payload())
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_applied"), 1, stats)
+            self.assertEqual(
+                self.folder_listing(target.parent), before,
+                "the settle path ran for a note that carries filed_path, so a "
+                "second copy was written")
+            repo = Repository()
+            try:
+                self.assertEqual(repo.get_receipt("r-1")["filed_path"], str(target))
+            finally:
+                repo.close()
+
+    def test_a_note_without_filed_path_writes_the_copy_and_records_that(self):
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo, receipt_id="r-1", status="failed")
+            finally:
+                repo.close()
+            self.write_note(settle_payload())
+
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_applied"), 1, stats)
+            repo = Repository()
+            try:
+                filed = repo.get_receipt("r-1")["filed_path"]
+            finally:
+                repo.close()
+            self.assertTrue(filed, "nothing was filed at all")
+            self.assertTrue(Path(filed).exists(), filed)
+            self.assertTrue(
+                Path(filed).is_relative_to(config.CLIENTS_ROOT), filed)
+
+    def test_the_choice_is_made_on_the_field_and_from_the_syntax_tree(self):
+        """A guard over the set, not a test of one path.
+
+        `apply_resolution_note()` must reach both functions and choose between
+        them, so deleting either branch fails here rather than passing quietly.
+        `CLAUDE.md`: only a guard over the set proves the set.
+        """
+        import ast
+        import inspect
+
+        import worker.resolution.service as service
+
+        tree = ast.parse(inspect.getsource(service))
+        target = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "apply_resolution_note")
+        called = sorted({
+            ast.unparse(node.func).split(".")[-1]
+            for node in ast.walk(target) if isinstance(node, ast.Call)})
+        for name in ("_apply_filed_note", "_settle_note"):
+            self.assertIn(name, called, f"{name}() is unreachable: {called}")
+        self.assertNotIn(
+            "resolve_receipt", called,
+            "apply_resolution_note() reaches resolve_receipt() directly, so the "
+            "note-to-corrections translation is not in one place")
+
+    def test_the_settle_path_never_calls_the_client_folder_writer_itself(self):
+        """10f.11's one writer. The copy goes through the gated function.
+
+        Asked of the tree rather than of a run, because a run on the `never`
+        trigger would pass against a second writer that simply had not fired.
+        """
+        import ast
+        import inspect
+
+        import worker.resolution.service as service
+
+        tree = ast.parse(inspect.getsource(service))
+        target = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_settle_note")
+        called = sorted({
+            ast.unparse(node.func).split(".")[-1]
+            for node in ast.walk(target) if isinstance(node, ast.Call)})
+        for forbidden in ("write_client_copy", "file_receipt",
+                          "mark_receipt_filed", "save_extraction"):
+            self.assertNotIn(forbidden, called,
+                             f"_settle_note() calls {forbidden}() itself rather "
+                             "than going through resolve_receipt()")
+        self.assertIn("resolve_receipt", called)
+
+
+class LearningFromASettleNoteTest(BackfeedTestCase):
+    """A decision the brief did not settle, taken here and stated.
+
+    `_apply_filed_note()` learns only when the client's chart confirmed the
+    code: `if note.remember_gl_for_supplier and code and category.chart_confirmed`.
+    `resolve_receipt()`'s step 13 has no chart test, because its `Corrections`
+    come from a person looking at a picker built from the chart.
+
+    **So `_settle_note()` withholds the tick rather than passing it on when the
+    chart did not confirm the code**, which keeps the guarantee without adding a
+    parameter to `resolve_receipt()` and changing it for the console and the
+    CLI. A mapping is read back by layer 1 as an exact match with confidence
+    `high`, so writing one nothing has confirmed is the fault worth avoiding.
+
+    **The chart cannot be read at all in this fixture**, because
+    `TempEnvironment` points `CHARTS_DIR` at a folder it deliberately does not
+    create. That is the "could not be read" arm of `_CategoryDecision`, which
+    holds a code and does not confirm it, and it is the arm that must not
+    learn.
+
+    **Every note here carries `category_code`, and that is not cosmetic.**
+    Without a code `_resolve_category()` returns `code=None`, so
+    `_settle_note()` withholds the tick for want of a code and the chart test
+    is never reached. Written without one first, and a mutation dropping
+    `chart_confirmed` was then caught only by the source guard below, because
+    the two behavioural tests could not fail. Disclosed in
+    `2026-09-09_REPORT_claude_code_desktop_note.md`.
+    """
+
+    def note(self, remember):
+        """A settle note carrying a real four-digit code and the tick."""
+        return settle_payload(
+            remember_gl_for_supplier=remember,
+            values=dict(settle_payload()["values"],
+                        category_code="7100", category_name="Rent"))
+
+    def test_the_tick_does_not_learn_a_code_no_chart_confirmed(self):
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo, receipt_id="r-1", status="failed")
+            finally:
+                repo.close()
+            self.write_note(self.note(remember=True))
+
+            self.assertEqual(consume_notes().get("notes_applied"), 1)
+
+            repo = Repository()
+            try:
+                self.assertEqual(
+                    rows(repo, "SELECT * FROM categorisations_client_vendors"), [],
+                    "a mapping was learned from a code the client's chart never "
+                    "confirmed, and layer 1 reads it back as high confidence")
+                self.assertEqual(
+                    [e["action"] for e in rows(repo, "SELECT * FROM resolution_events")],
+                    ["resolve"],
+                    "a learn_vendor row was written for a mapping that was not "
+                    "learned")
+            finally:
+                repo.close()
+
+    def test_without_the_tick_nothing_is_learned_either(self):
+        """The control. Both arms answer "nothing learned", so without this the
+        test above would pass against a path that can never learn at all.
+
+        It is asserted on the tick's own journey rather than on the chart,
+        because making the chart CONFIRM a code needs a published bundle and
+        `tests/test_chart_bundle.py` is where that lives. What both tests do
+        drive is the unreadable-chart arm, which is the one that must not learn.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo, receipt_id="r-1", status="failed")
+            finally:
+                repo.close()
+            self.write_note(self.note(remember=False))
+
+            self.assertEqual(consume_notes().get("notes_applied"), 1,
+                             "the note did not apply, so an empty mapping table "
+                             "proves nothing about the tick")
+
+            repo = Repository()
+            try:
+                self.assertEqual(repo.get_receipt("r-1")["status"], "ok")
+                self.assertEqual(
+                    rows(repo, "SELECT * FROM categorisations_client_vendors"), [])
+            finally:
+                repo.close()
+
+    def test_the_suppression_is_where_it_says_it_is(self):
+        """From the tree: `_settle_note()` reads `chart_confirmed`.
+
+        Without this the two tests above are satisfied by a fixture that could
+        not learn anyway, which is exactly what they are: the chart is
+        unreadable here. So the mechanism is asserted on the source as well.
+        """
+        import ast
+        import inspect
+
+        import worker.resolution.service as service
+
+        tree = ast.parse(inspect.getsource(service))
+        target = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_settle_note")
+        read = {node.attr for node in ast.walk(target)
+                if isinstance(node, ast.Attribute)}
+        self.assertIn("chart_confirmed", read,
+                      "_settle_note() passes remember_gl_for_supplier on without "
+                      "asking whether the chart confirmed the code")
 
 
 class ContractShapeTest(unittest.TestCase):

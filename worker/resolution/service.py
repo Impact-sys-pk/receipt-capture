@@ -222,7 +222,18 @@ class ResolutionNote:
     values: Dict[str, Any] = field(default_factory=dict)
     category_name: Optional[str] = None
     category_code: Optional[str] = None
+    # **Optional even for a `filed` note, since 2026-09-09, and its presence is
+    # what chooses between the two things such a note can mean.** Sub-step
+    # 10f.14: with it, "Desktop filed this at that path"; without it, "these are
+    # the corrected values, settle this receipt". See `parse_resolution_note()`.
     filed_path: Optional[str] = None
+    # Read by `_receipt_for_note()` as the fallback that finds a receipt when the
+    # note carries no `receipt_id`, matching each basename against
+    # `receipts.filename`. **Desktop now sends the INBOX item, `{receipt_id}.json`,
+    # rather than the review pair**, and that never matches an original
+    # attachment name, so the fallback no longer works for a Desktop note.
+    # Flagged in `2026-09-09_REPORT_claude_code_desktop_note.md`; harmless today
+    # because `fileReviewReceipt()` always sends `receipt_id`.
     original_review_files: List[str] = field(default_factory=list)
     reason: Optional[str] = None
     # 11.3's opt-in tick, carried at the top level of the note rather than inside
@@ -327,10 +338,31 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
                 )
         return note
 
-    filed_path = _note_text(raw, "filed_path")
-    if not filed_path:
-        raise ResolutionNoteError("'filed_path' is required for a filed note")
-    note.filed_path = filed_path
+    # **`filed_path` is OPTIONAL from 2026-09-09, and its presence chooses which
+    # of two things this note means.** Sub-step 10f.14, and Paul's decision.
+    #
+    # ~~`filed_path` is required for a filed note.~~ **Struck.** It was required
+    # because a `filed` note meant "Desktop has already put the image at this
+    # path". Amendment 299 stopped `fileReviewReceipt()` writing into `Clients\`
+    # at all, correctly: the pipeline is the only writer there and the firm's
+    # `client_copy_trigger` decides whether a copy happens, so a path from
+    # Desktop would be one product naming the other's file. **The refusal was
+    # left in place and it was a live fault**: receipt
+    # a587b166-35a1-473c-aa5a-409749f7b642 went into the books in Desktop and
+    # stayed `failed` in the database with no `resolution_events` row, which is
+    # the disagreement section 12 exists to prevent.
+    #
+    # **With the field: "Desktop filed this at that path."** `_apply_filed_note()`
+    # records it and writes nothing. Kept because older notes carry it, they are
+    # still on disk, and any other writer may still send one.
+    #
+    # **Without it: "these are the corrected values, settle this receipt."**
+    # `_settle_note()` hands them to `resolve_receipt()`, the path the console and
+    # the CLI use, which writes the client folder copy itself on the trigger.
+    #
+    # **`action` stays `filed` for both**, which is a decision and not an
+    # oversight; see `_settle_note()`.
+    note.filed_path = _note_text(raw, "filed_path")
 
     raw_values = raw.get("values")
     if not isinstance(raw_values, dict):
@@ -613,7 +645,8 @@ def _merge_corrections(extraction: Dict[str, Any], corrections: Corrections) -> 
 
 
 def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
-                    actor, source, expected_extraction_id=None) -> ResolutionOutcome:
+                    actor, source, expected_extraction_id=None,
+                    note_resolved_at=None) -> ResolutionOutcome:
     """Apply corrections, re-validate, categorise, file. Append-only throughout.
 
     Design document 4.3. The step numbers in the comments below are that section's,
@@ -624,6 +657,21 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
     actor is who did it; source is which tool they used, 'console' | 'cli' |
     'desktop'. Both are required: a default would be wrong for three of the four
     callers and the point of the column is that nobody has to guess.
+
+    **`note_resolved_at` is the back-feed's idempotency key and is None for
+    everybody but `_settle_note()`.** Added 2026-09-09 by sub-step 10f.14. 12.3
+    step 3 keys "has this note already been applied" on the note's own
+    timestamp, which `_note_already_applied()` reads out of
+    `resolution_events.corrections_json`. This function knew nothing about notes,
+    so without it a settle note put back by hand would be applied twice: a
+    second `manual_correction` row and a second client folder copy.
+
+    **It is recorded on the `filed` event only, and not on `still_invalid`.**
+    `_note_already_applied()` returns any event carrying the key, and
+    `apply_resolution_note()` then reports the note as applied and its caller
+    moves it to `processed\\`. Stamping a failed attempt would therefore turn a
+    retry into a silent success. `_apply_filed_note()` records it in the same one
+    place for the same reason.
     """
     # 1. Load receipt.
     receipt = repo.get_receipt(receipt_id)
@@ -750,6 +798,9 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 pipeline_version=pipeline_version,
                 update_status=not preserve_status,
             )
+            # No `note_resolved_at` here, deliberately. See this function's
+            # docstring: a stamped failure reads as an applied note and its file
+            # is moved to `processed\\` on the next poll.
             _record_event(
                 repo, receipt_id, actor, source, "resolve", "still_invalid",
                 extraction_id=attempt_id, corrections=corrections,
@@ -941,11 +992,15 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                     "returned no vendor_key, so nothing was learned"
                 )
 
-        # 14. Audit row.
+        # 14. Audit row. `note_resolved_at` is the back-feed's idempotency key
+        #     and is None for every caller but `_settle_note()`. This is the one
+        #     event that carries it; see this function's docstring for why the
+        #     `still_invalid` row above must not.
         _record_event(
             repo, receipt_id, actor, source, "resolve", "filed",
             extraction_id=extraction_id, corrections=corrections,
             gl_override_code=override_code,
+            note_resolved_at=note_resolved_at,
         )
 
         # Two wordings, because there are two outcomes now and one of them
@@ -1210,6 +1265,122 @@ def _resolve_category(note: ResolutionNote, client_id: Optional[str]) -> _Catego
             "chart of accounts." + kept
         ),
     )
+
+
+def _settle_note(repo, categorisation_engine, receipt: Dict[str, Any],
+                 note: ResolutionNote) -> ResolutionOutcome:
+    """12.3 step 5, second shape. Settle a receipt from the note's values.
+
+    **Sub-step 10f.14 and Paul's decision of 2026-09-09.** A `filed` note with
+    no `filed_path` no longer says "Desktop filed this"; it says "these are the
+    corrected values, settle this receipt". Amendment 299 stopped
+    `fileReviewReceipt()` writing into `Clients\\` and stopped it naming a path,
+    and the pipeline kept refusing such a note, so one receipt reached the books
+    in Desktop and stayed `failed` in the database.
+
+    **This function translates and delegates. It writes nothing itself.** Every
+    write is `resolve_receipt()`'s, which is the path the console and the CLI
+    take: it applies the corrections, re-validates, categorises, applies the
+    category as a GL override, and calls `copy_for_published_receipt()`, the one
+    gated writer into `Clients\\`. So a `never` firm gets no copy here exactly as
+    it gets none anywhere, and there is no second implementation of resolution to
+    drift from the first. `TheTwoShapesTakeDifferentPathsTest` holds that on the
+    syntax tree.
+
+    ## Three decisions taken here, because the brief left them open
+
+    **`action` stays `filed` rather than becoming `settle`.** The word is now
+    wrong for this shape and the honest name would be `settle`. It is not
+    renamed because `action` is a field in a file format: notes already written
+    carry `filed`, unapplied ones sit in `Resolutions\\` and in `failed\\`,
+    `NOTE_ACTIONS` validates against it, and Desktop is built by a session that
+    cannot see this one, so neither half can be made to ship first. `NOTE_SCHEMA`
+    would have to bump, which its own comment says to do only when both halves
+    change. **The clean route is to add `settle` to `NOTE_ACTIONS` alongside
+    `filed`, switch Desktop, then retire `filed` when no unapplied note carries
+    it**, which is checkable because nothing in `Resolutions\\` is ever deleted.
+    That needs the Desktop half and Paul's word, so it is reported rather than
+    done.
+
+    **`actor` and `source` stay `desktop`.** The correction is Desktop's and the
+    filing is now the pipeline's, but `resolution_events` records who decided,
+    not who wrote the file: `filed_path` and the copy record that.
+    **`_note_already_applied()` also filters on `source == DESKTOP_SOURCE`**, so
+    changing `source` would silently break idempotency for every note.
+
+    **The category is applied as a GL override and the engine still
+    categorises.** That is what `_apply_filed_note()` does, so routing the
+    note's code and name through `Corrections.gl_*` reproduces today's rows
+    rather than changing them: the engine's suggestion stays in
+    `suggested_code`, which is the audit trail, and the person's choice sits in
+    the correction columns and is the effective code.
+
+    ## And one guarantee carried across by hand
+
+    **The tick is withheld when the client's chart did not confirm the code.**
+    `_apply_filed_note()` learns only on `note.remember_gl_for_supplier and code
+    and category.chart_confirmed`; `resolve_receipt()`'s step 13 has no chart
+    test, because its corrections come from a person using a picker built from
+    the chart. A mapping is read back by layer 1 as an exact match with
+    confidence `high`, so writing one nothing has confirmed would apply a code
+    confidently to every future receipt from that vendor. Withheld here rather
+    than by adding a parameter to `resolve_receipt()`, which serves the console
+    and the CLI and must not change for them.
+    """
+    receipt_id = receipt["receipt_id"]
+    category = _resolve_category(note, receipt.get("client_id"))
+
+    # Only the fields the note actually carried, which is what
+    # `_merge_corrections()` merges on: presence, not truthiness. A `net_amount`
+    # of null in the note therefore lands as NULL rather than inheriting the
+    # extractor's figure, which is the stale-figure risk `_apply_filed_note()`
+    # guards against by not merging at all. `receipt_ref_number` and
+    # `receipt_time` are absent from every Desktop note, so they are carried
+    # forward, which is what that function does explicitly.
+    values = {name: note.values[name] for name in CORRECTABLE_FIELDS
+              if name in note.values}
+
+    remember = bool(note.remember_gl_for_supplier and category.code
+                    and category.chart_confirmed)
+    if note.remember_gl_for_supplier and not remember:
+        logger.warning(
+            f"remember_gl_for_supplier was ticked for {receipt_id} but the "
+            f"code {category.code!r} is not one the client's chart confirmed, "
+            "so nothing will be learned. A mapping is read back by layer 1 as "
+            "an exact match with high confidence"
+        )
+
+    corrections = Corrections(
+        values=values,
+        gl_nominal_code=category.code,
+        gl_account_name=category.name,
+        gl_correction_reason="category from the IntelliBooks Desktop resolution note",
+        remember_gl_for_supplier=remember,
+    )
+
+    logger.info(
+        f"settling receipt {receipt_id} from the IntelliBooks Desktop note "
+        f"resolved at {note.resolved_at}: the note names no filed_path, so the "
+        "client folder copy is this pipeline's to make on the firm's trigger"
+    )
+    outcome = resolve_receipt(
+        repo, categorisation_engine, receipt_id, corrections,
+        actor=DESKTOP_ACTOR, source=DESKTOP_SOURCE,
+        note_resolved_at=note.resolved_at,
+    )
+    if category.validation_note:
+        # The chart's verdict on the code, which `_apply_filed_note()` appends to
+        # the extraction row. `resolve_receipt()` writes that row and has no
+        # notion of a note, so it is surfaced on the outcome instead of being
+        # dropped. Reported rather than written into the row, because the row is
+        # append-only and already saved by the time this returns.
+        outcome.validation_notes = list(outcome.validation_notes or []) + [
+            category.validation_note]
+        logger.info(
+            f"the chart's verdict on the note's category for {receipt_id}: "
+            f"{category.validation_note}"
+        )
+    return outcome
 
 
 def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
@@ -1478,11 +1649,15 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
 def apply_resolution_note(repo, categorisation_engine, note: dict) -> ResolutionOutcome:
     """Back-feed entry point. Design document 12.3.
 
-    Validates the note, finds its receipt, then either records the filing Desktop
-    has already done or discards the receipt, with actor='desktop' and
-    source='desktop'. It does not reimplement resolution: a discard goes straight to
-    `discard_receipt()`, and the filed path is the one documented divergence, for the
-    reason in `_apply_filed_note()`.
+    Validates the note, finds its receipt, then does one of three things with
+    actor='desktop' and source='desktop': discards the receipt, records a filing
+    Desktop has already done, or settles the receipt from the note's corrected
+    values.
+
+    **It does not reimplement resolution.** A discard goes straight to
+    `discard_receipt()`, a note with no `filed_path` goes straight to
+    `resolve_receipt()` through `_settle_note()`, and a note that carries one is
+    the single documented divergence, for the reason in `_apply_filed_note()`.
 
     Returns an outcome and never raises. `filed` and `discarded` mean the note was
     applied and the caller may move it to `processed\\`. Anything else means it was
@@ -1537,4 +1712,10 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
             note_resolved_at=parsed.resolved_at,
         )
 
-    return _apply_filed_note(repo, categorisation_engine, receipt, parsed)
+    # Sub-step 10f.14. **The field chooses, not the action word.** See
+    # `parse_resolution_note()` for what each shape means and
+    # `TheTwoShapesTakeDifferentPathsTest` for the guard that both stay
+    # reachable.
+    if parsed.filed_path:
+        return _apply_filed_note(repo, categorisation_engine, receipt, parsed)
+    return _settle_note(repo, categorisation_engine, receipt, parsed)

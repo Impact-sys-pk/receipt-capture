@@ -33,9 +33,9 @@ seventeen.
 
 ### Stage 1: the pipeline publishes as well as filing
 
-**Sub-steps ~~10f.1~~ 10f.2 to 10f.7 and 10f.36. Corrected 2026-09-08 by amendment 279: 10f.1 is deferred out of this stage and is not cancelled**, because there is one destination today and a column whose every row holds the same value is not a setting yet. The pipeline gains a
-firm setting per destination address, the CSV switch, and an inbox writer at
-`IntelliBooks\Inbox\`: one JSON file per receipt, the image embedded, the client inside the item,
+**Sub-steps ~~10f.1~~ ~~10f.2 to 10f.7~~ 10f.2 and 10f.4 to 10f.7, and 10f.36. Corrected 2026-09-08 by amendment 279: 10f.1 is deferred out of this stage and is not cancelled. Corrected again the same day by amendment 280: 10f.3 is deferred with it, so F15 leaves this stage too and piece 1 is F14 alone**, because there is one destination today and a column whose every row holds the same value is not a setting yet. The pipeline gains a
+firm setting per destination address, ~~the CSV switch,~~ and an inbox writer at
+~~`IntelliBooks\Inbox\`~~ `IntelliBooks\Incoming\`: one JSON file per receipt, the image embedded, the client inside the item,
 written temp-name-and-rename. **Plus the record that it published**, which 10f.36 adds and which
 everything after this depends on.
 
@@ -47,11 +47,13 @@ and the worst outcome of a defect is a file nobody opens.
 
 ~~**Pipeline only. One brief.**~~ **CORRECTED 2026-09-08, within the hour, and the correction was found by starting to write the brief. Stage 1 is NOT pipeline only and it is three pieces, which is the shape sub-step 10e.14 already used for `client_top_folder`.**
 
-**Piece 1, the consultant session's. TWO fields, not three. Amendment 279.** **F14**, each destination's address, and **F15**, the always-on CSV switch, become fields on **Firm Settings** in the **Intellibills Settings** card. **Both sit in the "Decided and not built yet" card today**, read there on 2026-09-08, and they move out of it. ~~**C20**, this client's publishing destination, on the **Client Settings** tab~~ **is deferred with 10f.1.** **F16 stays in that card**, being 10f.12 and stage 4's.
+**Piece 1, the consultant session's. ONE field. Amendment 280.** ~~TWO fields, not three. Amendment 279.~~ **F14**, each destination's address, becomes a field on **Firm Settings** in the **Intellibills Settings** card. ~~and **F15**, the always-on CSV switch,~~ **F15 is deferred with 10f.1 and 10f.3 by amendment 280**, because nothing says what the CSV contains, where it is written or when. **F14 sits in the "Decided and not built yet" card today**, read there on 2026-09-08, and it moves out of it. ~~**C20**, this client's publishing destination, on the **Client Settings** tab~~ **is deferred with 10f.1.** **F15 and F16 stay in that card**, F15 by amendment 280 and F16 being 10f.12 and stage 4's.
+
+**The three names, fixed by amendment 280 and carried in full at sub-step 10f.2.** The field is `publish_destinations` on the firm record in `Intellibills\firms.json`. It is an object keyed by destination. The internal destination's key is `intellibooks`, and its value is a folder name relative to the practice root. **Paul's value is `{"intellibooks": "Incoming"}`**, and the folder is `IntelliBooks\Incoming\`, renamed from `IntelliBooks\Inbox\` by the same amendment.
 
 **Piece 2, Paul's.** He sets the values once, the way he typed `client_top_folder` at 16:32 BST on 2026-09-07.
 
-**Piece 3, Claude Code's.** The pipeline reads the three with no default and no fallback, writes the inbox item, and records the publish. **That is the brief.**
+**Piece 3, Claude Code's.** The pipeline reads ~~the three~~ **the one, `publish_destinations`,** with no default and no fallback, writes the inbox item into `IntelliBooks\Incoming\`, and records the publish. **Corrected 2026-09-08 by amendment 280: amendment 279 made it two and deferring F15 makes it one.** **That is the brief.**
 
 **Why the order is fixed rather than a preference.** Sub-step 10d.19 stopped `DEFAULT_FIRM_ID` being a fallback and amendment 245 made the roots required, so **this project's own rule is that a setting the pipeline needs has no default**. A pipeline that refuses to start without a value nobody can set yet is a pipeline that cannot start. **The field comes first, then the value, then the reader.**
 
@@ -99,6 +101,7 @@ needed and both survived.
 - **10f.28**, the Desktop status pill, and **10f.30**, the live checks. Both wait for the Receipts tab
   to settle, which stage 4 does.
 - **10f.34**, the Review queue's all-clients view. It comes after 10f.15, so after stage 4.
+- **10f.3 and F15**, the always-on CSV export. **Deferred 2026-09-08 by amendment 280**, because nothing says what the CSV contains, where it is written or when, and its customer is a standalone Intellibills firm which does not exist yet. **Deferred and not cancelled**, and F15 stays in the Decided and not built yet card.
 - **Item 174** and **item 176**. Recorded, not scheduled.
 
 ## 4. The open questions, and each is Paul's
@@ -108,7 +111,7 @@ needed and both survived.
 2. **Which of the three client-folder-copy triggers Intellitax itself uses**, per 10f.12: on
    successful publish, at Post, or never. It is a firm setting and Paul is a firm.
 3. ~~**Whether stage 1's destination work is worth building now**, given one destination exists.
-   10f.1 to 10f.3 are the settings model for something with one member.~~ **ANSWERED 2026-09-08. Paul: build F14 and F15, defer 10f.1.** Amendment 279 carries the reasoning. **The address becomes a setting rather than a literal; the per-client column waits for a second destination.**
+   10f.1 to 10f.3 are the settings model for something with one member.~~ **ANSWERED 2026-09-08. Paul: build F14, defer 10f.1.** ~~build F14 and F15~~ **Corrected the same day by amendment 280, which defers 10f.3 and F15 as well, because a switch with no defined output is not a setting yet.** Amendment 279 carries the reasoning for 10f.1 and amendment 280 for 10f.3. **The address becomes a setting rather than a literal, the per-client column waits for a second destination, and the CSV switch waits for a defined output.**
 4. **Whether the test estate is cleared before stage 3 or before 10i**, which is item 168. It says
    immediately before 10i and stage 3 is a live test.
 

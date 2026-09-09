@@ -34,6 +34,7 @@ the new half; `ValidFiledNoteTest` still holds the old one.
 """
 
 import json
+import logging
 import sys
 import types
 import unittest
@@ -143,6 +144,47 @@ LIVE_NOTE = (
 )
 
 
+#: The repository root, for the tests that read a production file's own source.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class Capture(logging.Handler):
+    """Collect records off one logger. A third copy, and four lines.
+
+    `tests/test_stage4_client_copy.py` and `tests/test_client_copy_collision.py`
+    each carry one, for the reason `trigger()` below carries: importing a test
+    module from a test module makes the import order decide whether a fixture is
+    in place.
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+    def messages(self, level=None):
+        return [r.getMessage() for r in self.records
+                if level is None or r.levelno == level]
+
+
+@contextmanager
+def captured(name, level=logging.INFO):
+    logger = logging.getLogger(name)
+    handler = Capture()
+    saved_level, saved_propagate = logger.level, logger.propagate
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    logger.propagate = False
+    try:
+        yield handler
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(saved_level)
+        logger.propagate = saved_propagate
+
+
 @contextmanager
 def trigger(value):
     """Set the firm's client copy trigger for one test, and put it back.
@@ -196,6 +238,44 @@ class BackfeedTestCase(unittest.TestCase):
         else:
             path.write_text(str(payload), encoding="utf-8")
         return path
+
+    def seed_awaiting_settlement(self, env, receipt_id="r-1", status="failed",
+                                 **extraction):
+        """The state Desktop leaves behind NOW: nothing on disk, nothing filed.
+
+        Contrast `seed_desktop_filed()` above, which writes the image into
+        `Clients\\` because Desktop used to put it there. Desktop removes the
+        inbox item and writes the note, and that is all.
+
+        `status` defaults to `failed` rather than `needs_review`, because that is
+        the live receipt's status: its only extraction had no gross amount, which
+        is exactly the case an operator settles by typing one in.
+        """
+        repo = Repository()
+        try:
+            return env.seed(repo, receipt_id=receipt_id, status=status, **extraction)
+        finally:
+            repo.close()
+
+    def client_receipts_dir(self, tax_year="2025-26"):
+        """`2025-26`, and it is computed rather than eyeballed.
+
+        The UK tax year starts on 6 April, so the note's `2026-04-01` falls in
+        2025-26. `FILED_RELATIVE` above says `2026-27` and is not wrong: that is
+        a path Desktop composed and this fixture writes verbatim, never a value
+        `determine_tax_year()` produced. The settle path computes it, so the two
+        legitimately differ.
+        """
+        return (config.CLIENTS_ROOT / "Test Client" /
+                config.CLIENT_INTELLIBOOKS_FOLDER_NAME /
+                config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year)
+
+    def everything_under_clients(self):
+        root = config.CLIENTS_ROOT
+        if not root.exists():
+            return []
+        return sorted(p.relative_to(root).as_posix()
+                      for p in root.rglob("*") if p.is_file())
 
     def receipt(self, receipt_id="r-1"):
         repo = Repository()
@@ -809,44 +889,6 @@ class NoteWithNoFiledPathSettlesTest(BackfeedTestCase):
     `ValidFiledNoteTest` above and by `TheTwoShapesTakeDifferentPathsTest` below.
     """
 
-    def seed_awaiting_settlement(self, env, receipt_id="r-1", status="failed",
-                                 **extraction):
-        """The state Desktop leaves behind NOW: nothing on disk, nothing filed.
-
-        Contrast `seed_desktop_filed()` above, which writes the image into
-        `Clients\\` because Desktop used to put it there. Desktop removes the
-        inbox item and writes the note, and that is all.
-
-        `status` defaults to `failed` rather than `needs_review`, because that is
-        the live receipt's status: its only extraction had no gross amount, which
-        is exactly the case an operator settles by typing one in.
-        """
-        repo = Repository()
-        try:
-            return env.seed(repo, receipt_id=receipt_id, status=status, **extraction)
-        finally:
-            repo.close()
-
-    def client_receipts_dir(self, tax_year="2025-26"):
-        """`2025-26`, and it is computed rather than eyeballed.
-
-        The UK tax year starts on 6 April, so the note's `2026-04-01` falls in
-        2025-26. `FILED_RELATIVE` above says `2026-27` and is not wrong: that is
-        a path Desktop composed and this fixture writes verbatim, never a value
-        `determine_tax_year()` produced. The settle path computes it, so the two
-        legitimately differ.
-        """
-        return (config.CLIENTS_ROOT / "Test Client" /
-                config.CLIENT_INTELLIBOOKS_FOLDER_NAME /
-                config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year)
-
-    def everything_under_clients(self):
-        root = config.CLIENTS_ROOT
-        if not root.exists():
-            return []
-        return sorted(p.relative_to(root).as_posix()
-                      for p in root.rglob("*") if p.is_file())
-
     def test_the_receipt_is_settled_and_the_note_is_processed(self):
         """The live fault, driven through a real `_consume_resolution_notes()`.
 
@@ -1101,53 +1143,16 @@ class NoteWithNoFiledPathSettlesTest(BackfeedTestCase):
             finally:
                 repo.close()
 
-    def test_values_that_do_not_validate_are_refused_and_the_note_fails(self):
-        """**A behaviour change, and it is flagged in the report rather than
-        smoothed over.**
-
-        `_apply_filed_note()` forces `ok` when `validate()` disagrees, on the
-        reasoning that a human had already filed the document, and appends
-        "filed by decision in Desktop despite: ...". `resolve_receipt()` does
-        not: it appends the attempt, records `still_invalid` and leaves the
-        receipt a review item, so the note lands in `failed\\` for a person.
-
-        **Reachable, not theoretical.** `fileReviewReceipt()` requires a
-        supplier, a real date and a gross above nought and checks nothing else,
-        read in `IntelliBooks-Desktop-v3.html` on 2026-09-09, so a net and a VAT
-        that do not sum to the gross within a penny can be filed in Desktop
-        today. Asserted as it actually behaves; whether it should force `ok` is
-        Paul's, and flag 1 of
-        `2026-09-09_REPORT_claude_code_desktop_note.md` carries it.
-        """
-        with TempEnvironment() as env:
-            self.seed_awaiting_settlement(env)
-            note = self.write_note(settle_payload(values=dict(
-                settle_payload()["values"],
-                net_amount=80, vat_amount=16, gross_amount=100)))
-
-            stats = consume_notes()
-
-            self.assertEqual(stats.get("notes_failed"), 1, stats)
-            self.assertIn(note.name, self.note_names("failed"))
-            error = (config.RESOLUTIONS_DIR / "failed" /
-                     (note.name + ".error.txt")).read_text(encoding="utf-8")
-            self.assertIn("still_invalid", error)
-            self.assertIn("gross mismatch", error)
-            repo = Repository()
-            try:
-                receipt = repo.get_receipt("r-1")
-                self.assertEqual(receipt["status"], "needs_review")
-                self.assertIsNone(receipt["filed_path"])
-                events = rows(repo, "SELECT * FROM resolution_events")
-                self.assertEqual([e["outcome"] for e in events], ["still_invalid"])
-                self.assertNotIn("note_resolved_at",
-                                 events[0]["corrections_json"] or "",
-                                 "a failed attempt must not carry the idempotency "
-                                 "key, or the retry would be reported as already "
-                                 "applied and the note moved to processed\\")
-            finally:
-                repo.close()
-            self.assertEqual(self.everything_under_clients(), [])
+    # ~~test_values_that_do_not_validate_are_refused_and_the_note_fails~~
+    # **Removed 2026-09-09 by amendment 307, and it was this report's flag 1.**
+    # It asserted that a settle note whose net plus VAT does not equal its gross
+    # lands in `Resolutions\failed\` as `still_invalid`, which is what the code
+    # did and what its own docstring called a behaviour change flagged rather
+    # than smoothed over. **Paul decided: build it.** A person filed the row into
+    # the books, so the database must agree; the failed checks are recorded on
+    # the extraction row and in `run.log` rather than used to block.
+    # `SettledDespiteFailedChecksTest` below is what replaced it, and it drives
+    # the same note through the same real `process_once()`.
 
     def test_the_live_note_from_pauls_machine_settles(self):
         """The exact bytes from `Resolutions\\failed\\`, read on 2026-09-09.
@@ -1460,6 +1465,290 @@ class LearningFromASettleNoteTest(BackfeedTestCase):
         self.assertIn("chart_confirmed", read,
                       "_settle_note() passes remember_gl_for_supplier on without "
                       "asking whether the chart confirmed the code")
+
+
+class SettledDespiteFailedChecksTest(BackfeedTestCase):
+    """Sub-step 10f.14, amendment 307. Paul's decision of 2026-09-09: build it.
+
+    **This was flag 1 of `2026-09-09_REPORT_claude_code_desktop_note.md` and it
+    is the last hole in amendment 306's fix.** `_apply_filed_note()` forces
+    `validation_status="ok"` on the reasoning that a person filed it, and
+    `resolve_receipt()` did not, so a settle note whose values did not validate
+    landed in `Resolutions\\failed\\` as `still_invalid` **while its row was
+    already in the books in IntelliBooks Desktop**. That is the disagreement
+    between the two products that amendment 306 exists to stop, reappearing for
+    a narrower input.
+
+    **What changed:** `resolve_receipt()` takes `decided_by_operator`, default
+    False, and `_settle_note()` is the only production caller that passes True.
+    The checks still run and still produce their notes; the notes go on the
+    extraction row and into `run.log` instead of blocking the receipt.
+    `DecidedByOperatorTest` in `tests/test_resolution_service.py` holds the
+    keyword's own contract and the guard that the CLI did not move.
+
+    **Exactly two failures can reach this, and they were enumerated rather than
+    assumed.** `validate()` can append six distinct notes; `parse_resolution_note()`
+    refuses a note that could produce four of them, so a note that gets this far
+    can only ever carry a **gross mismatch** or a **negative amount**. Both are
+    driven below, and
+    `test_a_note_that_could_reach_the_other_four_is_refused_by_the_parser` holds
+    the other half.
+
+    **So `decided_by_operator` can never turn a `failed` receipt green**, only a
+    `needs_review` one: `failed` needs a missing gross or a missing supplier and
+    the parser requires both.
+    """
+
+    MISMATCH = "gross mismatch: 80.0 + 16.0 = 96.0, got 100.0"
+
+    def mismatched_note(self, **overrides):
+        """A settle note whose net plus VAT does not equal its gross.
+
+        80 and 16 against a gross of 100, which is 4.00 out and far past
+        18.4's one penny.
+        """
+        values = dict(settle_payload()["values"],
+                      net_amount=80, vat_amount=16, gross_amount=100)
+        return settle_payload(values=values, **overrides)
+
+    def test_a_mismatched_settle_note_reaches_ok_and_the_note_is_processed(self):
+        """The red case. Before amendment 307 this landed in `failed\\`.
+
+        The three assertions that were false: `ok`, a `resolution_events` row
+        saying `filed`, and the note out of the queue.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            note = self.write_note(self.mismatched_note())
+
+            stats = consume_notes()
+
+            self.assertEqual(stats.get("notes_applied"), 1, stats)
+            self.assertEqual(self.note_names("failed"), [])
+            self.assertIn(note.name, self.note_names("processed"))
+
+            repo = Repository()
+            try:
+                receipt = repo.get_receipt("r-1")
+                self.assertEqual(receipt["status"], "ok")
+                self.assertIsNone(receipt["locked_at"])
+                events = rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual(len(events), 1, events)
+                self.assertEqual(
+                    events[0]["outcome"], "filed",
+                    "deliverable 3: the outcome column says what happened to "
+                    "the receipt, and what happened is that it was settled. "
+                    "still_invalid would be false, and it would also strand the "
+                    "note, because the idempotency key is stamped on filed only")
+                self.assertIn("note_resolved_at", events[0]["corrections_json"])
+            finally:
+                repo.close()
+
+    def test_the_failed_checks_are_readable_afterwards_on_the_extraction_row(self):
+        """Where the failures live, and it is one join from the event.
+
+        `resolution_events.extraction_id` points at this row, which is where
+        `_apply_filed_note()` already puts its own "despite" line. Nothing is
+        recalculated and nothing is dropped: the figures on the row are the ones
+        the note sent.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(self.mismatched_note())
+
+            consume_notes()
+
+            repo = Repository()
+            try:
+                manual, = rows(repo, "SELECT * FROM extractions "
+                                     "WHERE engine = 'manual_correction'")
+                self.assertEqual(manual["validation_status"], "ok")
+                self.assertIn("manually corrected and filed",
+                              manual["validation_notes"])
+                self.assertIn("despite", manual["validation_notes"])
+                self.assertIn(self.MISMATCH, manual["validation_notes"])
+                self.assertEqual(manual["net_amount"], 80.0)
+                self.assertEqual(manual["vat_amount"], 16.0)
+                self.assertEqual(manual["gross_amount"], 100.0,
+                                 "the gross was recalculated, which 18.4 forbids")
+                events = rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual(events[0]["extraction_id"],
+                                 manual["extraction_id"],
+                                 "the event does not point at the row carrying "
+                                 "the failures, so they are not one join away")
+            finally:
+                repo.close()
+
+    def test_the_log_says_it_reached_ok_despite_the_failures(self):
+        """Deliverable 2. **Paul reads `run.log`.**
+
+        A receipt that silently turns green is worse than the fault being
+        fixed, so the line is a WARNING, names the receipt, names who decided,
+        and quotes every failed check.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(self.mismatched_note())
+
+            with captured("worker.resolution.service", logging.WARNING) as log:
+                consume_notes()
+
+            warnings = log.messages(logging.WARNING)
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertIn("r-1", warnings[0])
+            self.assertIn("desktop", warnings[0])
+            self.assertIn("ok", warnings[0])
+            self.assertIn(self.MISMATCH, warnings[0])
+
+    def test_a_note_that_validates_logs_no_such_warning(self):
+        """The negative control, and it is not optional.
+
+        A warning on every settled receipt would be noise and a reader who saw
+        it every time would stop reading it, which is `CLAUDE.md`'s check that
+        cannot fail in its other form.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(settle_payload())
+
+            with captured("worker.resolution.service", logging.WARNING) as log:
+                self.assertEqual(consume_notes().get("notes_applied"), 1)
+
+            self.assertEqual(log.messages(logging.WARNING), [])
+            repo = Repository()
+            try:
+                manual, = rows(repo, "SELECT * FROM extractions "
+                                     "WHERE engine = 'manual_correction'")
+                self.assertNotIn("despite", manual["validation_notes"])
+                self.assertEqual(manual["validation_notes"],
+                                 "manually corrected and filed")
+            finally:
+                repo.close()
+
+    def test_the_client_folder_copy_still_happens(self):
+        """A settled-despite-failures receipt is `ok`, so 18.2b applies to it.
+
+        The name comes from the note's own figures, the mismatched gross
+        included, because nothing is recalculated.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            self.write_note(self.mismatched_note())
+
+            consume_notes()
+
+            self.assertEqual(
+                self.everything_under_clients(),
+                ["Test Client/IntelliBooks/Receipts/2025-26/"
+                 "2026-04-01_apcoa-parking_100.00.pdf"])
+            repo = Repository()
+            try:
+                self.assertTrue(repo.get_receipt("r-1")["filed_path"])
+            finally:
+                repo.close()
+
+    def test_a_negative_amount_is_the_other_failure_that_reaches_this(self):
+        """The second of the two reachable failures, and it is not a VAT one.
+
+        `_note_amount()` accepts any finite JSON number, so a negative is a
+        legal note even though `fileReviewReceipt()` sends `Math.abs()` and
+        cannot produce one. Driven because it is reachable from any other
+        writer of a note, and because 18.4's "the system alerts, it never
+        prevents" is a VAT rule and does not cover it. Flagged in
+        `2026-09-09_REPORT_claude_code_decided_by_operator.md`.
+        """
+        with TempEnvironment() as env:
+            self.seed_awaiting_settlement(env)
+            values = dict(settle_payload()["values"],
+                          net_amount=-80, vat_amount=-16, gross_amount=-96)
+            self.write_note(settle_payload(values=values))
+
+            self.assertEqual(consume_notes().get("notes_applied"), 1)
+
+            repo = Repository()
+            try:
+                self.assertEqual(repo.get_receipt("r-1")["status"], "ok")
+                manual, = rows(repo, "SELECT * FROM extractions "
+                                     "WHERE engine = 'manual_correction'")
+                self.assertIn("net_amount is negative: -80.0",
+                              manual["validation_notes"])
+                self.assertEqual(manual["gross_amount"], -96.0)
+            finally:
+                repo.close()
+
+    def test_a_note_that_could_reach_the_other_four_is_refused_by_the_parser(self):
+        """The safety property, and it is what bounds this change.
+
+        `validate()` can append six distinct notes, enumerated from its own
+        syntax tree by `test_validate_can_append_exactly_six_notes` below. Four
+        of them need a shape `parse_resolution_note()` refuses, so
+        `decided_by_operator` can never force one through. **The consequence
+        that matters: it can only ever turn a `needs_review` receipt `ok`, never
+        a `failed` one**, because `failed` needs a missing gross or a missing
+        supplier.
+        """
+        base = settle_payload()["values"]
+        cases = {
+            "missing supplier_name": {k: v for k, v in base.items()
+                                      if k != "supplier_name"},
+            "missing gross_amount": {k: v for k, v in base.items()
+                                     if k != "gross_amount"},
+            "missing invoice_date": {k: v for k, v in base.items()
+                                     if k != "invoice_date"},
+            "invalid date": dict(base, invoice_date="2026-02-31"),
+        }
+        for label, values in cases.items():
+            with self.subTest(case=label):
+                with TempEnvironment() as env:
+                    self.seed_awaiting_settlement(env)
+                    note = self.write_note(settle_payload(values=values))
+
+                    stats = consume_notes()
+
+                    self.assertEqual(stats.get("notes_failed"), 1, stats)
+                    self.assertIn(note.name, self.note_names("failed"))
+                    repo = Repository()
+                    try:
+                        self.assertEqual(repo.get_receipt("r-1")["status"],
+                                         "failed")
+                        self.assertEqual(
+                            rows(repo, "SELECT * FROM resolution_events"), [],
+                            "the parser let it through and resolve_receipt() "
+                            "then forced it ok, so decided_by_operator can "
+                            "turn a failed receipt green")
+                    finally:
+                        repo.close()
+
+    def test_validate_can_append_exactly_six_notes(self):
+        """The set the test above reasons about, enumerated rather than named.
+
+        `CLAUDE.md`: a claim about a set is not verified by verifying its
+        members. If `worker\\validation\\rules.py` gains a seventh check, this
+        fails and somebody has to decide whether
+        `decided_by_operator` may force it through.
+        """
+        import ast
+
+        source = (REPO_ROOT / "worker" / "validation" / "rules.py"
+                  ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        target = next(node for node in ast.walk(tree)
+                      if isinstance(node, ast.FunctionDef)
+                      and node.name == "validate")
+        appended = sorted({
+            ast.unparse(node.args[0]) for node in ast.walk(target)
+            if isinstance(node, ast.Call)
+            and ast.unparse(node.func) == "notes.append"})
+        self.assertEqual(len(appended), 6, appended)
+        self.assertEqual(
+            appended,
+            ["'missing gross_amount'",
+             "'missing invoice_date'",
+             "'missing supplier_name'",
+             "f'gross mismatch: {result.net_amount} + {result.vat_amount} = "
+             "{expected}, got {actual}'",
+             "f'invalid date: {result.invoice_date}'",
+             "f'{field} is negative: {val}'"])
 
 
 class ContractShapeTest(unittest.TestCase):

@@ -11,10 +11,12 @@ a real intake problem.
 """
 
 import json
+import logging
 import sys
 import tempfile
 import types
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -139,8 +141,50 @@ class TempEnvironment:
         return CategorisationEngine(repo=repo, enable_ai_fallback=False)
 
 
+#: The repository root, for the one test that reads production source.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
 def _rows(repo, sql, params=()):
     return [dict(r) for r in repo._conn.execute(sql, params).fetchall()]
+
+
+class _Capture(logging.Handler):
+    """Collect records off one logger.
+
+    A fourth copy of four lines. `tests/test_stage4_client_copy.py`,
+    `tests/test_client_copy_collision.py` and
+    `tests/test_resolution_backfeed.py` each carry one, for the reason recorded
+    there: importing a test module from a test module makes the import order
+    decide whether a fixture is in place.
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+    def messages(self, level=None):
+        return [r.getMessage() for r in self.records
+                if level is None or r.levelno == level]
+
+
+@contextmanager
+def _captured(name, level=logging.INFO):
+    logger = logging.getLogger(name)
+    handler = _Capture()
+    saved_level, saved_propagate = logger.level, logger.propagate
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    logger.propagate = False
+    try:
+        yield handler
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(saved_level)
+        logger.propagate = saved_propagate
 
 
 def _good_corrections():
@@ -572,6 +616,296 @@ class RememberMappingTest(unittest.TestCase):
                 self.assertEqual(rows[0]["client_id"], "CLIENT001")
             finally:
                 repo.close()
+
+
+class DecidedByOperatorTest(unittest.TestCase):
+    """Sub-step 10f.14, amendment 307. The keyword, its default, and the guard.
+
+    **What it is for.** A `filed` note with no `filed_path` reaches
+    `resolve_receipt()` through `_settle_note()`, and by the time it does, a
+    person has already put the row in the books in IntelliBooks Desktop. So a
+    failed check must not block the receipt: the database has to agree with the
+    books, which is what amendment 306's contract exists to guarantee. The
+    checks still run and their notes are recorded; only what is done with the
+    result changes, and only on that one path.
+
+    **Why the name.** `decided_by_operator` names the **reason**, and a reason
+    is what a reader has to weigh at a call site. `force_ok` would name the
+    effect, and a keyword named after its effect invites use wherever a status
+    is inconvenient. The one thing that justifies overriding a validator is
+    that a person decided, and the name says so.
+
+    **Default False, and that is the whole of the safety.** The CLI does not
+    pass it, the console will not either, and
+    `test_the_two_production_call_sites_are_the_cli_and_the_settle_path`
+    enumerates the set from the syntax tree so a third caller has to be
+    deliberate.
+
+    **It cannot turn a `failed` receipt green from a note**, because
+    `parse_resolution_note()` refuses a note with no supplier or no gross, which
+    is what `failed` needs. That is held next door, in
+    `tests/test_resolution_backfeed.py`, because it is a property of the two
+    functions together.
+
+    **On 18.4, and this is a flag rather than a justification.** Amendment 307
+    cites 18.4's "the system alerts, it never prevents". Of the two failures
+    that can reach here, a **gross mismatch** is squarely 18.4's subject and a
+    **negative amount** is not. Amendment 107 records the consultant session
+    wrongly reaching for that same rule once before, and the note there is
+    blunt: "That rule is about VAT and about nothing else." The justification
+    that carries both cases is the one above, and it is 12.3 step 5's: a person
+    filed it.
+    """
+
+    #: 80 and 16 against a gross of 100. Four pounds out, and 18.4's tolerance
+    #: is one penny, so this is not a rounding argument.
+    MISMATCH_NOTE = "gross mismatch: 80.0 + 16.0 = 96.0, got 100.0"
+
+    def _mismatched(self):
+        corrections, errors = parse_corrections({
+            "supplier_name": "Apcoa Parking",
+            "invoice_date": "2026-04-01",
+            "net_amount": "80.00",
+            "vat_amount": "16.00",
+            "gross_amount": "100.00",
+        })
+        assert errors == {}, errors
+        return corrections
+
+    def test_the_default_is_false_on_the_signature(self):
+        """Read off the signature, not off a call.
+
+        A keyword whose default was True would move the CLI and the console
+        without either of them mentioning it.
+        """
+        import inspect
+
+        parameter = inspect.signature(resolve_receipt).parameters[
+            "decided_by_operator"]
+        self.assertIs(parameter.default, False)
+        self.assertEqual(parameter.kind, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+
+    def test_without_the_keyword_a_mismatch_is_still_invalid(self):
+        """**The guard that the CLI did not move**, and it is the control.
+
+        Same receipt, same values, same call but for the keyword. Without this
+        every test below would pass against a `resolve_receipt()` that had
+        simply stopped validating.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo)
+                outcome = resolve_receipt(
+                    repo, env.engine(repo), "r-1", self._mismatched(),
+                    actor="paul", source="cli",
+                )
+                self.assertEqual(outcome.outcome, "still_invalid")
+                self.assertIn(self.MISMATCH_NOTE, outcome.validation_notes)
+                receipt = repo.get_receipt("r-1")
+                self.assertEqual(receipt["status"], "needs_review")
+                self.assertIsNone(receipt["filed_path"])
+                events = _rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual([e["outcome"] for e in events],
+                                 ["still_invalid"])
+            finally:
+                repo.close()
+
+    def test_with_the_keyword_the_same_values_reach_ok(self):
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo)
+                outcome = resolve_receipt(
+                    repo, env.engine(repo), "r-1", self._mismatched(),
+                    actor="desktop", source="desktop",
+                    decided_by_operator=True,
+                )
+                self.assertEqual(outcome.outcome, "filed")
+                self.assertEqual(repo.get_receipt("r-1")["status"], "ok")
+                self.assertIn(self.MISMATCH_NOTE, outcome.validation_notes)
+            finally:
+                repo.close()
+
+    def test_the_failed_checks_go_on_the_extraction_row(self):
+        """In the manner `_apply_filed_note()` already records them.
+
+        `validation_status` is `ok` because a person decided, and the notes say
+        what did not add up, so the row is not a claim that the figures are
+        consistent.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                original = env.seed(repo)
+                resolve_receipt(
+                    repo, env.engine(repo), "r-1", self._mismatched(),
+                    actor="desktop", source="desktop",
+                    decided_by_operator=True,
+                )
+                rows = _rows(repo, "SELECT * FROM extractions "
+                                   "ORDER BY extracted_at")
+                self.assertEqual(len(rows), 2, "exactly one row appended")
+                appended, = [r for r in rows
+                             if r["extraction_id"] != original]
+                self.assertEqual(appended["validation_status"], "ok")
+                self.assertIn("manually corrected and filed",
+                              appended["validation_notes"])
+                self.assertIn("despite", appended["validation_notes"])
+                self.assertIn(self.MISMATCH_NOTE, appended["validation_notes"])
+                self.assertIn("desktop", appended["validation_notes"],
+                              "the row does not say which tool decided")
+                self.assertEqual(appended["net_amount"], 80.0)
+                self.assertEqual(appended["vat_amount"], 16.0)
+                self.assertEqual(
+                    appended["gross_amount"], 100.0,
+                    "a figure was recalculated, which 18.4 forbids in terms")
+            finally:
+                repo.close()
+
+    def test_the_event_says_filed_rather_than_still_invalid(self):
+        """Deliverable 3, and the reasoning is in the report.
+
+        `outcome` records what happened to the receipt and it was settled.
+        `still_invalid` would be false, and it would strand every settle note:
+        the idempotency key is stamped on the `filed` event only, so the note
+        would be retried for ever against a receipt already `ok`.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo)
+                outcome = resolve_receipt(
+                    repo, env.engine(repo), "r-1", self._mismatched(),
+                    actor="desktop", source="desktop",
+                    decided_by_operator=True,
+                )
+                events = _rows(repo, "SELECT * FROM resolution_events")
+                self.assertEqual(len(events), 1)
+                self.assertEqual(events[0]["outcome"], "filed")
+                self.assertEqual(events[0]["action"], "resolve")
+                self.assertEqual(events[0]["extraction_id"],
+                                 outcome.extraction_id)
+            finally:
+                repo.close()
+
+    def test_the_log_names_the_receipt_the_decider_and_every_failure(self):
+        """Deliverable 2. **Paul reads `run.log`.**"""
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo)
+                with _captured("worker.resolution.service",
+                               logging.WARNING) as log:
+                    resolve_receipt(
+                        repo, env.engine(repo), "r-1", self._mismatched(),
+                        actor="desktop", source="desktop",
+                        decided_by_operator=True,
+                    )
+            finally:
+                repo.close()
+        warnings = log.messages(logging.WARNING)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn("r-1", warnings[0])
+        self.assertIn("desktop", warnings[0])
+        self.assertIn("ok", warnings[0])
+        self.assertIn(self.MISMATCH_NOTE, warnings[0])
+
+    def test_a_valid_correction_with_the_keyword_warns_about_nothing(self):
+        """The negative control for the warning and for the row's wording.
+
+        A line on every settled receipt would be noise, and a reader who saw it
+        every time would stop reading it.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                original = env.seed(repo)
+                with _captured("worker.resolution.service",
+                               logging.WARNING) as log:
+                    outcome = resolve_receipt(
+                        repo, env.engine(repo), "r-1", _good_corrections(),
+                        actor="desktop", source="desktop",
+                        decided_by_operator=True,
+                    )
+                self.assertEqual(outcome.outcome, "filed")
+                appended, = [r for r in _rows(
+                    repo, "SELECT * FROM extractions")
+                    if r["extraction_id"] != original]
+                self.assertEqual(appended["validation_notes"],
+                                 "manually corrected and filed")
+            finally:
+                repo.close()
+        self.assertEqual(log.messages(logging.WARNING), [])
+
+    def test_a_client_with_no_folder_name_is_refused_even_with_the_keyword(self):
+        """**The one gate the keyword does not open**, and it is deliberate.
+
+        10d.16 and 10d.18: a receipt whose client has no `client_folder_name`
+        cannot be filed under `Clients\\` whatever the corrections say. That is
+        not a judgement about the operator's figures, it is a registry fault,
+        and an operator deciding that a receipt is right cannot decide that a
+        client has a folder.
+
+        **Reachable rather than theoretical**: `config.load_clients()` defaults
+        `client_folder_name` to `""` and refuses a record only for a missing
+        `client_id` or `firm_id`, read in `config.py` on 2026-09-09.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo)
+                config.CLIENTS_BY_ID = dict(config.CLIENTS_BY_ID)
+                config.CLIENTS_BY_ID["CLIENT001"] = dict(
+                    config.CLIENTS_BY_ID["CLIENT001"], client_folder_name="")
+                outcome = resolve_receipt(
+                    repo, env.engine(repo), "r-1", _good_corrections(),
+                    actor="desktop", source="desktop",
+                    decided_by_operator=True,
+                )
+                self.assertEqual(outcome.outcome, "still_invalid")
+                self.assertIn("client_folder_name",
+                              " ".join(outcome.validation_notes))
+                self.assertEqual(repo.get_receipt("r-1")["status"],
+                                 "needs_review")
+                self.assertIsNone(repo.get_receipt("r-1")["filed_path"])
+            finally:
+                repo.close()
+
+    def test_the_two_production_call_sites_are_the_cli_and_the_settle_path(self):
+        """A guard over the set, from the syntax tree rather than a grep.
+
+        `CLAUDE.md`: where two or more call sites must all use one helper,
+        assert it on the source, because only a guard over the set catches the
+        third one added without thinking. **Exactly one of the two passes the
+        keyword**, and if that ever stops being true somebody has decided that
+        a person at a keyboard in the CLI may override a validator, which is
+        Paul's decision and not a code change.
+        """
+        import ast
+
+        found = {}
+        files = [REPO_ROOT / "app.py"]
+        files += sorted((REPO_ROOT / "worker").rglob("*.py"))
+        files += sorted(p for p in REPO_ROOT.glob("*.py") if p.name != "app.py")
+        for path in files:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and ast.unparse(node.func).split(".")[-1]
+                        == "resolve_receipt"):
+                    continue
+                passes = any(kw.arg == "decided_by_operator"
+                             and isinstance(kw.value, ast.Constant)
+                             and kw.value.value is True
+                             for kw in node.keywords)
+                found[f"{path.relative_to(REPO_ROOT).as_posix()}:{node.lineno}"] = passes
+        self.assertEqual(
+            sorted((name.split(":")[0], passes)
+                   for name, passes in found.items()),
+            [("resolve_receipt.py", False),
+             ("worker/resolution/service.py", True)],
+            f"the callers of resolve_receipt() changed: {found}")
 
 
 class DiscardTest(unittest.TestCase):

@@ -646,7 +646,8 @@ def _merge_corrections(extraction: Dict[str, Any], corrections: Corrections) -> 
 
 def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                     actor, source, expected_extraction_id=None,
-                    note_resolved_at=None) -> ResolutionOutcome:
+                    note_resolved_at=None,
+                    decided_by_operator=False) -> ResolutionOutcome:
     """Apply corrections, re-validate, categorise, file. Append-only throughout.
 
     Design document 4.3. The step numbers in the comments below are that section's,
@@ -672,6 +673,33 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
     moves it to `processed\\`. Stamping a failed attempt would therefore turn a
     retry into a silent success. `_apply_filed_note()` records it in the same one
     place for the same reason.
+
+    **`decided_by_operator` says that a person has already acted on this receipt
+    elsewhere, so a failed check is recorded rather than used to block.** Default
+    False, added 2026-09-09 by amendment 307 and Paul's decision.
+    `_settle_note()` is the only production caller that passes True, and
+    `tests/test_resolution_service.py`'s `DecidedByOperatorTest` enumerates the
+    set from the syntax tree.
+
+    **What it is for.** A `filed` note with no `filed_path` means "settle this
+    receipt", and by the time one arrives the row is already in the books in
+    IntelliBooks Desktop. A `still_invalid` receipt then leaves the database
+    disagreeing with the books, which is the one thing amendment 306's contract
+    exists to prevent. `_apply_filed_note()` has always forced `ok` for exactly
+    this reason, in 12.3 step 5's words: a human filed this.
+
+    **What it does not change.** `validate()` still runs and still produces its
+    notes; they go on the extraction row and into `run.log`. **No figure is
+    recalculated**, which 18.4 forbids in terms. And it does not open the
+    `client_folder_name` gate below: that is a registry fault rather than a
+    judgement about a receipt, and an operator who decides a receipt is right
+    cannot decide that a client has a folder.
+
+    **Two failures can reach it and no more**, enumerated from `validate()`'s own
+    syntax tree and held by `tests/test_resolution_backfeed.py`: a gross mismatch
+    and a negative amount. `parse_resolution_note()` refuses a note that could
+    produce any of the other four, so **this can only ever turn a `needs_review`
+    receipt `ok`, never a `failed` one.**
     """
     # 1. Load receipt.
     receipt = repo.get_receipt(receipt_id)
@@ -772,6 +800,35 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 ],
             )
 
+        # Sub-step 10f.14, amendment 307, and Paul's decision of 2026-09-09.
+        #
+        # **`and folder_check` is the whole of what the keyword may not
+        # override.** The gate above is 10d.16 and 10d.18: a client with no
+        # `client_folder_name` cannot be filed for, and that is a registry fault
+        # rather than a judgement about this receipt's figures. So a settle note
+        # for such a client is still `still_invalid` and its file still lands in
+        # `Resolutions\failed\`, which is where a fault somebody has to fix
+        # belongs.
+        #
+        # `despite` carries the notes forward for the row and the log. It is
+        # None on every ordinary resolution, which is what keeps the wording of
+        # the extraction row unchanged for the CLI and the console.
+        despite = None
+        if validation.status != "ok" and decided_by_operator and folder_check:
+            despite = list(validation.notes or [])
+            # Deliverable 2 of the brief. **Paul reads `run.log`**, and a
+            # receipt that silently turns green is worse than the fault being
+            # fixed. WARNING rather than INFO because nothing else about a
+            # settled receipt needs reading and this does.
+            logger.warning(
+                "receipt %s reached ok by decision in %s despite %d failed "
+                "check(s): %s. A person filed it in the books, so the database "
+                "agrees with them; the checks are recorded on its extraction "
+                "row rather than used to block it, and no figure was "
+                "recalculated",
+                receipt_id, source, len(despite), ", ".join(despite))
+            validation = type(validation)(status="ok", notes=[])
+
         if validation.status != "ok":
             attempt_id = str(uuid.uuid4())
             # possible_duplicate is a statement about the relationship between two
@@ -830,7 +887,23 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             currency=merged["currency"],
             raw_response=candidate.raw_response,
             validation_status="ok",
-            validation_notes=["manually corrected and filed"],
+            # 10f.14. `despite` is None on every ordinary resolution, so the CLI
+            # and the console write the same one note they always did. Where a
+            # person decided over a failed check, the check is on the row: the
+            # status says a human settled it and the notes say what did not add
+            # up, so the row is never a claim that the figures are consistent.
+            #
+            # **A second wording rather than `_apply_filed_note()`'s**, which
+            # says "filed by decision in Desktop despite". These are two
+            # different acts: that one records a filing somebody else performed,
+            # this one settles a receipt from values somebody else decided. The
+            # tool is named from `source` rather than hardcoded, because this
+            # function does not know it is serving Desktop.
+            validation_notes=(
+                ["manually corrected and filed"] if despite is None else
+                ["manually corrected and filed",
+                 f"settled by decision in {source} despite: "
+                 + ", ".join(despite)]),
             receipt_ref_number=merged["receipt_ref_number"],
             receipt_time=merged["receipt_time"],
             pipeline_version=pipeline_version,
@@ -1025,7 +1098,8 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             category_code=effective_code,
             category_name=effective_name,
             category_confidence=categorisation.confidence,
-            validation_notes=["manually corrected and filed"],
+            validation_notes=(["manually corrected and filed"] if despite is None
+                              else ["manually corrected and filed"] + despite),
             message=message,
         )
 
@@ -1315,6 +1389,18 @@ def _settle_note(repo, categorisation_engine, receipt: Dict[str, Any],
     `suggested_code`, which is the audit trail, and the person's choice sits in
     the correction columns and is the effective code.
 
+    ## And what it asks resolve_receipt() to do differently
+
+    **`decided_by_operator=True`, and this is the only production call site that
+    passes it.** Amendment 307 and Paul's decision of 2026-09-09. A person has
+    already put the row in the books, so a failed check is recorded on the
+    extraction row and logged rather than used to block the receipt. Before it,
+    a settle note whose net and VAT did not sum to its gross landed in
+    `Resolutions\\failed\\` as `still_invalid` while its row sat in the books,
+    which is the disagreement amendment 306 exists to stop. **It does not open
+    the `client_folder_name` gate**, which is a registry fault rather than a
+    judgement about figures.
+
     ## And one guarantee carried across by hand
 
     **The tick is withheld when the client's chart did not confirm the code.**
@@ -1367,6 +1453,15 @@ def _settle_note(repo, categorisation_engine, receipt: Dict[str, Any],
         repo, categorisation_engine, receipt_id, corrections,
         actor=DESKTOP_ACTOR, source=DESKTOP_SOURCE,
         note_resolved_at=note.resolved_at,
+        # Amendment 307. **The only production call site that passes this**, and
+        # the reason is the one in this function's docstring: by the time a note
+        # arrives, the row is in the books in IntelliBooks Desktop. A receipt
+        # left as a review item because its net and VAT do not sum to its gross
+        # would leave the database disagreeing with the books, which is what
+        # amendment 306's contract exists to prevent. The checks still run and
+        # are recorded; see `resolve_receipt()` for what it does and does not
+        # override.
+        decided_by_operator=True,
     )
     if category.validation_note:
         # The chart's verdict on the code, which `_apply_filed_note()` appends to

@@ -14,6 +14,7 @@ from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
 from worker.categorisation.fallback import resolve_against_chart
 from worker.filing import file_receipt, file_review, make_enriched_sidecar, determine_tax_year
+from worker.publish import publish_receipt
 from worker.validation.rules import validate
 
 
@@ -318,6 +319,27 @@ def process_extraction_result(
         # Mark filed (critical for Part 2A's duplicate protection)
         repo.mark_receipt_filed(receipt_id, filed_path)
         repo.update_receipt_status(receipt_id, "ok")
+
+        # Publish to IntelliBooks. Stage 1 piece 3, sub-step 10f.36.
+        #
+        # **One call site, here rather than at the four in app.py**, because
+        # every arrival route ends in this function and the three that produce
+        # a receipt should all publish the same way.
+        #
+        # **Only `ok` reaches this line**, which is what 10f.24 asks for
+        # without this scope having to know about it: `possible_duplicate`,
+        # `needs_review` and `failed` are all in the else branch below.
+        #
+        # **Not wrapped in a try, deliberately.** `publish_receipt()` swallows
+        # its own failures and records them, so the guarantee lives in one
+        # place rather than depending on each caller. The write into `Clients\`
+        # above has already happened and is still what IntelliBooks reads, so a
+        # receipt that files and does not publish stays `ok` and filed.
+        #
+        # `file_path` is the copy in the document store, which is the archive of
+        # record per 18.2a, so the bytes in the item are the bytes that arrived.
+        publish_receipt(repo, receipt_id, sidecar_payload, file_path)
+
         stats['extractions_succeeded'] = stats.get('extractions_succeeded', 0) + 1
 
     else:  # failed, needs_review, possible_duplicate

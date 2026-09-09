@@ -29,7 +29,10 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -170,3 +173,69 @@ def write_item(directory: Path, receipt_id: str, item: dict) -> Path:
             logger.warning("could not remove the part file %s", partial)
         raise
     return final
+
+
+def _record(repo, receipt_id, destination, outcome, created_at,
+            item_path=None, reason=None):
+    """Write the `publish_events` row, and never let that be the thing that fails.
+
+    The whole point of `publish_receipt()` is that a receipt is unaffected by
+    publishing going wrong, and recording the outcome is part of publishing. A
+    locked database here would otherwise take down a run that had already filed
+    the receipt correctly.
+    """
+    try:
+        repo.save_publish_event(
+            event_id=str(uuid.uuid4()),
+            receipt_id=receipt_id,
+            destination=destination,
+            outcome=outcome,
+            created_at=created_at,
+            item_path=item_path,
+            reason=reason,
+        )
+    except Exception as error:
+        logger.error(
+            "could not record the %s publish of receipt %s to %s: %s",
+            outcome, receipt_id, destination, error)
+
+
+def publish_receipt(repo, receipt_id, sidecar, document,
+                    directory=None, destination=None) -> bool:
+    """Publish one receipt and record the attempt. **This never raises.**
+
+    Sub-step 10f.36. Returns True when the item landed.
+
+    **A failure here must not fail the receipt.** The write into `Clients\\`
+    has already happened and is still what IntelliBooks reads, so a receipt
+    that files and does not publish is `ok`, filed, and carries a
+    `publish_events` row saying why. The alternative would be a receipt marked
+    bad because a folder in somebody else's tree was missing.
+
+    **The swallowing lives here rather than at the call site**, so the
+    guarantee does not depend on each caller remembering to wrap it. There is
+    one call site today and four callers of the function it sits in.
+
+    `KeyboardInterrupt` and `SystemExit` are deliberately not caught: they are
+    a shutdown rather than a publishing failure, and swallowing them would make
+    the pipeline hard to stop.
+
+    `directory` and `destination` are read from `config` at call time rather
+    than bound at import, so a test can point them somewhere without reloading
+    this module.
+    """
+    directory = config.INTELLIBOOKS_PUBLISH_DIR if directory is None else Path(directory)
+    destination = config.INTELLIBOOKS_DESTINATION if destination is None else destination
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        item = build_item(sidecar, document)
+        written = write_item(directory, receipt_id, item)
+    except Exception as error:
+        logger.error("publishing receipt %s to %s failed: %s: %s",
+                     receipt_id, destination, type(error).__name__, error)
+        _record(repo, receipt_id, destination, FAILED, now,
+                reason=f"{type(error).__name__}: {error}")
+        return False
+    logger.info("published receipt %s to %s at %s", receipt_id, destination, written)
+    _record(repo, receipt_id, destination, PUBLISHED, now, item_path=str(written))
+    return True

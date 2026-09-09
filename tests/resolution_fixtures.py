@@ -62,6 +62,15 @@ class TempEnvironment:
             # OpenAI client and no test here turns either on. Same class of leak
             # as the LOGS_DIR one three entries above, and found the same way.
             "CHARTS_DIR": config.CHARTS_DIR,
+            # Sub-step 10f.2, added 2026-09-09. Without these two, every test
+            # that produces an `ok` receipt publishes an item into the one
+            # folder `tests/live_paths.py` set up for the whole run, so each
+            # test would see every earlier test's items and a count would be
+            # answered by the run order. Same class of leak as LOGS_DIR and
+            # CHARTS_DIR above, and found the same way: a test that passed on
+            # its own and failed in the file.
+            "INTELLIBOOKS_ROOT": config.INTELLIBOOKS_ROOT,
+            "INTELLIBOOKS_PUBLISH_DIR": config.INTELLIBOOKS_PUBLISH_DIR,
         }
         config.DB_PATH = self.path / "receipts.db"
         # The practice root. A note's filed_path is relative to it, per 12.2.
@@ -96,6 +105,13 @@ class TempEnvironment:
         # test that reads a chart from here gets chart.load_chart()'s missing
         # bundle path, an ERROR and an empty list, rather than a real chart.
         config.CHARTS_DIR = self.path / "Charts"
+        # IntelliBooks' own folder and the publish destination inside it.
+        # **Created here, unlike Charts above**, because `config.py` creates it
+        # at import: the pipeline is the folder's only writer and an absent one
+        # would be the first publish failing rather than a missing folder.
+        config.INTELLIBOOKS_ROOT = self.path / "IntelliBooks"
+        config.INTELLIBOOKS_PUBLISH_DIR = config.INTELLIBOOKS_ROOT / "Published"
+        config.INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
         config.CLIENTS_JSON = self.path / "clients-not-placed.json"
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {

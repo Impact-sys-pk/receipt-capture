@@ -267,9 +267,23 @@ INTELLIBOOKS_DESTINATION = "intellibooks"
 #: the setting rather than a literal.
 TEMP_PUBLISH_FOLDER = "Published"
 
+#: The same again for F16, sub-step 10f.12, added 2026-09-09 by stage 4.
+#: Matching config.CLIENT_COPY_TRIGGER_FIELD and config.CLIENT_COPY_ON_PUBLISH.
+CLIENT_COPY_TRIGGER_FIELD = "client_copy_trigger"
+
+#: The trigger the whole suite runs against, and `publish` rather than `never`
+#: on purpose. **`never` would make the client folder writer unreachable from
+#: every existing test**, so the twenty-odd tests that assert a filed receipt
+#: would go green by writing nothing, which is the failure mode check 1's clause
+#: A is worded against. It is also the live value on Paul's firm record, read
+#: from `Intellibills\firms.json` on 2026-09-09. A test that wants another value
+#: sets `config.CLIENT_COPY_TRIGGER` and restores it, which is what
+#: `tests/test_stage4_client_copy.py`'s `trigger()` does.
+TEMP_CLIENT_COPY_TRIGGER = "publish"
+
 
 def write_firm_record(practice_root=None, client_top_folder=None,
-                      publish_folder=None) -> Path:
+                      publish_folder=None, copy_trigger=None) -> Path:
     """Write the one firm record `config` requires, before `config` is imported.
 
     Sub-step 10e.14: `CLIENTS_ROOT` is `client_top_folder` off the firm record
@@ -288,6 +302,7 @@ def write_firm_record(practice_root=None, client_top_folder=None,
     practice_root = Path(practice_root or TEMP_PRACTICE_ROOT)
     client_top_folder = Path(client_top_folder or TEMP_CLIENT_TOP_FOLDER)
     publish_folder = publish_folder or TEMP_PUBLISH_FOLDER
+    copy_trigger = copy_trigger or TEMP_CLIENT_COPY_TRIGGER
     directory = practice_root / "Intellibills"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "firms.json"
@@ -306,6 +321,12 @@ def write_firm_record(practice_root=None, client_top_folder=None,
                     PUBLISH_DESTINATIONS_FIELD: {
                         INTELLIBOOKS_DESTINATION: publish_folder,
                     },
+                    # F16, sub-step 10f.12, added 2026-09-09 by stage 4, and
+                    # here for the same reason as the two fields above: without
+                    # it every test errors during collection. Amendment 294
+                    # predicted exactly this, which is why the box and the
+                    # value were built before the reader.
+                    CLIENT_COPY_TRIGGER_FIELD: copy_trigger,
                 }],
             },
             indent=2,

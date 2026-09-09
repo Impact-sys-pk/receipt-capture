@@ -93,13 +93,25 @@ class ResumeSafetyTest(unittest.TestCase):
                     validation_notes=["ok"],
                 )
 
-                receipts = repo.get_unfiled_ok_receipts()
+                # 10f.13: the sweep asks publish_events, not filed_path, and
+                # ignores anything created before the earliest row. A row old
+                # enough for this receipt to be in scope has to exist, or the
+                # sweep correctly does nothing.
+                repo.save_publish_event(
+                    event_id="cutover", receipt_id="r-someone-else",
+                    destination="intellibooks", outcome="published",
+                    created_at="2000-01-01T00:00:00+00:00",
+                    item_path="somewhere.json")
+                receipts = repo.get_unpublished_ok_receipts()
                 self.assertEqual(len(receipts), 1)
                 stats = {}
                 engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
-                app._file_unfiled_ok_receipts(repo, engine, stats)
+                app._publish_unpublished_receipts(repo, engine, stats)
 
-                self.assertEqual(stats.get("recovery_filed"), 1)
+                # `recovery_filed` until stage 4, 2026-09-09. The sweep
+                # publishes now, and the client folder copy follows the
+                # publish, so the count is of what was published.
+                self.assertEqual(stats.get("recovery_published"), 1)
                 row = repo._conn.execute(
                     "SELECT filed_path FROM receipts WHERE receipt_id = ?",
                     (receipt_id,)

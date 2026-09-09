@@ -329,7 +329,8 @@ class ThinWrapperTest(unittest.TestCase):
         banned = {
             "validate",                 # validation
             "categorise", "save_categorisation", "update_categorisation",
-            "file_receipt", "make_enriched_sidecar", "mark_receipt_filed",
+            "copy_for_published_receipt",   # file_receipt until stage 4
+            "make_enriched_sidecar", "mark_receipt_filed",
             "determine_tax_year",       # filing
             "acquire_receipt_lock", "release_receipt_lock",  # locking
             "save_extraction", "update_receipt_status", "add_validation_note",

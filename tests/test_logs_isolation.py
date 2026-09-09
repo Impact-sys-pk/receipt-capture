@@ -118,6 +118,14 @@ PROCESS_ONCE_WRITES = (
     # it means setting config._CLIENTS_MTIME to match, which every environment
     # here does on the next line.
     "CLIENTS_JSON",
+    # Sub-step 10f.2, added 2026-09-09 by stage 4. Amendment 293 makes
+    # every receipt publish, so process_once() now writes an item into
+    # INTELLIBOOKS_PUBLISH_DIR for every arrival. **The fourth instance of
+    # the leak this guard exists to catch**, and found the way its
+    # docstring predicts: a module with a hand-rolled environment,
+    # tests/test_sidecar_category_keys.py, wrote into the one folder
+    # tests/live_paths.py made for the whole run.
+    "INTELLIBOOKS_PUBLISH_DIR",
 )
 
 

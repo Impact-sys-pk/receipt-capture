@@ -65,29 +65,20 @@ def get_client_directory(client_folder_name: str) -> Path:
     return config.CLIENTS_ROOT / client_folder_name / config.CLIENT_INTELLIBOOKS_FOLDER_NAME
 
 
-def file_receipt(
-    source_file: Path,
-    client_folder_name: str,
-    tax_year: str,
-    supplier: str,
-    gross: float,
-    original_filename: str,
-    enriched_sidecar: dict[str, Any],
-) -> tuple[Path, Path]:
-    client_dir = get_client_directory(client_folder_name)
-    destination_dir = client_dir / config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year
-    destination_dir.mkdir(parents=True, exist_ok=True)
-
-    ext = source_file.suffix
-    supplier_safe = normalise_supplier(supplier)
-    gross_text = f"{gross:.2f}"
-    base_name = f"{enriched_sidecar['invoice_date']}_{supplier_safe}_{gross_text}"
-    dest_image = _unique_path(destination_dir, base_name, ext)
-    dest_sidecar = dest_image.with_suffix(dest_image.suffix + ".json")
-
-    shutil.copy2(source_file, dest_image)
-    _write_json(dest_sidecar, enriched_sidecar)
-    return dest_image, dest_sidecar
+# file_receipt() was removed 2026-09-09 by sub-steps 10f.11 and 10f.13, under
+# the freeze narrowed for stage 4 by amendment 290. It wrote a receipt AND its
+# sidecar into the client folder ON ARRIVAL, and all three of those are now
+# wrong: amendment 122 makes the copy Intellibills' own gated function,
+# amendment 73 cancelled the write on arrival, and 18.2b's rules table says
+# image only with no data file beside it.
+#
+# **worker/client_copy.py holds what replaced it**, and the one-copy rule moved
+# with it: `receipts.filed_path` says whether a receipt has been copied, where
+# this function relied on _unique_path() and would happily write a second file
+# for one receipt.
+#
+# Deleted rather than left dead. A function that writes into `Clients\` is one
+# import away from being a second writer again, and 10f.11 says there is one.
 
 
 def file_statement(

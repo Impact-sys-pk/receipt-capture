@@ -23,6 +23,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import config
+from worker import publish
 from tests.chart_fixtures import TempChartBundle
 
 fake_openai = types.ModuleType("openai")
@@ -59,6 +60,18 @@ class TempEnvironment:
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "REVIEW_ROOT": config.REVIEW_ROOT,
+            # Sub-step 10f.2, added 2026-09-09 by stage 4. **This
+            # environment never redirected them and, until stage 4, never
+            # needed to: nothing this file drove published anything.**
+            # Amendment 293 made every receipt publish, so without these
+            # two every test here writes into the one folder
+            # tests/live_paths.py set up for the whole run and each test
+            # sees every earlier test's items. That is the fourth instance
+            # of the leak tests/test_logs_isolation.py exists to catch,
+            # and it was found the same way its docstring describes: a
+            # test that passed on its own and failed in the file.
+            "INTELLIBOOKS_ROOT": config.INTELLIBOOKS_ROOT,
+            "INTELLIBOOKS_PUBLISH_DIR": config.INTELLIBOOKS_PUBLISH_DIR,
         }
         config.DB_PATH = self.path / "receipts.db"
         config.CLIENTS_ROOT = self.path / "Clients"
@@ -71,6 +84,9 @@ class TempEnvironment:
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
+        config.INTELLIBOOKS_ROOT = self.path / "IntelliBooks"
+        config.INTELLIBOOKS_PUBLISH_DIR = config.INTELLIBOOKS_ROOT / "Published"
+        config.INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
         config.CLIENTS_JSON = self.path / "clients-not-placed.json"
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
@@ -130,13 +146,31 @@ class TempEnvironment:
         )
 
     def filed_sidecar(self):
-        # Amendment 170: Clients\{name}\IntelliBooks\Receipts\{tax year}\.
-        # Spelled out rather than built from config, so a wrong constant is caught
-        # here instead of agreeing with itself.
-        found = sorted(config.CLIENTS_ROOT.glob("*/IntelliBooks/Receipts/*/*.json"))
-        self_assert = len(found)
-        assert self_assert == 1, f"expected exactly one filed sidecar, found {found}"
-        return json.loads(found[0].read_text(encoding="utf-8"))
+        """The payload that travelled with this receipt, minus the item's own keys.
+
+        **Repointed 2026-09-09 by stage 4, and the name is kept on purpose.**
+        ~~Amendment 170: Clients\{name}\IntelliBooks\Receipts\{tax year}\.~~
+        18.2b's rules table makes the client folder copy **image only**, so
+        there is no sidecar there to read. The same `make_enriched_sidecar()`
+        payload now travels inside the published item, so this reads that and
+        drops the four keys the item adds on top of it: the document, its media
+        type, the validation notes and the id it duplicates.
+
+        Every assertion in this file is about the sidecar's own keys, so
+        dropping the item's four is what keeps those assertions saying the same
+        thing rather than being loosened to fit.
+        """
+        found = sorted(config.INTELLIBOOKS_PUBLISH_DIR.glob("*.json"))
+        assert len(found) == 1, f"expected exactly one published item, found {found}"
+        payload = json.loads(found[0].read_text(encoding="utf-8"))
+        for item_only in (publish.IMAGE_KEY, publish.MEDIA_TYPE_KEY,
+                          publish.NOTES_KEY, publish.DUPLICATE_OF_KEY):
+            payload.pop(item_only, None)
+        # And the copy under Clients\ carries no data file at all, which is the
+        # other half of the same rule and is free to assert here.
+        assert not sorted(config.CLIENTS_ROOT.rglob("*.json")), (
+            "a data file landed under Clients\\, and 18.2b says image only")
+        return payload
 
     def review_sidecar(self):
         # Intellibills\Review\{CODE}\, not the client folder, since 18.2a.
@@ -262,8 +296,20 @@ class AllFourCallSitesTest(unittest.TestCase):
                     validation_status="ok",
                     validation_notes=[],
                 )
+                # The sweep publishes what was never published, and it
+                # ignores anything created before the earliest publish_events
+                # row. Sub-step 10f.13's cutover, which stops the first run
+                # after stage 4 backfilling every historical receipt. So a row
+                # has to exist and be old enough for this receipt to be in
+                # scope: without it the sweep correctly does nothing and this
+                # test would prove nothing.
+                repo.save_publish_event(
+                    event_id="cutover", receipt_id="r-someone-else",
+                    destination="intellibooks", outcome="published",
+                    created_at="2000-01-01T00:00:00+00:00",
+                    item_path="somewhere.json")
                 engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
-                app._file_unfiled_ok_receipts(repo, engine, {})
+                app._publish_unpublished_receipts(repo, engine, {})
             finally:
                 repo.close()
             return sorted(env.filed_sidecar().keys())
@@ -291,11 +337,34 @@ class AllFourCallSitesTest(unittest.TestCase):
             finally:
                 repo.close()
 
+            # **The payload is captured at the point it is built, not read
+            # off disk, and that is a finding rather than a convenience.**
+            # Stage 4, 2026-09-09: `resolve_receipt()` no longer writes it
+            # anywhere. It used to hand it to `file_receipt()`, which wrote it
+            # beside the filed image; 18.2b makes that copy image only, and
+            # `resolve_receipt()` does not publish. So a CLI-resolved receipt's
+            # corrected values reach the database and no file at all, which is
+            # flagged in `2026-09-09_REPORT_claude_code_stage4_pipeline.md` and
+            # is 10f.15's to answer. This call site still builds the payload,
+            # so the four-way comparison below is still a real comparison.
+            from worker.resolution import service as resolution_service
+
+            built = []
+            real = resolution_service.make_enriched_sidecar
+
+            def spy(**kwargs):
+                payload = real(**kwargs)
+                built.append(payload)
+                return payload
+
             argv = ["resolve_receipt.py", "r-resolve", "--supplier", "Apcoa Parking", "--gross", "12.00"]
-            with patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(resolution_service, "make_enriched_sidecar", spy), \
+                    patch.object(sys, "argv", argv), \
+                    contextlib.redirect_stdout(io.StringIO()):
                 exit_code = resolve_receipt.main()
             self.assertEqual(exit_code, 0)
-            return sorted(env.filed_sidecar().keys()), env.filed_sidecar()
+            payload, = built
+            return sorted(payload.keys()), payload
 
     def test_all_four_call_sites_write_the_same_keys(self):
         pipeline_ok = self._keys_from_pipeline_ok_path()

@@ -168,9 +168,17 @@ class ResolvedClientStillFilesTest(unittest.TestCase):
             row = receipts()[0]
             self.assertEqual(row["source"], "desktop")
 
-            filed_sidecar = next(config.CLIENTS_ROOT.rglob("*.json"))
-            payload = json.loads(filed_sidecar.read_text(encoding="utf-8"))
+            # The published item, not a sidecar in the client folder.
+            # **Stage 4, 2026-09-09: 18.2b's rules table makes the client
+            # folder copy image only, so there is no `.json` under `Clients\`
+            # to read.** The same payload travels in the item instead, which is
+            # the handoff 18.3 describes, so what this test asserts is
+            # unchanged and only where it reads it has moved.
+            payload = published_item(row["receipt_id"])
             self.assertEqual(payload["source"], "desktop")
+            self.assertEqual(
+                sorted(config.CLIENTS_ROOT.rglob("*.json")), [],
+                "a data file landed under Clients\, and 18.2b says image only")
 
     def test_the_arrival_timestamp_is_written_as_iso_utc(self):
         # 10d.27 at the call site, not in the helper. This path used to pass
@@ -195,11 +203,25 @@ class ResolvedClientStillFilesTest(unittest.TestCase):
             drop(env)
             run_pipeline_once(RecordingExtractor(extraction_result()))
 
-            filed_sidecar = next(config.CLIENTS_ROOT.rglob("*.json"))
-            payload = json.loads(filed_sidecar.read_text(encoding="utf-8"))
+            # The published item, per the note in the test above.
+            payload = published_item(receipts()[0]["receipt_id"])
             self.assertEqual(payload["client_id"], "CLIENT001")
             self.assertNotIn("client_code", payload)
             self.assertNotIn("claimed_client_code", payload)
+
+
+def published_item(receipt_id):
+    """The item Intellibills published for this receipt. Sub-steps 10f.4 to 10f.7.
+
+    Added 2026-09-09 by stage 4. It replaced two reads of
+    `config.CLIENTS_ROOT.rglob("*.json")`, which found the sidecar
+    `file_receipt()` wrote beside the filed image. 18.2b's rules table makes
+    that copy image only and `worker/client_copy.py` is what writes it now, so
+    the payload travels in the item.
+    """
+    return json.loads(
+        (config.INTELLIBOOKS_PUBLISH_DIR / f"{receipt_id}.json")
+        .read_text(encoding="utf-8"))
 
 
 class StatementCopyTest(unittest.TestCase):

@@ -64,6 +64,11 @@ FIRM = {
     # nothing here reads the value and a distinct one keeps the two files'
     # failures apart.
     "publish_destinations": {"intellibooks": "Published"},
+    # Added 2026-09-09 by stage 4, F16 and sub-step 10f.12, and here for the
+    # same reason as the field above it: `_client_copy_trigger()` refuses a
+    # record without it. Amendment 294 predicted exactly this cost, which is
+    # why the Firm Settings box and Paul's value were built before the reader.
+    "client_copy_trigger": "publish",
 }
 
 

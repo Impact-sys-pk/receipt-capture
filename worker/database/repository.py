@@ -187,11 +187,69 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_unfiled_ok_receipts(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT receipt_id, client_id, firm_id, source, file_path, filename FROM receipts WHERE status = 'ok' AND filed_path IS NULL"
-        ).fetchall()
+    # get_unfiled_ok_receipts() was removed 2026-09-09 by sub-step 10f.13. It
+    # asked "which ok receipt has no filed_path", which was the right question
+    # while the client folder copy was written on arrival. **It is the wrong
+    # question now**: the copy is written on a successful publish and only when
+    # the firm's client_copy_trigger says so, so with the trigger on `never` no
+    # receipt ever has a filed_path and that query would return every one of
+    # them. get_unpublished_ok_receipts() below is what replaced it.
+
+    def get_unpublished_ok_receipts(self) -> list[dict]:
+        """Every `ok` receipt that was read and never published. Sub-step 10f.13.
+
+        Paul's decision of 2026-09-08, option B of three: the recovery sweep
+        survives the publish step, repointed. What it protects against is a
+        receipt that got read and then had nothing happen to it, through a crash
+        part way through a poll, a folder that could not be created, or a defect
+        in one path. That risk does not disappear when filing becomes
+        publishing; it moves.
+
+        **`published`, not "any row".** A receipt whose every attempt failed is
+        a genuine gap and is offered again.
+
+        **And the cutover, which is the part that needed deciding.** Answering
+        "never published" from `publish_events` alone makes every receipt that
+        predates publishing look like a gap, and amendment 283 is Paul's
+        decision that the first run publishes only what arrives from then on.
+        So a receipt created before the earliest `publish_events` row is
+        history rather than a gap. **An empty table sweeps nothing**, because
+        `created_at >= NULL` is NULL in SQL and no row satisfies it, which is
+        the right answer on an installation where publishing has never run.
+
+        The hole this leaves, stated rather than discovered: the very first
+        receipt of the publishing era, had the process died before its row was
+        written, is older than the earliest row and is never swept. It closes
+        the moment one publish succeeds, and one has: amendment 291 records the
+        live database's first `published` row at 2026-09-09T10:43:37Z.
+        """
+        rows = self._conn.execute("""
+            SELECT receipt_id, client_id, firm_id, source, file_path, filename,
+                   filed_path
+            FROM receipts
+            WHERE status = 'ok'
+              AND created_at >= (SELECT MIN(created_at) FROM publish_events)
+              AND NOT EXISTS (
+                  SELECT 1 FROM publish_events
+                  WHERE publish_events.receipt_id = receipts.receipt_id
+                    AND publish_events.outcome = 'published'
+              )
+        """).fetchall()
         return [dict(row) for row in rows]
+
+    def get_filed_path(self, receipt_id: str) -> Optional[str]:
+        """Where this receipt's client folder copy is, or None if there is none.
+
+        Sub-step 10f.11. `filed_path` is the record that a copy was written, so
+        this is the question "has this receipt been copied", asked by the one
+        function that writes the copy. `is_recorded_and_filed()` asks the same
+        column for a different purpose and returns a bool.
+        """
+        row = self._conn.execute(
+            "SELECT filed_path FROM receipts WHERE receipt_id = ?",
+            (receipt_id,)
+        ).fetchone()
+        return row[0] if row else None
 
     def get_extraction_for_receipt(self, receipt_id: str) -> Optional[dict]:
         row = self._conn.execute(

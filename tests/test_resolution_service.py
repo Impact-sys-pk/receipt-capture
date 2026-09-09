@@ -455,12 +455,36 @@ class GlOverrideTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_the_sidecar_on_disk_carries_the_corrected_code_and_name(self):
-        # Read the file back rather than asserting on the payload: 11.2's whole
-        # point is that a sidecar written before the override would disagree with
-        # the database permanently.
+    def test_the_payload_this_path_builds_carries_the_corrected_code_and_name(self):
+        """~~test_the_sidecar_on_disk_carries_the_corrected_code_and_name~~.
+
+        **Rewritten 2026-09-09 by stage 4, and the reason is a finding rather
+        than a tidy-up.** It read the sidecar `file_receipt()` wrote beside the
+        filed image, because 11.2's point is that a sidecar written BEFORE the
+        override would disagree with the database permanently. **There is no
+        such file any more**: 18.2b's rules table makes the client folder copy
+        image only, and `resolve_receipt()` does not publish, so **the payload
+        it builds now reaches no file at all.** That is flagged in
+        `2026-09-09_REPORT_claude_code_stage4_pipeline.md` and is sub-step
+        10f.15's to answer.
+
+        11.2's ordering still matters and is still what this tests: the payload
+        is built after the override is applied, so whatever eventually carries
+        it carries the effective code. Captured where it is built, and the
+        absence of the file is asserted rather than left implied.
+        """
+        from worker.resolution import service as resolution_service
+
         with TempEnvironment() as env:
             repo = Repository()
+            built = []
+            real = resolution_service.make_enriched_sidecar
+
+            def spy(**kwargs):
+                payload = real(**kwargs)
+                built.append(payload)
+                return payload
+
             try:
                 env.seed(repo)
                 self._seed_mapping(repo)
@@ -468,16 +492,18 @@ class GlOverrideTest(unittest.TestCase):
                 corrections.gl_nominal_code = "999"
                 corrections.gl_account_name = "Sundry expenses"
 
-                resolve_receipt(
-                    repo, env.engine(repo), "r-1", corrections,
-                    actor="paul", source="console",
-                )
+                with patch.object(resolution_service, "make_enriched_sidecar", spy):
+                    resolve_receipt(
+                        repo, env.engine(repo), "r-1", corrections,
+                        actor="paul", source="console",
+                    )
 
-                sidecars = list(config.CLIENTS_ROOT.rglob("*.pdf.json"))
-                self.assertEqual(len(sidecars), 1)
-                payload = json.loads(sidecars[0].read_text(encoding="utf-8"))
+                payload, = built
                 self.assertEqual(payload["category_code"], "999")
                 self.assertEqual(payload["category_name"], "Sundry expenses")
+                self.assertEqual(
+                    list(config.CLIENTS_ROOT.rglob("*.json")), [],
+                    "18.2b says the client folder copy is image only")
                 self.assertEqual(payload["category"], "Sundry expenses")
             finally:
                 repo.close()
@@ -610,8 +636,12 @@ class LockReleaseTest(unittest.TestCase):
             repo = Repository()
             try:
                 env.seed(repo)
+                # `file_receipt` until stage 4, 2026-09-09. It is deleted,
+                # and `copy_for_published_receipt()` is what sits at the same
+                # point in the flow: after the extraction row is written and
+                # before the lock is released.
                 with patch.object(
-                    service, "file_receipt",
+                    service, "copy_for_published_receipt",
                     side_effect=RuntimeError("disk went away mid-flow"),
                 ):
                     outcome = resolve_receipt(

@@ -61,6 +61,14 @@ class TempEnvironment:
             "CLIENTS": config.CLIENTS,
             "FILES_DIR": config.FILES_DIR,
             "REVIEW_ROOT": config.REVIEW_ROOT,
+            # Sub-step 10f.2, added 2026-09-09 by stage 4. Amendment 293
+            # makes every receipt publish, so process_once() writes an
+            # item for every arrival and this environment has to own the
+            # folder it goes into. Named by
+            # tests/test_logs_isolation.py, which is the guard that
+            # caught this module rather than a person noticing.
+            "INTELLIBOOKS_ROOT": config.INTELLIBOOKS_ROOT,
+            "INTELLIBOOKS_PUBLISH_DIR": config.INTELLIBOOKS_PUBLISH_DIR,
             "LOGS_DIR": config.LOGS_DIR,
             "RUNS_LOG": config.RUNS_LOG,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
@@ -75,6 +83,9 @@ class TempEnvironment:
         # Review left the client folder at 18.2a, so redirecting CLIENTS_ROOT no
         # longer covers it. Not created: file_review() makes it on demand.
         config.REVIEW_ROOT = self.path / "Review"
+        config.INTELLIBOOKS_ROOT = self.path / "IntelliBooks"
+        config.INTELLIBOOKS_PUBLISH_DIR = config.INTELLIBOOKS_ROOT / "Published"
+        config.INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
         config.LOGS_DIR = self.path / "logs"
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"

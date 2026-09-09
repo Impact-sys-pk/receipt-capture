@@ -517,6 +517,22 @@ def _client_top_folder(firms: dict) -> Path:
 # halves silently stop meeting. Sub-step 10f.2, amendment 280.
 PUBLISH_DESTINATIONS_FIELD = "publish_destinations"
 
+# The third key `IntelliBooks-Desktop-v3.html` and this module both have to
+# know, held for CLIENT_TOP_FOLDER_FIELD's reason. Sub-step 10f.12, F16 of
+# 2026-08-20_LIST_settings_firm_and_client.md, and amendment 294 fixed both the
+# key and its three values so the two halves cannot drift.
+CLIENT_COPY_TRIGGER_FIELD = "client_copy_trigger"
+
+# F16's three values, and they are the exact words the Firm Settings page
+# writes. **Not the wording used in prose**: amendment 292 says "on successful
+# publish" and the record says `publish`, so the words below come from the
+# record and from amendment 294, which fixed them for this reason.
+CLIENT_COPY_ON_PUBLISH = "publish"
+CLIENT_COPY_AT_POST = "post"
+CLIENT_COPY_NEVER = "never"
+CLIENT_COPY_TRIGGERS = (CLIENT_COPY_ON_PUBLISH, CLIENT_COPY_AT_POST,
+                        CLIENT_COPY_NEVER)
+
 # The one destination there is. The setting is an object keyed by destination
 # rather than a bare string, so a second consumer can be added later without
 # moving the first. Amendment 280 fixes the spelling of the key.
@@ -609,6 +625,68 @@ def _publish_destination(firms: dict) -> str:
     return value
 
 
+def _client_copy_trigger(firms: dict) -> str:
+    """When Intellibills writes a copy into the firm's client folder. F16, 10f.12.
+
+    One of `publish`, `post` or `never`, and nothing else. **No default and no
+    fallback**, which is `_publish_destination()`'s reasoning and this project's
+    rule every other time: amendment 245 made both roots required and absolute,
+    sub-steps 10d.13, 10d.17 and 10d.19 removed silent fallbacks one at a time,
+    and amendment 253 made all four SMTP settings required.
+
+    **A value that is none of the three is refused rather than treated as
+    `never`**, and that is the case worth naming. Amendment 294 records the
+    failure this guards from the other side: Desktop's select offers only the
+    three, so a word hand-typed into `firms.json` loads there as blank and would
+    be written back over on Save. Here it must not load at all, because a
+    trigger the pipeline does not understand read as one it does is a document
+    written into a client folder, and 18.2b says a copy is never withdrawn.
+
+    **The case is exact.** Folding it would accept a value the control cannot
+    produce and hide a hand-edited file, which is the thing the refusal is for.
+
+    **What refusing costs is stated rather than discovered:** a `firms.json`
+    with no `client_copy_trigger` will not start the pipeline, a fresh checkout
+    included. That is why amendment 294 built the box and set the value before
+    this reader existed.
+
+    The record is taken because there is exactly one, never because it is
+    named. Local multi-firm is not built, amendment 117.
+    """
+    where = (f"Set it on the Firm Settings page in IntelliBooks Desktop, which "
+             f"writes {FIRMS_JSON}.")
+    if not firms:
+        raise RuntimeError(
+            f"{FIRMS_JSON} names no firm, so {CLIENT_COPY_TRIGGER_FIELD} cannot "
+            f"be read and there is no default for it. It decides when a copy of "
+            f"a document is written into the firm's client folder, per sub-step "
+            f"10f.12, and its values are "
+            f"{', '.join(repr(v) for v in CLIENT_COPY_TRIGGERS)}. {where}"
+        )
+    if len(firms) > 1:
+        raise RuntimeError(
+            f"{FIRMS_JSON} names {len(firms)} firms, {', '.join(sorted(firms))}, "
+            f"and one pipeline serves one firm, so which "
+            f"{CLIENT_COPY_TRIGGER_FIELD} to use cannot be decided here. Local "
+            f"multi-firm is not built: see amendment 117 and section 1 of "
+            f"2026-09-01_DESIGN_cloud_multi_firm.md. Leave one firm in the file."
+        )
+    firm_id, firm = next(iter(firms.items()))
+    value = firm.get(CLIENT_COPY_TRIGGER_FIELD)
+    value = value.strip() if isinstance(value, str) else value
+    if value not in CLIENT_COPY_TRIGGERS:
+        raise RuntimeError(
+            f"{CLIENT_COPY_TRIGGER_FIELD} on firm {firm_id} in {FIRMS_JSON} is "
+            f"required and must be exactly one of "
+            f"{', '.join(repr(v) for v in CLIENT_COPY_TRIGGERS)}. It read "
+            f"{value!r}. There is no default: a trigger the pipeline does not "
+            f"understand, read as one it does, writes a document into a client "
+            f"folder, and section 18.2b says a copy is never withdrawn. The "
+            f"case is exact. {where}"
+        )
+    return value
+
+
 CLIENTS, CLIENTS_BY_ID = load_clients()
 FIRMS = load_firms()
 CLIENTS_ROOT = _client_top_folder(FIRMS)
@@ -624,6 +702,11 @@ INTELLIBOOKS_ROOT = PRACTICE_ROOT / "IntelliBooks"
 # Where each receipt is published, per sub-steps 10f.2 and 10f.4. One folder for
 # every client: the client identity travels inside the item, per 10f.5.
 INTELLIBOOKS_PUBLISH_DIR = INTELLIBOOKS_ROOT / _publish_destination(FIRMS)
+
+# When a copy of a document is written into the firm's client folder. F16,
+# sub-step 10f.12. Read here rather than at each use, so a bad value stops the
+# pipeline at import instead of being met one receipt at a time.
+CLIENT_COPY_TRIGGER = _client_copy_trigger(FIRMS)
 
 # Created at import, which means a casual `import config` makes these folders.
 # Only the new locations appear here: the old block created IntelliBooks\Backups\,

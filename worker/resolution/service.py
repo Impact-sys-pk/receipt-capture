@@ -27,11 +27,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from worker.categorisation.chart import get_chart_accounts_for_client
+from worker.client_copy import copy_for_published_receipt
 from worker.categorisation.fallback import resolve_against_chart
 from worker.extraction.base import ExtractionResult
 from worker.filing import (
     determine_tax_year,
-    file_receipt,
     make_enriched_sidecar,
     remove_review_pair,
 )
@@ -866,18 +866,26 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             claimed_client_id=None,
         )
 
-        # 11. File it, then record where it went. mark_receipt_filed sets
-        #     filed_path, which is what protects it from duplicate detection.
-        dest_path, _sidecar_path = file_receipt(
-            Path(receipt["file_path"]),
-            client_folder_name,
-            determine_tax_year(invoice_date),
-            merged["supplier_name"] or "unknown",
-            merged["gross_amount"] or 0.0,
-            receipt["filename"],
-            sidecar_payload,
+        # 11. The client folder copy, by the same single route as any other
+        #     receipt. Sub-steps 10f.11 and 10f.14: a completed review item is
+        #     not a special case, and `copy_for_published_receipt()` holds the
+        #     firm's trigger, so `never` writes nothing here as it writes
+        #     nothing anywhere. It records `filed_path` itself when it writes.
+        #
+        #     **`dest_path` is None when no copy was written**, which is the
+        #     ordinary outcome on two of the three triggers, so nothing below
+        #     may format it into a path without asking.
+        dest_path = copy_for_published_receipt(
+            repo,
+            receipt_id=receipt_id,
+            client_id=receipt.get("client_id"),
+            source_file=Path(receipt["file_path"]),
+            invoice_date=invoice_date,
+            supplier=merged["supplier_name"] or "unknown",
+            gross=merged["gross_amount"] or 0.0,
+            validation_status="ok",
+            filed_path=receipt.get("filed_path"),
         )
-        repo.mark_receipt_filed(receipt_id, str(dest_path))
         repo.update_receipt_status(receipt_id, "ok")
 
         # 12. The Review pair is stale now. Already gone is not an error.
@@ -929,17 +937,30 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             gl_override_code=override_code,
         )
 
-        logger.info(f"receipt {receipt_id} resolved by {actor} via {source}, filed to {dest_path}")
+        # Two wordings, because there are two outcomes now and one of them
+        # writes no file. Saying "Filed to None" would read as a defect.
+        #
+        # **`Filed to {path}` is kept verbatim for the case that writes one**,
+        # rather than reworded to match the new vocabulary.
+        # `RECEIPT_CAPTURE_GUIDE.md` documents that line and Paul reads it off
+        # the CLI, so the only message that changes is the one that could not
+        # exist before.
+        message = (f"Filed to {dest_path}" if dest_path else
+                   f"Resolved. No copy was written into the client folder, "
+                   f"because {config.CLIENT_COPY_TRIGGER_FIELD} is "
+                   f"{config.CLIENT_COPY_TRIGGER!r}.")
+        logger.info(
+            f"receipt {receipt_id} resolved by {actor} via {source}: {message}")
 
         # 15. Done.
         return ResolutionOutcome(
             outcome="filed", receipt_id=receipt_id, extraction_id=extraction_id,
-            filed_path=str(dest_path),
+            filed_path=str(dest_path) if dest_path else None,
             category_code=effective_code,
             category_name=effective_name,
             category_confidence=categorisation.confidence,
             validation_notes=["manually corrected and filed"],
-            message=f"Filed to {dest_path}",
+            message=message,
         )
 
     except Exception as exc:

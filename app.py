@@ -22,17 +22,18 @@ from worker.email.reader import fetch_attachments, fetch_new_messages, move_emai
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.factory import get_extractor
 from worker.extraction.retry_helper import extract_with_transient_retry
+from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler
 from worker.resolution.service import apply_resolution_note
 from worker.filing import (
     determine_tax_year,
-    file_receipt,
     file_statement,
     file_review,
     make_enriched_sidecar,
 )
+from worker.publish import extra_for, publish_receipt
 from worker.storage.store import compute_hash, is_supported, save_file, save_inbox_file
 from worker.validation.rules import validate
 
@@ -512,12 +513,27 @@ def _consume_resolution_notes(
             )
 
 
-def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]) -> None:
-    unfiled = repo.get_unfiled_ok_receipts()
+def _publish_unpublished_receipts(repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]) -> None:
+    """Publish anything that was read and never published. Sub-step 10f.13.
+
+    **This is the recovery sweep, repointed rather than deleted.** Paul's
+    decision of 2026-09-08, option B of three: what it protects against is a
+    receipt that got read and then had nothing happen to it, and that risk moves
+    when filing becomes publishing rather than disappearing.
+
+    It used to file into the client folder and was the third of the three writers
+    amendment 278 counted. It now publishes, and the client folder copy that
+    follows a successful publish is written by the same gated function every
+    other route uses.
+
+    `get_unpublished_ok_receipts()` carries the cutover that keeps this from
+    backfilling every historical receipt, and the reasoning is in its docstring.
+    """
+    unfiled = repo.get_unpublished_ok_receipts()
     if not unfiled:
         return
 
-    logger.info(f"recovering {len(unfiled)} validated receipts that are not yet filed")
+    logger.info(f"recovering {len(unfiled)} validated receipts that were never published")
     for receipt in unfiled:
         receipt_id = receipt["receipt_id"]
         try:
@@ -606,20 +622,37 @@ def _file_unfiled_ok_receipts(repo: Repository, categorisation_engine: Categoris
                 original_filename=receipt["filename"],
                 claimed_client_id=None,
             )
-            dest_path, sidecar_path = file_receipt(
-                source_path,
-                client_folder_name,
-                tax_year,
-                supplier,
-                gross,
-                receipt["filename"],
-                sidecar_payload,
+            published = publish_receipt(
+                repo, receipt_id, sidecar_payload, source_path,
+                # An `ok` receipt has no notes and no duplicate, and the empty
+                # list is stated rather than left out so every item carries the
+                # key. extra_for() is the one builder, shared with the poll.
+                extra=extra_for([]),
             )
-            repo.mark_receipt_filed(receipt_id, dest_path)
-            stats["recovery_filed"] = stats.get("recovery_filed", 0) + 1
-            logger.info(f"receipt {receipt_id} recovered, categorised as {categorisation.suggested_code}, and filed to {dest_path}")
+            if not published:
+                # publish_receipt() has already recorded why and logged it. The
+                # receipt is untouched and the next poll offers it again.
+                stats["recovery_failed"] = stats.get("recovery_failed", 0) + 1
+                continue
+
+            dest_path = copy_for_published_receipt(
+                repo,
+                receipt_id=receipt_id,
+                client_id=receipt["client_id"],
+                source_file=source_path,
+                invoice_date=invoice_date,
+                supplier=supplier,
+                gross=gross,
+                validation_status="ok",
+                filed_path=receipt.get("filed_path"),
+            )
+            stats["recovery_published"] = stats.get("recovery_published", 0) + 1
+            logger.info(
+                f"receipt {receipt_id} recovered, categorised as "
+                f"{categorisation.suggested_code}, and published"
+                + (f"; copied to {dest_path}" if dest_path else ""))
         except Exception as exc:
-            logger.error(f"failed to file recovered receipt {receipt_id}: {exc}", exc_info=True)
+            logger.error(f"failed to publish recovered receipt {receipt_id}: {exc}", exc_info=True)
 
 
 def _cleanup_old_backups():
@@ -1095,7 +1128,7 @@ def process_once():
         # Part 1: Auto-retry failed receipts with older pipeline_version
         _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)
 
-        _file_unfiled_ok_receipts(repo, engine, stats)
+        _publish_unpublished_receipts(repo, engine, stats)
 
         intake_records = scan_inbox()
         logger.info(f"capture inbox files found: {len(intake_records)}")

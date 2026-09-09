@@ -76,6 +76,24 @@ MEDIA_TYPES = {
     ".bmp": "image/bmp",
 }
 
+#: What validation said about this receipt, and the id it duplicates. **Two more
+#: keys whose names are part of the contract with IntelliBooks Desktop**, added
+#: 2026-09-09 by amendment 293, which widened publishing from `ok` to every
+#: validation status. Desktop routes on `validation_status`, which the sidecar
+#: already carried; these two are what a review-queue entry needs beyond it.
+#:
+#: **`validation_notes` carries the LIST, not the joined string.** The database
+#: joins the notes with `", "` in `save_extraction()`, and the gross-mismatch
+#: note contains `", "` itself, so a joined string cannot be split back into
+#: notes. JSON has lists; the item uses one. `ok` carries an empty list rather
+#: than no key, so a reader never has to tell "no notes" from "an old item".
+#:
+#: **`duplicate_of` is present only where there is one**, which is the same
+#: shape `_log_receipt()` uses for its optional keys and keeps a null out of
+#: every other item.
+NOTES_KEY = "validation_notes"
+DUPLICATE_OF_KEY = "duplicate_of"
+
 #: The two outcomes a `publish_events` row can carry, sub-step 10f.36. The
 #: third state is no row at all, which is why neither word is "not attempted".
 PUBLISHED = "published"
@@ -110,13 +128,22 @@ def media_type_for(filename) -> str:
         ) from None
 
 
-def build_item(sidecar: dict, document: Path) -> dict:
-    """The published item: the sidecar's keys, plus the document and its type.
+def build_item(sidecar: dict, document: Path, extra: dict = None) -> dict:
+    """The published item: the sidecar's keys, plus `extra`, plus the document.
 
     `sidecar` is exactly what `make_enriched_sidecar()` returned and is copied
-    rather than added to. It is the same dict the filing route writes into the
+    rather than added to. ~~It is the same dict the filing route writes into the
     client folder, so putting two keys into it in place would change that file
-    as well.
+    as well.~~ **Corrected 2026-09-09 by stage 4: the filing route no longer
+    writes a sidecar into the client folder at all, per 18.2b's image-only
+    rule.** The copy is still the right thing to do, for the reason below it:
+    `process_extraction_result()` hands the same dict to `file_review()` as its
+    `extracted_values`, so adding keys in place would change the Review file.
+
+    `extra` is merged **before** the document and its media type, so those two
+    always win. A caller passing `image_base64` would otherwise replace the
+    document with whatever it liked and the item would say it carried a PDF
+    while holding something else.
     """
     document = Path(document)
     try:
@@ -127,6 +154,8 @@ def build_item(sidecar: dict, document: Path) -> dict:
             f"{error}"
         ) from error
     item = dict(sidecar)
+    if extra:
+        item.update(extra)
     item[MEDIA_TYPE_KEY] = media_type_for(document.name)
     item[IMAGE_KEY] = base64.b64encode(raw).decode("ascii")
     return item
@@ -175,6 +204,29 @@ def write_item(directory: Path, receipt_id: str, item: dict) -> Path:
     return final
 
 
+def extra_for(notes, duplicate_of=None) -> dict:
+    """The keys amendment 293 adds to a published item, built in one place.
+
+    Two callers, `process_extraction_result()` and the recovery sweep in
+    `app.py`, and one builder, so a review-queue entry arriving by the sweep
+    cannot carry a different shape from one arriving on the poll.
+
+    `notes` is coerced to a list rather than trusted, because `validate()`
+    returns one and a caller reading `extractions.validation_notes` back out of
+    the database has a joined string. A string would silently publish as itself
+    and Desktop would render one note reading `missing supplier_name, gross
+    mismatch: ...`.
+    """
+    if notes is None:
+        notes = []
+    elif isinstance(notes, str):
+        notes = [part for part in notes.split(", ") if part]
+    extra = {NOTES_KEY: list(notes)}
+    if duplicate_of:
+        extra[DUPLICATE_OF_KEY] = duplicate_of
+    return extra
+
+
 def _record(repo, receipt_id, destination, outcome, created_at,
             item_path=None, reason=None):
     """Write the `publish_events` row, and never let that be the thing that fails.
@@ -200,8 +252,47 @@ def _record(repo, receipt_id, destination, outcome, created_at,
             outcome, receipt_id, destination, error)
 
 
+def _warn_if_already_published(repo, receipt_id, destination) -> None:
+    """Say so when this receipt has landed before. **It does not refuse.**
+
+    Deliverable 4 of stage 4's pipeline brief, and flag 5 of
+    `2026-09-09_REPORT_claude_code_stage1_piece3_publish.md`. With one status
+    publishing once, an overwrite had nil consequence. Amendment 293 widened
+    publishing to four statuses, and the auto-retry re-extracts a `failed` or
+    `needs_review` receipt, so **one receipt publishing twice is now a normal
+    event and it has to work**: a receipt published as `failed` and later
+    re-extracted as `ok` must reach Desktop again or the books never see it.
+
+    **So this makes the overwrite visible rather than preventing it**, which is
+    what "must not silently overwrite" asks for. The second attempt writes its
+    own `publish_events` row, so the history is in the database as well as the
+    log.
+
+    Reading the log must never be the thing that stops a publish, so a failure
+    here is logged and swallowed, on `_record()`'s reasoning.
+    """
+    try:
+        landed = [row for row in repo.list_publish_events(receipt_id)
+                  if row.get("outcome") == PUBLISHED]
+    except Exception as error:
+        logger.warning(
+            "could not read the publish history of receipt %s before "
+            "republishing it: %s", receipt_id, error)
+        return
+    if not landed:
+        return
+    previous = landed[0]
+    logger.warning(
+        "receipt %s is already published to %s: %s items(s) landed before, the "
+        "last at %s as %s. Publishing again overwrites it, which is deliberate: "
+        "an auto-retry that turns a failed receipt into an ok one has to reach "
+        "IntelliBooks a second time.",
+        receipt_id, destination, len(landed), previous.get("created_at"),
+        previous.get("item_path"))
+
+
 def publish_receipt(repo, receipt_id, sidecar, document,
-                    directory=None, destination=None) -> bool:
+                    directory=None, destination=None, extra=None) -> bool:
     """Publish one receipt and record the attempt. **This never raises.**
 
     Sub-step 10f.36. Returns True when the item landed.
@@ -227,8 +318,9 @@ def publish_receipt(repo, receipt_id, sidecar, document,
     directory = config.INTELLIBOOKS_PUBLISH_DIR if directory is None else Path(directory)
     destination = config.INTELLIBOOKS_DESTINATION if destination is None else destination
     now = datetime.now(timezone.utc).isoformat()
+    _warn_if_already_published(repo, receipt_id, destination)
     try:
-        item = build_item(sidecar, document)
+        item = build_item(sidecar, document, extra)
         written = write_item(directory, receipt_id, item)
     except Exception as error:
         logger.error("publishing receipt %s to %s failed: %s: %s",

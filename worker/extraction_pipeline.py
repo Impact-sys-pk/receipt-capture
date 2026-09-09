@@ -14,8 +14,9 @@ import config
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
 from worker.categorisation.fallback import resolve_against_chart
-from worker.filing import file_receipt, file_review, make_enriched_sidecar, determine_tax_year
-from worker.publish import publish_receipt
+from worker.client_copy import copy_for_published_receipt
+from worker.filing import file_review, make_enriched_sidecar
+from worker.publish import extra_for, publish_receipt
 from worker.validation.rules import validate
 
 logger = logging.getLogger(__name__)
@@ -350,41 +351,13 @@ def process_extraction_result(
             claimed_client_id=None,
         )
 
-        # File receipt
-        tax_year = determine_tax_year(extraction.invoice_date or datetime.now(timezone.utc).date().isoformat())
-        filed_path, sidecar_path = file_receipt(
-            file_path,
-            client_folder_name,
-            tax_year,
-            extraction.supplier_name or "unknown",
-            extraction.gross_amount or 0.0,
-            filename,
-            sidecar_payload
-        )
-
-        # Mark filed (critical for Part 2A's duplicate protection)
-        repo.mark_receipt_filed(receipt_id, filed_path)
+        # **Nothing is written into `Clients\` here any more.** Sub-step
+        # 10f.13, and amendment 73 decided it on 2026-07-30. The copy is
+        # written on a successful publish, below and for every route, by
+        # `worker\client_copy.py`. `client_folder_name` is still read above,
+        # because the gate of 10d.16 and 10d.18 turns a receipt whose client
+        # cannot be named into a review item and that is unchanged.
         repo.update_receipt_status(receipt_id, "ok")
-
-        # Publish to IntelliBooks. Stage 1 piece 3, sub-step 10f.36.
-        #
-        # **One call site, here rather than at the four in app.py**, because
-        # every arrival route ends in this function and the three that produce
-        # a receipt should all publish the same way.
-        #
-        # **Only `ok` reaches this line**, which is what 10f.24 asks for
-        # without this scope having to know about it: `possible_duplicate`,
-        # `needs_review` and `failed` are all in the else branch below.
-        #
-        # **Not wrapped in a try, deliberately.** `publish_receipt()` swallows
-        # its own failures and records them, so the guarantee lives in one
-        # place rather than depending on each caller. The write into `Clients\`
-        # above has already happened and is still what IntelliBooks reads, so a
-        # receipt that files and does not publish stays `ok` and filed.
-        #
-        # `file_path` is the copy in the document store, which is the archive of
-        # record per 18.2a, so the bytes in the item are the bytes that arrived.
-        publish_receipt(repo, receipt_id, sidecar_payload, file_path)
 
         stats['extractions_succeeded'] = stats.get('extractions_succeeded', 0) + 1
 
@@ -437,6 +410,55 @@ def process_extraction_result(
             stats['extraction_failures'] = stats.get('extraction_failures', 0) + 1
         else:  # needs_review
             stats['review_flags_issued'] = stats.get('review_flags_issued', 0) + 1
+
+    # Publish to IntelliBooks. Sub-step 10f.36, widened by amendment 293.
+    #
+    # **One call site, here rather than at the four in app.py**, because every
+    # arrival route ends in this function and the three that produce a receipt
+    # should all publish the same way.
+    #
+    # **Every validation status, changed 2026-09-09.** ~~Only `ok` reaches this
+    # line.~~ It sat inside the `ok` branch above, so nothing a review queue
+    # cares about ever published, and sub-step 10f.15 stops Desktop reading
+    # `Intellibills\Review\`. `failed`, `needs_review` and `possible_duplicate`
+    # have to reach Desktop through the inbox or they reach it nowhere. The item
+    # says which it is: `validation_status` was already one of the sidecar's
+    # keys, and `extra_for()` adds the notes and the id it duplicates.
+    #
+    # **Not wrapped in a try, deliberately.** `publish_receipt()` swallows its
+    # own failures and records them, so the guarantee lives in one place rather
+    # than depending on each caller.
+    #
+    # `file_path` is the copy in the document store, which is the archive of
+    # record per 18.2a, so the bytes in the item are the bytes that arrived.
+    published = publish_receipt(
+        repo, receipt_id, sidecar_payload, file_path,
+        extra=extra_for(validation.notes, duplicate_of),
+    )
+
+    # The copy into the firm's client folder, on a successful publish and on
+    # nothing else. Sub-steps 10f.11 and 10f.12: this is what replaced the write
+    # `file_receipt()` used to do on arrival, and the trigger, the one-copy rule
+    # and the missing-folder-name refusal all live in the one function rather
+    # than at each of its three call sites.
+    #
+    # **`filed_path` is read rather than assumed NULL.** The auto-retry path
+    # calls this function again for a receipt that already exists, and a
+    # receipt that has already been copied must not be copied twice.
+    filed_path = None
+    if published:
+        filed_path = copy_for_published_receipt(
+            repo,
+            receipt_id=receipt_id,
+            client_id=client_id,
+            source_file=file_path,
+            invoice_date=(extraction.invoice_date
+                          or datetime.now(timezone.utc).date().isoformat()),
+            supplier=extraction.supplier_name or "unknown",
+            gross=extraction.gross_amount if extraction.gross_amount is not None else 0.0,
+            validation_status=validation.status,
+            filed_path=repo.get_filed_path(receipt_id),
+        )
 
     # Mark email attachment as processed (email-only dedup, must happen for ALL outcomes)
     # Sub-step 10d.32, corrected 2026-09-03. firm_id was omitted here, so it took

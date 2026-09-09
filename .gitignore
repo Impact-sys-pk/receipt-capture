@@ -17,3 +17,12 @@ Backups/
 # clean-tree warning before every run, which is the only reason it fires.
 exports/
 Claude outputs/
+
+# Byte-exact copies taken immediately before an edit, per CLAUDE.md's evidence
+# standard. They are proof of a before-state and not source, and git holds the
+# real before-state once the edit is committed. Added 2026-09-09 for the reason
+# the two lines above give: nine of them were untracked in archive\ and
+# config.check_git_status_on_startup() counts untracked files, so every pipeline
+# start would have warned "Changed files: 9 file(s)" on a tree that is clean.
+*.bak
+*.bak-*

@@ -301,22 +301,17 @@ Four, and none was changed to make it pass.
 
 ## 5. Flags: things wrong that the brief did not ask about
 
-**Flag 1. `test_every_refusal_sits_above_every_mkdir` holds a hand-written list of refusal shapes,
-and its own docstring says the failure mode is silence.** It enumerates
+**Flag 1. DONE, `a81a866`, on Paul's word of 2026-09-09. See section 9.**
+`test_every_refusal_sits_above_every_mkdir` held a hand-written list of refusal shapes, and its own
+docstring said the failure mode is silence. It enumerated
 `{"_required_root", "_required", "_required_int", "_client_top_folder"}` and I had to add
 `_publish_destination` by hand. Had I not, the guard would have passed while missing the newest
 refusal, which is exactly what the docstring predicts.
 
-**Small and obviously right, and I offer it: derive the set instead.** Any module-level `def _name()`
-in `config.py` whose body contains a `raise`, plus the `os.environ[...]` subscript shape it already
-looks for. One helper, one command to check, and the next refusal is covered without anybody
-remembering. **Not done, because it is an existing test's logic and the brief did not ask.**
-
-**Flag 2. A `TEXT PRIMARY KEY` in SQLite accepts NULL.** `publish_events.event_id` and
-`resolution_events.event_id` are both reported nullable by `PRAGMA table_info`, because only an
-`INTEGER PRIMARY KEY` rejects NULL. I matched the precedent rather than diverge from it. Nothing can
-reach it today: both writers pass a `uuid4()`. **Small and obviously right, and I offer it: add
-`NOT NULL` to both.** It touches an existing table's definition, which is why it is a flag.
+**Flag 2. DONE, `9edbee2`, on Paul's word of 2026-09-09. See section 9.**
+A `TEXT PRIMARY KEY` in SQLite accepts NULL, because only an `INTEGER PRIMARY KEY` rejects one, so
+`publish_events.event_id` and `resolution_events.event_id` were both reported nullable by
+`PRAGMA table_info`. Nothing could reach it: both writers pass a `uuid4()`.
 
 **Flag 3. No publish statistic reaches the run summary.** `stats` counts extractions succeeded,
 review flags issued, possible duplicates and extraction failures, and a publish that fails is
@@ -428,3 +423,104 @@ flag 2.
 - **The recovery sweep is untouched.** Repointing it is 10f.13, stage 4.
 - **The two documents modified in the working tree when I started**, `2026-07-25_CONSOLE_DESIGN.md`
   and `2026-09-08_PLAN_publish_step.md`, are the consultant session's and are left uncommitted.
+
+---
+
+## 9. Addendum: flags 1 and 2, built 2026-09-09 on Paul's instruction
+
+**Two commits, after the report above was written. "Do flags 1 and 2 from your report. Leave the
+Incoming folder where it is." Paul, 2026-09-09.**
+
+| | |
+|---|---|
+| Flag 1, the derived refusal set | **`a81a866`**, `tests/test_client_top_folder.py` |
+| Flag 2, `NOT NULL` on both `event_id` columns | **`9edbee2`**, `worker/database/schema.py` and two test files |
+| **Suite** | **822 passed 613 subtests before, 830 passed 613 subtests after** |
+| Mutations | **7 more. All 7 caught** |
+| `IntelliBooks\Incoming\` | **Left where it is**, as instructed. Nothing else was written outside the repository |
+
+### Flag 1: the guard derives its helper set
+
+**The flag was demonstrated before anything was changed, because this test cannot be red first.**
+It passes both before and after; what changes is what it can catch. So the evidence is a mutation
+from a pristine copy, which is `CLAUDE.md`'s stated alternative.
+
+**The mutation**: a new module-level helper in `config.py` that refuses on a bad value, called at
+module level with a good one, placed **below** the mkdir block where nothing may refuse.
+
+- **Against the hand-written set: SURVIVED.** `822 passed, 613 subtests`. Not one test noticed.
+- **Against the derived set: CAUGHT**, by `test_every_refusal_sits_above_every_mkdir`.
+
+**What replaced the list.** `refusing_functions(tree)` takes every module-level function in
+`config.py` that contains a `raise`, then adds any that calls one of those and does not catch it,
+run to a fixpoint. The try-awareness is the half that earns its place: `load_clients()` lets
+`_read_registry()`'s `ValueError` through and `reload_clients_if_changed()` catches it, because the
+second runs inside the poll loop where an exception would end the run. Both call something that
+raises and only one of them refuses.
+
+**The derived set is a strict superset of the five, verified before I changed the test rather than
+after**: it adds `_read_registry`, `load_clients` and `load_firms`. Nothing moves in `config.py`,
+because both loaders already sit above the mkdir block. The guard simply now holds them there, and a
+future edit putting either below it fails.
+
+**Over-including is deliberate.** An extra name can only add lines that must sit above the block, so
+at worst the guard gets stricter and fails loudly. A missing name is the silence being replaced.
+**The two limits that remain are written into the docstring**: a refusal that is neither a call to a
+module-level function nor `os.environ[...]`, and a refusal reached through a call the test cannot
+see, such as a method on an imported object.
+
+**Four new tests on the derivation itself**, because a version returning an empty set would make the
+ordering guard pass against any `config.py` at all: the five old names are still found, the two
+loaders are found, a function that catches what it calls is not counted, and a three-deep chain is
+followed on a module written inside the test.
+
+**Five mutations, all caught.**
+
+| Mutation | Caught by |
+|---|---|
+| A new refusal added below the mkdir block | `test_every_refusal_sits_above_every_mkdir` |
+| An existing refusal moved below it, `CLIENTS_ROOT` | 3 tests |
+| The derivation returns nothing | 4 tests |
+| The delegation pass is dropped | 2 tests |
+| The try-awareness is dropped | 2 tests |
+
+### Flag 2: `event_id` says `NOT NULL` as well as `PRIMARY KEY`
+
+Red before green: two PRAGMA reads and two driven inserts, all four failing first, and each class
+carries a control so it cannot pass against a table that refuses every row. One phrase added per
+table. **Two mutations, one per table, both caught.**
+
+**Two consequences, both now written into `schema.py` beside the constraint.**
+
+**The live `resolution_events` keeps its nullable `event_id`.** `schema.py` creates and does not
+migrate, which is the shape 10d.34 settled when it removed eleven `ALTER TABLE` guards, and adding a
+`NOT NULL` in SQLite means rebuilding the table. So this protects a fresh installation and every
+test database, and `C:\Intellibills\db\receipts.db` keeps the old definition until it is next
+rebuilt. **Read rather than assumed**: a read-only query returns
+`event_id            TEXT PRIMARY KEY,` for that table today.
+
+**`publish_events` gets the constraint everywhere**, because it is not in the live database at all.
+The same read-only query lists **ten tables** and not that one, so the table is created for the first
+time when Paul next starts the pipeline, and it is created with the phrase.
+
+**Also read in passing and stated because it corrects a line in `CLAUDE.md`**: the live database
+holds no `email_delta`. That file says a database created before 2026-09-04 still holds it, empty.
+This one does not, so it postdates the removal. Nothing follows from it and nothing was changed.
+
+### One flag raised by this addendum
+
+**`CLAUDE.md`'s Database Schema section says ten tables and there are now eleven.** It does not
+describe `publish_events`. **Not edited**: `CLAUDE.md` is Paul's and the consultant session's, and
+this session's last change to it was committing somebody else's work on instruction. Section 1 of
+this report and the comment block in `schema.py` are written so the entry can be lifted straight in.
+
+### Confidence on the addendum
+
+| Claim | Confidence | What it rests on, and what it is about |
+|---|---|---|
+| The hand-written set was blind to a new refusal | **High** | A mutation run from a pristine copy, printing its own diff, with the whole suite green underneath it. **About that shape of refusal**, which is the shape the docstring already predicted |
+| The derived set loses none of the five | **High** | Asserted in a test, and checked by hand before the change with both sets printed |
+| `load_clients()` and `load_firms()` genuinely refuse | **High** | Read in `config.py`: `_read_registry()` raises `ValueError` on a payload that is neither shape, and neither loader has a `try` |
+| The live database has no `publish_events` and a nullable `resolution_events.event_id` | **High** | A read-only `sqlite_master` query against the file itself, listing all ten tables and the stored `CREATE` |
+| Both flags are caught by mutation | **High** | Seven mutations, each restored byte for byte afterwards |
+| Nothing else was written outside the repository | **High** | No command in this addendum wrote anywhere but the repository, and the one database access was opened `mode=ro` |

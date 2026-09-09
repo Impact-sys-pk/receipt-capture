@@ -797,10 +797,51 @@ class Repository:
 
     # Part 2B: Duplicate detection & Part 3: Locking
 
+    #: "This receipt landed at a destination", as a correlated subquery.
+    #:
+    #: **Sub-step 10f.24. It replaced `r.filed_path IS NOT NULL`**, which stage
+    #: 4 turned into a question about the firm's `client_copy_trigger`: the copy
+    #: into `Clients\` is written on a successful publish and only when that
+    #: setting says `publish`, so on `never` and on `post` no receipt ever has a
+    #: `filed_path` and the semantic duplicate check stopped flagging anything.
+    #: Claude Code's flag 1 of the stage 4 report, amendment 303.
+    #:
+    #: **One string, used by both branches of `find_by_transaction_loose()`**,
+    #: which are near-copies of each other. `worker/client_copy.py` already
+    #: carries the reasoning for not making a second copy of something: the two
+    #: would drift, and the half that drifts first decides the answer.
+    #:
+    #: **`outcome = 'published'` and nothing else.** A `failed` row means the
+    #: receipt was offered and did not land, which
+    #: `get_unpublished_ok_receipts()` above already treats as a genuine gap to
+    #: be offered again, so counting it would leave a new receipt in Review as
+    #: the duplicate of something that has arrived nowhere. The literal matches
+    #: the two queries above rather than importing `worker.publish.PUBLISHED`,
+    #: which this module does not import and must not, per its own layering.
+    _PUBLISHED = """
+        EXISTS (
+            SELECT 1 FROM publish_events
+            WHERE publish_events.receipt_id = r.receipt_id
+              AND publish_events.outcome = 'published'
+        )
+    """
+
     def find_by_transaction_loose(self, supplier_name: str, invoice_date: str, gross_amount: float,
                                    client_id: str,
                                    case_insensitive: bool = True, amount_tolerance: float = 0.01) -> str:
-        """This client's filed receipt matching supplier + date + amount. 10f.19.
+        """This client's PUBLISHED receipt matching supplier + date + amount.
+
+        10f.19 for the client scope, ~~10f.20's filed test~~ **10f.24 for what
+        counts as settled: a `published` row rather than a `filed_path`.** See
+        `_PUBLISHED` above for why the marker moved.
+
+        **One production caller**, the semantic duplicate check in
+        `process_extraction_result()`, enumerated from the syntax tree. It pairs
+        this with `is_published()` on the id that comes back, which is the same
+        pairing it had with `filed_path` and `is_recorded_and_filed()` before:
+        the marker has to be in the query as well as at the call site, because
+        `LIMIT 1` would otherwise hand back an unsettled row while a settled
+        one existed and the guard would reject a real duplicate.
 
         Semantic duplicate detection. Case-insensitive supplier and a tolerance
         on the amount, to reduce false positives against a resend of the same
@@ -832,8 +873,8 @@ class Repository:
                 WHERE (LOWER(e.supplier_name) = ? OR e.supplier_name = ?)
                   AND e.invoice_date = ?
                   AND e.gross_amount BETWEEN ? AND ?
-                  AND r.filed_path IS NOT NULL
                   AND r.client_id = ?
+                  AND """ + self._PUBLISHED + """
                 LIMIT 1
             """
             row = self._conn.execute(query, (supplier_search, supplier_name, invoice_date, min_amount, max_amount, client_id)).fetchone()
@@ -845,8 +886,8 @@ class Repository:
                 INNER JOIN extractions e ON r.receipt_id = e.receipt_id
                 WHERE (LOWER(e.supplier_name) = ? OR e.supplier_name = ?)
                   AND e.gross_amount BETWEEN ? AND ?
-                  AND r.filed_path IS NOT NULL
                   AND r.client_id = ?
+                  AND """ + self._PUBLISHED + """
                 LIMIT 1
             """
             row = self._conn.execute(query, (supplier_search, supplier_name, min_amount, max_amount, client_id)).fetchone()
@@ -862,12 +903,41 @@ class Repository:
         self._conn.commit()
 
     def is_recorded_and_filed(self, receipt_id: str) -> bool:
-        """Check if a receipt is genuinely filed (has filed_path set)."""
+        """Check if a receipt is genuinely filed (has filed_path set).
+
+        **NOT widened by 10f.24, and that is a decision rather than an
+        oversight.** Its three remaining callers are the file-hash dedup in
+        `app.py`, and `_move_inbox_pair_to_processed()` depends in terms on a
+        `needs_review` receipt NOT counting as filed, so that a file an
+        operator puts back by hand is deliberately reprocessed. Amendment 293
+        gives every validation status a `published` row, so widening this would
+        make a resent review item look like a duplicate. Amendment 303, and
+        `SettledMeansPublishedTest` holds the two answers apart.
+        """
         row = self._conn.execute(
             "SELECT filed_path FROM receipts WHERE receipt_id = ?",
             (receipt_id,)
         ).fetchone()
         return row and row[0] is not None
+
+    def is_published(self, receipt_id: str) -> bool:
+        """Whether this receipt has ever landed at a destination. 10f.24.
+
+        The marker that replaced `filed_path` for the semantic duplicate check.
+        `_PUBLISHED` above carries the reasoning and asks the same question
+        inside `find_by_transaction_loose()`.
+
+        **Any row, not the newest.** `publish_events` is append-only and one
+        receipt can have several rows: a receipt that failed and was later
+        published is published. `list_publish_events()` is what a reader wants
+        for the history.
+        """
+        row = self._conn.execute(
+            "SELECT 1 FROM publish_events "
+            "WHERE receipt_id = ? AND outcome = 'published' LIMIT 1",
+            (receipt_id,)
+        ).fetchone()
+        return row is not None
 
     # Part 3: Locking for manual resolution
 

@@ -220,7 +220,20 @@ def process_extraction_result(
             case_insensitive=True,
             amount_tolerance=0.01
         )
-        if dup and repo.is_recorded_and_filed(dup):
+        # 10f.24. **`is_published()`, not `is_recorded_and_filed()`.** That
+        # helper reads `filed_path`, which stage 4 turned into a question about
+        # the firm's `client_copy_trigger`: the client folder copy is written on
+        # a successful publish and only when that setting says `publish`, so on
+        # `never` and on `post` no receipt ever has one and this check stopped
+        # flagging anything at all. A `published` row is written whatever the
+        # trigger and whatever the validation status, per amendment 293.
+        #
+        # **The helper is not widened, it is replaced here.** Its three other
+        # callers are the file-hash dedup in `app.py`, and
+        # `_move_inbox_pair_to_processed()` depends in terms on a `needs_review`
+        # receipt NOT counting as filed, so a widened helper would make a file
+        # an operator puts back by hand look like a duplicate. Amendment 303.
+        if dup and repo.is_published(dup):
             # Check if distinguishing signals differ (ref_number, receipt_time)
             # Only flag as possible_duplicate if signals do NOT distinguish them
             if not _signals_differ(extraction, dup, repo):

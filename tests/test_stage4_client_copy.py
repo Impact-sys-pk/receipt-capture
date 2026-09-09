@@ -579,6 +579,14 @@ class TheCopyIsImageOnlyTest(unittest.TestCase):
         documents. `_unique_path()` gives the second a `-2`, which is the
         behaviour the old writer had, and the reason the one-copy rule is
         answered from `filed_path` rather than from the filename.
+
+        **Rewritten 2026-09-09 by sub-step 10f.25, and the rewrite is the
+        point.** ~~The second copy was driven from the first receipt's own
+        file.~~ That is byte-identical, and 10f.25 says identical bytes are
+        skipped rather than suffixed, so the old version of this test asserted
+        a `-2` that must not happen any more. It now uses a genuinely
+        different document, which is the branch that keeps the suffix.
+        `tests/test_client_copy_collision.py` holds both branches.
         """
         with TempEnvironment(), trigger("publish"):
             with_email_client(self, CLIENT)
@@ -593,6 +601,8 @@ class TheCopyIsImageOnlyTest(unittest.TestCase):
             # The duplicate is not `ok`, so it is not copied, which is the
             # decision this module records. The name collision is driven
             # directly instead, so the test says what it means.
+            other = config.FILES_DIR / "a-second-purchase.pdf"
+            other.write_bytes(b"%PDF-1.4 a different document entirely")
             repo = Repository()
             try:
                 ok_receipt, = [r for r in receipts() if r["status"] == "ok"]
@@ -600,7 +610,7 @@ class TheCopyIsImageOnlyTest(unittest.TestCase):
                     repo,
                     receipt_id=ok_receipt["receipt_id"],
                     client_id=CLIENT,
-                    source_file=Path(ok_receipt["file_path"]),
+                    source_file=other,
                     invoice_date="2026-04-01",
                     supplier="Apcoa Parking",
                     gross=12.0,
@@ -812,11 +822,14 @@ class EveryStatusPublishesTest(unittest.TestCase):
             self.assertEqual(item_for(receipt["receipt_id"])[publish.NOTES_KEY], [])
 
     def test_a_possible_duplicate_item_names_the_receipt_it_duplicates(self):
-        """On `publish`, which is the live value, and that is not incidental.
+        """On `publish`, and since 10f.24 that is no longer load-bearing.
 
-        Semantic duplicate detection asks `is_recorded_and_filed()`, which reads
-        `filed_path`, and on `never` no receipt ever has one. See
-        `DuplicateDetectionDependsOnTheTriggerTest` below, which is the flag.
+        ~~Semantic duplicate detection asks `is_recorded_and_filed()`, which
+        reads `filed_path`, and on `never` no receipt ever has one.~~
+        **Corrected 2026-09-09: the marker is a `published` row, so the trigger
+        no longer decides.** `DuplicateDetectionDoesNotDependOnTheTriggerTest`
+        below drives all three. `publish` is kept here only because it is the
+        live value and this test is about the item, not the trigger.
         """
         with TempEnvironment(), trigger("publish"):
             with_email_client(self, CLIENT)
@@ -856,40 +869,34 @@ class EveryStatusPublishesTest(unittest.TestCase):
         self.assertEqual(item[publish.NOTES_KEY], ["kept"])
 
 
-class DuplicateDetectionDependsOnTheTriggerTest(unittest.TestCase):
-    """**A FLAG, recorded and deliberately not repaired.** Found 2026-09-09.
+class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
+    """Sub-step 10f.24, and it began as a flag on this very file.
 
-    Stopping the on-arrival write takes a side effect with it that no design
-    document mentions. `Repository.is_recorded_and_filed()` answers "is this
-    earlier receipt real and settled" by reading `filed_path`, and the semantic
-    duplicate check in `process_extraction_result()` will only flag a possible
-    duplicate when it says yes. **After stage 4 `filed_path` is written only
-    when the firm's trigger is `publish` and the receipt is `ok`**, so on
-    `never` and on `post` no receipt ever has one and that check stops flagging
-    anything at all.
+    ~~`DuplicateDetectionDependsOnTheTriggerTest`, recorded and deliberately
+    not repaired.~~ **Repaired 2026-09-09 by 10f.24, amendment 303, and this
+    class is its opposite.** The old second test asserted that a duplicate is
+    NOT detected on the `never` trigger, and its own message said that going
+    red would mean the flag had been fixed and the test should be deleted. It
+    went red. It is deleted and what follows replaced it.
 
-    **On Paul's live configuration nothing is lost**: `client_copy_trigger` is
-    `publish`, read out of `Intellibillsirms.json` on 2026-09-09, so an `ok`
-    receipt still gets a `filed_path` and detection still works. The first test
-    below is that, and it is the control.
+    **What the flag was.** Stage 4 stopped writing the client folder copy on
+    arrival, so `filed_path` is written only when the firm's
+    `client_copy_trigger` is `publish`. The semantic duplicate check read that
+    column twice over, in `find_by_transaction_loose()` and again at the call
+    site, so on `never` and on `post` it stopped flagging anything at all. **A
+    check that cannot fail**, which is the class of fault `CLAUDE.md` records
+    most often, and it would have stayed invisible on Paul's own machine
+    because his trigger is `publish`.
 
-    **The marker that replaces `filed_path` is a `published` row in
-    `publish_events`**, which is what amendment 293's fifth point says sub-step
-    10f.24 needs before it can ask whether a possible duplicate was never
-    published. **10f.24 is explicitly not in this stage**, so the fix is not
-    made here.
+    **The marker now is a `published` row in `publish_events`**, which every
+    validation status gets, per amendment 293, and which no trigger touches.
+    `SettledMeansPublishedTest` in `tests/test_step10f_duplicates.py` holds the
+    query and the helper; this class drives the whole pipeline, because the
+    trigger is the dimension the fault lived in and only a real run varies it.
 
-    **Why `is_recorded_and_filed()` was not simply widened to "or published".**
-    It has other callers: the file-hash dedup at three sites in `app.py` pairs
-    it with `find_by_hash()`, and `_move_inbox_pair_to_processed()`'s docstring
-    depends in terms on a `needs_review` receipt NOT being "filed", so that a
-    file put back by hand is deliberately reprocessed. Amendment 293 gives every
-    status a `published` row, so widening the function would make a resent
-    review item look like a duplicate. **That is a different decision from this
-    one and it is Paul's.**
-
-    The second test records the defect. It goes red when somebody fixes it, and
-    its message says so.
+    **All three triggers, not two.** `post` is here as well as `never`: it also
+    writes no copy, so it carried the same fault, and a test of `never` alone
+    would have proved nothing about it.
     """
 
     def _two_scans_of_one_purchase(self):
@@ -900,19 +907,112 @@ class DuplicateDetectionDependsOnTheTriggerTest(unittest.TestCase):
             message_id="two", data=b"a different scan of the same purchase")
         return sorted(r["status"] for r in receipts())
 
-    def test_on_publish_the_duplicate_is_still_detected(self):
-        with TempEnvironment(), trigger("publish"):
+    def test_the_duplicate_is_detected_on_every_trigger(self):
+        for value in ("publish", "post", "never"):
+            with self.subTest(trigger=value):
+                with TempEnvironment(), trigger(value):
+                    client_copy._reset_post_warning()
+                    self.assertEqual(
+                        self._two_scans_of_one_purchase(),
+                        ["ok", "possible_duplicate"],
+                        f"on the {value!r} trigger the second scan was not "
+                        "flagged, so the check is reading filed_path again")
+
+    def test_on_never_nothing_is_filed_and_the_duplicate_is_still_flagged(self):
+        """The two halves together, because either alone can mislead.
+
+        A pass on the flagging alone would be satisfied by a trigger that had
+        quietly started writing copies, which is check 1 clause A's whole
+        subject. So the `filed_path` of both receipts is asserted NULL in the
+        same test.
+        """
+        with TempEnvironment(), trigger("never"):
             self.assertEqual(self._two_scans_of_one_purchase(),
                              ["ok", "possible_duplicate"])
+            self.assertEqual([r["filed_path"] for r in receipts()], [None, None])
+            self.assertEqual(everything_under(config.CLIENTS_ROOT), [])
+            duplicate, = [r for r in receipts()
+                          if r["status"] == "possible_duplicate"]
+            original, = [r for r in receipts() if r["status"] == "ok"]
+            self.assertEqual(duplicate["duplicate_of"], original["receipt_id"])
 
-    def test_on_never_it_is_not_detected_and_that_is_the_flag(self):
-        with TempEnvironment(), trigger("never"):
+    def test_a_filed_receipt_that_never_published_is_not_duplicated_against(self):
+        """The control for the marker, driven through the real pipeline.
+
+        Without it every test above would pass against a check with no marker
+        at all, which would flag a duplicate of a receipt that failed
+        extraction and went nowhere.
+
+        **The seeded receipt is the exact shape of Paul's existing rows**:
+        `ok`, filed on arrival by the writer stage 4 removed, and never
+        published, because publishing began at 2026-09-09T10:43:37Z. So this
+        test is also the cutover, and the flag in
+        `2026-09-09_REPORT_claude_code_duplicates.md` is about what it asserts.
+
+        **`publish_events` is empty when the run starts**, which is what keeps
+        the recovery sweep out of this: `get_unpublished_ok_receipts()` filters
+        on `created_at >= (SELECT MIN(created_at) FROM publish_events)` and
+        that is NULL, so nothing is swept. The sweep runs before the email
+        loop, read in `process_once()`.
+        """
+        with TempEnvironment() as env, trigger("never"):
+            repo = Repository()
+            try:
+                env.seed(repo, receipt_id="r-old", status="ok",
+                         extraction_id="ext-r-old",
+                         supplier_name="Apcoa Parking",
+                         invoice_date="2026-04-01",
+                         gross_amount=12.0,
+                         validation_status="ok",
+                         validation_notes=[])
+                repo.mark_receipt_filed(
+                    "r-old", str(config.CLIENTS_ROOT / "old.pdf"))
+                self.assertTrue(repo.is_recorded_and_filed("r-old"))
+                self.assertEqual(repo.list_publish_events("r-old"), [])
+            finally:
+                repo.close()
+
+            with_email_client(self, CLIENT)
+            Routes(RecordingExtractor(OUTCOMES["ok"])).email_attachment(
+                message_id="new", data=b"a different scan of the same purchase")
+
+            arrived, = [r for r in receipts() if r["receipt_id"] != "r-old"]
             self.assertEqual(
-                self._two_scans_of_one_purchase(), ["ok", "ok"],
-                "the duplicate WAS detected on the `never` trigger, so the flag "
-                "this test records has been fixed. That is the right outcome: "
-                "read this class's docstring, then delete this test and keep "
-                "the control above it.")
+                arrived["status"], "ok",
+                "the new receipt was flagged against a receipt that never "
+                "published, so filed_path is still being read somewhere")
+            self.assertIsNone(arrived["duplicate_of"])
+
+    def test_the_guard_is_asked_at_the_one_call_site_and_it_is_the_new_one(self):
+        """The set claim, from the syntax tree rather than from a grep.
+
+        `is_recorded_and_filed()` had four production call sites and this was
+        one of them. After 10f.24 it has three, all the file-hash dedup in
+        `app.py`, and `is_published()` has the one this replaced.
+        `CLAUDE.md`'s rule: only a guard over the set proves the set is
+        complete, and it is what catches the fifth call site added without one.
+        """
+        sites = {}
+        for name in ("is_recorded_and_filed", "is_published"):
+            found = []
+            for path in production_files():
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    if (isinstance(node, ast.Call)
+                            and ast.unparse(node.func).split(".")[-1] == name):
+                        found.append(f"{path.relative_to(REPO_ROOT).as_posix()}"
+                                     f"::{innermost_owner(tree, node)}")
+            sites[name] = sorted(found)
+        self.assertEqual(
+            sites,
+            {"is_recorded_and_filed": ["app.py::process_once"] * 3,
+             "is_published": ["worker/extraction_pipeline.py::"
+                              "process_extraction_result"]},
+            f"the callers moved: {sites}. is_recorded_and_filed() must keep "
+            "its three file-hash sites in app.py and lose the semantic one, "
+            "because _move_inbox_pair_to_processed() depends on a needs_review "
+            "receipt NOT counting as filed and amendment 293 gives every "
+            "status a published row")
 
 
 class ARepublishIsNotSilentTest(unittest.TestCase):

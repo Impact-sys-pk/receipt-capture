@@ -1,4 +1,8 @@
-"""Step 10f, sub-steps 10f.18 to 10f.23: what counts as a duplicate, and of whom.
+"""Step 10f, sub-steps 10f.18 to 10f.24: what counts as a duplicate, and of whom.
+
+**10f.24 joined this file 2026-09-09**, because it asks the same question one
+step further back: not "whose duplicate is it" but "is the earlier receipt real
+enough to be duplicated". `SettledMeansPublishedTest` holds it.
 
 **Six sub-steps split out of step 10f on Paul's decision of 2026-09-07**, because
 none of them depends on the publish step or on the client folder copy. Amendments
@@ -46,12 +50,19 @@ CLIENT_B = "CLIENT002"
 SHARED_HASH = "a" * 64
 
 def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
-                 firm_id="FIRM001"):
+                 firm_id="FIRM001", published=False):
     """One receipt row for `client_id`, filed unless told otherwise.
 
     Filed matters: every caller of find_by_hash() pairs it with
     is_recorded_and_filed(), from 10f.20 onwards, so an unfiled seed tests a
     different thing.
+
+    **`published` is the other marker and it is a separate axis on purpose.**
+    Sub-step 10f.24 moved the semantic duplicate check off `filed_path` and on
+    to a `published` row, and the two are independent: on the `never` trigger a
+    receipt publishes and is never filed, and before the publish step existed a
+    receipt was filed and never published. A seed that set both could not tell
+    the two questions apart.
     """
     repo.save_receipt(
         receipt_id=receipt_id,
@@ -68,6 +79,15 @@ def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
     )
     if filed:
         repo.mark_receipt_filed(receipt_id, f"/clients/{client_id}/shared.pdf")
+    if published:
+        repo.save_publish_event(
+            event_id=f"pub-{receipt_id}",
+            receipt_id=receipt_id,
+            destination="intellibooks",
+            outcome="published",
+            created_at="2026-04-01T00:00:00+00:00",
+            item_path=f"/published/{receipt_id}.json",
+        )
     return receipt_id
 
 
@@ -168,10 +188,14 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
 
 def seed_extraction(repo, receipt_id, supplier="Apcoa Parking",
                     invoice_date="2026-04-01", gross=12.0):
-    """One filed receipt's extraction, so the loose lookup can find it.
+    """One settled receipt's extraction, so the loose lookup can find it.
 
-    `find_by_transaction_loose()` requires `r.filed_path IS NOT NULL`, which
-    `seed_receipt()` supplies.
+    ~~`find_by_transaction_loose()` requires `r.filed_path IS NOT NULL`, which
+    `seed_receipt()` supplies.~~ **Corrected 2026-09-09 by sub-step 10f.24: it
+    requires a `published` row**, so every caller here passes
+    `published=True`. `filed=True` is left as it was, because it is now
+    irrelevant to this lookup and a seed that dropped it would stop proving
+    that.
     """
     repo.save_extraction(
         extraction_id=f"x-{receipt_id}",
@@ -207,7 +231,8 @@ class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a")
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             published=True)
                 seed_extraction(repo, "r-a")
                 self.assertEqual(
                     repo.find_by_transaction_loose(
@@ -228,7 +253,8 @@ class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a")
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             published=True)
                 seed_extraction(repo, "r-a")
                 self.assertEqual(
                     repo.find_by_transaction_loose(
@@ -247,7 +273,8 @@ class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a")
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             published=True)
                 seed_extraction(repo, "r-a", invoice_date=None)
                 self.assertEqual(
                     repo.find_by_transaction_loose(
@@ -268,6 +295,220 @@ class SemanticLookupIsScopedToTheClientTest(unittest.TestCase):
         self.assertIs(parameters["client_id"].default, inspect.Parameter.empty,
                       "client_id has a default, so the one caller can still ask "
                       "the unscoped question")
+
+
+class SettledMeansPublishedTest(unittest.TestCase):
+    """10f.24. A receipt is worth duplicating once it has PUBLISHED.
+
+    **This replaced `filed_path`, and it had to.** Stage 4 stopped writing the
+    client folder copy on arrival, so `filed_path` is now written only when the
+    firm's `client_copy_trigger` is `publish`. On `never` and on `post` no
+    receipt ever gets one, and every reader of that column on this path
+    silently answered "there is nothing here to duplicate". Claude Code's flag
+    1 of `2026-09-09_REPORT_claude_code_stage4_pipeline.md`, amendment 303.
+
+    **Two readers, not one.** The brief and amendment 303 both name the
+    `is_recorded_and_filed()` call in `process_extraction_result()`.
+    `find_by_transaction_loose()` carries `filed_path IS NOT NULL` in BOTH of
+    its queries as well, and it runs first, so changing only the call site
+    would have changed nothing at all. Flagged in
+    `2026-09-09_REPORT_claude_code_duplicates.md`. **Both are tested**, the
+    query here and the guard by
+    `DuplicateDetectionDoesNotDependOnTheTriggerTest` in
+    `tests/test_stage4_client_copy.py`, which drives the real pipeline.
+
+    **Why the redundancy is kept rather than tidied.** The query narrows and
+    then takes `LIMIT 1`. Leaving the marker out of the query would let it
+    return an unsettled row while a settled one existed, and the guard would
+    then reject a real duplicate. That is the same pairing the code had
+    before, with the marker swapped in both halves.
+    """
+
+    def test_a_published_receipt_that_was_never_filed_is_still_found(self):
+        """The `never` trigger, at the level of the query. Red before 10f.24."""
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=False, published=True)
+                seed_extraction(repo, "r-a")
+                self.assertEqual(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_A),
+                    "r-a",
+                    "a published receipt with no client folder copy was not "
+                    "found, so the lookup is still reading filed_path")
+            finally:
+                repo.close()
+
+    def test_the_no_date_branch_asks_the_same_question(self):
+        """The function has two queries and only one is the obvious one.
+
+        10f.19 had to say this too. The wider branch is the one that would
+        have been left behind.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=False, published=True)
+                seed_extraction(repo, "r-a", invoice_date=None)
+                self.assertEqual(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", None, 12.0, client_id=CLIENT_A),
+                    "r-a")
+            finally:
+                repo.close()
+
+    def test_the_no_date_branch_refuses_an_unpublished_receipt(self):
+        """The negative control for the WIDER branch, and it was missing.
+
+        **Added 2026-09-09 because a mutation survived.** Removing the marker
+        from the no-date branch alone left the whole suite green: every no-date
+        test above seeded a published receipt, so all of them proved the
+        positive direction and none proved the refusal, and the guard at the
+        call site covered for it. `CLAUDE.md`: a per-path test proves a path,
+        and this branch had one direction of one path.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=True, published=False)
+                seed_extraction(repo, "r-a", invoice_date=None)
+                self.assertIsNone(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", None, 12.0, client_id=CLIENT_A))
+            finally:
+                repo.close()
+
+    def test_a_filed_receipt_that_never_published_is_not_found(self):
+        """The control, and the half that says the marker really moved.
+
+        Without it every test above would pass against a query with no marker
+        at all, which would flag a duplicate of a receipt that failed
+        extraction and went nowhere.
+
+        **It is also the cutover, stated rather than discovered.** Every
+        receipt on Paul's machine created before publishing began at
+        2026-09-09T10:43:37Z is exactly this shape: filed, never published. It
+        is no longer available to be duplicated. Flagged in
+        `2026-09-09_REPORT_claude_code_duplicates.md`.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=True, published=False)
+                seed_extraction(repo, "r-a")
+                self.assertIsNone(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_A))
+            finally:
+                repo.close()
+
+    def test_a_failed_publish_row_does_not_count(self):
+        """A decision the brief left open, taken here.
+
+        Only `outcome = 'published'` settles a receipt. A row saying `failed`
+        means it was offered and did not land, which
+        `get_unpublished_ok_receipts()` already treats as a genuine gap to be
+        offered again. Counting it would leave the new receipt in Review as a
+        duplicate of something that has not arrived anywhere.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=False, published=False)
+                seed_extraction(repo, "r-a")
+                repo.save_publish_event(
+                    event_id="pub-failed", receipt_id="r-a",
+                    destination="intellibooks", outcome="failed",
+                    created_at="2026-04-01T00:00:00+00:00",
+                    reason="the folder was not there")
+                self.assertIsNone(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_A))
+                self.assertFalse(repo.is_published("r-a"))
+            finally:
+                repo.close()
+
+    def test_a_later_published_row_settles_a_receipt_that_failed_first(self):
+        """The other side of the same decision.
+
+        `publish_events` is append-only and one receipt can have several rows,
+        so the question is whether ANY row says `published`, not what the
+        newest one says.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=False, published=False)
+                seed_extraction(repo, "r-a")
+                repo.save_publish_event(
+                    event_id="pub-1", receipt_id="r-a",
+                    destination="intellibooks", outcome="failed",
+                    created_at="2026-04-01T00:00:00+00:00", reason="locked")
+                repo.save_publish_event(
+                    event_id="pub-2", receipt_id="r-a",
+                    destination="intellibooks", outcome="published",
+                    created_at="2026-04-01T00:05:00+00:00",
+                    item_path="/published/r-a.json")
+                self.assertTrue(repo.is_published("r-a"))
+                self.assertEqual(
+                    repo.find_by_transaction_loose(
+                        "Apcoa Parking", "2026-04-01", 12.0, client_id=CLIENT_A),
+                    "r-a")
+            finally:
+                repo.close()
+
+    def test_a_receipt_with_no_publish_row_at_all_is_not_published(self):
+        """The third state of 10f.36: never offered to any destination."""
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-a", CLIENT_A, file_hash="h-a",
+                             filed=True, published=False)
+                self.assertFalse(repo.is_published("r-a"))
+                self.assertEqual(repo.list_publish_events("r-a"), [])
+            finally:
+                repo.close()
+
+    def test_an_id_that_names_no_receipt_is_not_published(self):
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                self.assertFalse(repo.is_published("r-nobody"))
+            finally:
+                repo.close()
+
+    def test_the_shared_helper_still_answers_the_filed_question(self):
+        """`is_recorded_and_filed()` is NOT widened, and that is deliberate.
+
+        Its three other callers are the file-hash dedup in `app.py`, and
+        `_move_inbox_pair_to_processed()` depends in terms on a `needs_review`
+        receipt not counting as filed, so that a file an operator puts back by
+        hand is deliberately reprocessed. Amendment 293 gives every status a
+        `published` row, so a widened helper would make a resent review item
+        look like a duplicate. Amendment 303.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed_receipt(repo, "r-published", CLIENT_A, file_hash="h-p",
+                             filed=False, published=True)
+                seed_receipt(repo, "r-filed", CLIENT_A, file_hash="h-f",
+                             filed=True, published=False)
+                self.assertFalse(
+                    repo.is_recorded_and_filed("r-published"),
+                    "is_recorded_and_filed() now answers yes to a published "
+                    "receipt, so it has been widened and the file-hash dedup "
+                    "in app.py has changed with it")
+                self.assertTrue(repo.is_recorded_and_filed("r-filed"))
+            finally:
+                repo.close()
 
 
 class EmbeddedImageGuardTest(unittest.TestCase):

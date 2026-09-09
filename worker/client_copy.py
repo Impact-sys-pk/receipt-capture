@@ -48,19 +48,32 @@ duplicate it. **The filename collision is a different question and keeps
 `_unique_path()`**: two documents with the same date, supplier and amount are two
 documents and the second gets a `-2`.
 
-**One consequence of the write stopping, flagged and NOT repaired here.**
-`Repository.is_recorded_and_filed()` gates the semantic duplicate check on
-`filed_path`, so with the trigger on `never` or `post` no receipt ever gets one
-and that check stops flagging anything. The marker that replaces it is a
-`published` row in `publish_events`, which is what amendment 293's fifth point
-says sub-step 10f.24 needs, and 10f.24 is explicitly not in this stage. With the
-trigger on `publish`, which is the live value, an `ok` receipt still gets a
-`filed_path` and the check still works.
+**And the collision is decided on the bytes. Sub-step 10f.25, 2026-09-09.**
+~~two documents with the same date, supplier and amount are two documents and
+the second gets a `-2`~~ **held for two different documents and was applied to
+identical ones as well**, because nothing compared them. Identical bytes are
+now skipped and said so in the log; different bytes keep the `-2` and are
+flagged. **The naming convention does not change**, which is what check 1
+depends on. **Why it is nearly free**, in the sub-step's own words: the filename
+already carries the three values a semantic duplicate matches on, so the
+collision was already the signal and only the response was wrong.
+
+**One consequence of the write stopping, flagged here and REPAIRED the same day
+by sub-step 10f.24.** ~~`Repository.is_recorded_and_filed()` gates the semantic
+duplicate check on `filed_path`, so with the trigger on `never` or `post` no
+receipt ever gets one and that check stops flagging anything.~~ It did, and it
+did so in two places rather than the one this paragraph named:
+`find_by_transaction_loose()` carried `filed_path IS NOT NULL` in both of its
+queries as well, and it runs first. **Both now ask for a `published` row**,
+which amendment 293's fifth point named as the marker. Amendment 303, and
+`Repository._PUBLISHED` carries the reasoning.
 """
 
+import hashlib
 import logging
 import shutil
 from pathlib import Path
+from typing import NamedTuple
 
 import config
 
@@ -85,6 +98,67 @@ def _reset_post_warning() -> None:
     _POST_WARNED = False
 
 
+class ClientCopy(NamedTuple):
+    """What `write_client_copy()` did. Sub-step 10f.25.
+
+    `path` is always where this document is in the client folder, whether this
+    call put it there or a previous one did, so it is what `filed_path` records
+    either way.
+
+    `written` is False only on the identical-bytes skip. `collided_with` is
+    every file already under the name this document composed, newest last, and
+    is empty when the name was free.
+
+    **A tuple rather than a bare `Path`, because the caller does the
+    reporting.** The three log lines have to name the receipt and only
+    `copy_for_published_receipt()` knows the `receipt_id`, while only this
+    function has read the bytes. One caller, so the shape costs nothing.
+    """
+
+    path: Path
+    written: bool
+    collided_with: list
+
+
+def _digest(path: Path) -> str:
+    """SHA256 of a file, read in chunks. The same hash `file_hash` uses."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _same_bytes(one: Path, other: Path) -> bool:
+    """Whether two files hold the same bytes.
+
+    Size first because it is cheap and settles almost every pair, then a
+    digest. **Not `filecmp.cmp()`**: it caches on a stat signature whose mtime
+    resolution is the filesystem's, and a cached wrong answer here would either
+    lose a document or duplicate one.
+    """
+    if one.stat().st_size != other.stat().st_size:
+        return False
+    return _digest(one) == _digest(other)
+
+
+def _existing_under(destination_dir: Path, base_name: str, suffix: str) -> list:
+    """Every file already using the name this document composed.
+
+    The contiguous run `_unique_path()` walks: the plain name, then `-2`, `-3`
+    and so on until one is missing. Enumerated the same way it steps, so the
+    two cannot disagree about what a collision is.
+    """
+    found = []
+    candidate = destination_dir / f"{base_name}{suffix}"
+    index = 2
+    while candidate.exists():
+        found.append(candidate)
+        candidate = destination_dir / f"{base_name}-{index}{suffix}"
+        index += 1
+    return found
+
+
 def write_client_copy(
     source_file: Path,
     client_folder_name: str,
@@ -92,7 +166,7 @@ def write_client_copy(
     supplier: str,
     gross: float,
     invoice_date: str,
-) -> Path:
+) -> ClientCopy:
     """Copy one document into the client's folder. **The only writer.**
 
     Image only, and the document date names both the tax year folder and the
@@ -103,14 +177,34 @@ def write_client_copy(
 
     `invoice_date` is a parameter rather than read out of a sidecar, which is
     how `file_receipt()` got it. There is no sidecar any more.
+
+    **The collision is decided on the bytes, not on the name. 10f.25.**
+    Identical bytes are already there, so nothing is written and the file that
+    is there is returned. Different bytes are a second document, so the `-2`
+    stands and the caller is told to say so.
+
+    **Compared against every file already under the name, not just the first.**
+    Once a `-2` exists, a resend of THAT document has to match it, and a
+    comparison against the plain name alone would have written a `-3`.
+
+    **Nothing is ever overwritten on either branch**, which is 18.2b and rule 1
+    of `CLAUDE.md`.
     """
     destination_dir = (get_client_directory(client_folder_name)
                        / config.CLIENT_RECEIPTS_FOLDER_NAME / tax_year)
     destination_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"{invoice_date}_{normalise_supplier(supplier)}_{gross:.2f}"
-    destination = _unique_path(destination_dir, base_name, Path(source_file).suffix)
+    suffix = Path(source_file).suffix
+
+    existing = _existing_under(destination_dir, base_name, suffix)
+    for candidate in existing:
+        if _same_bytes(Path(source_file), candidate):
+            return ClientCopy(path=candidate, written=False,
+                              collided_with=[candidate])
+
+    destination = _unique_path(destination_dir, base_name, suffix)
     shutil.copy2(source_file, destination)
-    return destination
+    return ClientCopy(path=destination, written=True, collided_with=existing)
 
 
 def copy_for_published_receipt(
@@ -126,9 +220,14 @@ def copy_for_published_receipt(
 ) -> Path | None:
     """Write this receipt's client folder copy if the firm's trigger says so.
 
-    Returns the path written, or None when nothing was written for any reason.
-    Records the write with `mark_receipt_filed()`, which is the only writer of
-    `filed_path` and therefore of `filed_at`.
+    Returns where this receipt's document is in the client folder, or None when
+    it is not there and this call did not put it there. Records it with
+    `mark_receipt_filed()`, which is the only writer of `filed_path` and
+    therefore of `filed_at`.
+
+    **A returned path does not mean a file was written. 10f.25.** An identical
+    document already under the composed name is not copied again, and the path
+    that comes back is the one already there. The log line says which happened.
 
     **This never raises.** `publish_receipt()`'s reasoning, one step further on:
     by the time this runs the item is already in the folder IntelliBooks drains,
@@ -194,7 +293,7 @@ def copy_for_published_receipt(
         return None
 
     try:
-        written = write_client_copy(
+        result = write_client_copy(
             source_file=Path(source_file),
             client_folder_name=client_folder_name,
             tax_year=determine_tax_year(invoice_date),
@@ -210,7 +309,33 @@ def copy_for_published_receipt(
             receipt_id, type(error).__name__, error)
         return None
 
-    repo.mark_receipt_filed(receipt_id, str(written))
-    logger.info("receipt %s copied into the client folder at %s",
-                receipt_id, written)
-    return written
+    # **`filed_path` is recorded on the skip as well as on the write**, and
+    # that is a decision 10f.25's brief did not settle. The path is true either
+    # way: this receipt's document is in the client folder, at that name. And
+    # leaving it NULL would put the receipt back in
+    # `get_published_receipts_without_client_copy()`, which selects on exactly
+    # that column, so `_copy_missing_client_copies()` would offer it again on
+    # every poll for ever and log the same skip each time.
+    repo.mark_receipt_filed(receipt_id, str(result.path))
+
+    if not result.written:
+        # 10f.25. No second document, so no second file.
+        logger.info(
+            "receipt %s needed no client folder copy: %s already holds an "
+            "identical document, byte for byte, so nothing was written and "
+            "nothing was overwritten",
+            receipt_id, result.path)
+    elif result.collided_with:
+        # 10f.25. The `-2` is right, and nobody was being told.
+        logger.warning(
+            "receipt %s was copied to %s because %s already holds a document "
+            "with the same date, supplier and amount and DIFFERENT content. "
+            "Both are kept: two purchases can match on all three. Nothing in "
+            "the receipt record says which file belongs to which receipt, so "
+            "this line is the record",
+            receipt_id, result.path,
+            ", ".join(str(path) for path in result.collided_with))
+    else:
+        logger.info("receipt %s copied into the client folder at %s",
+                    receipt_id, result.path)
+    return result.path

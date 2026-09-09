@@ -872,9 +872,20 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         #     firm's trigger, so `never` writes nothing here as it writes
         #     nothing anywhere. It records `filed_path` itself when it writes.
         #
-        #     **`dest_path` is None when no copy was written**, which is the
-        #     ordinary outcome on two of the three triggers, so nothing below
-        #     may format it into a path without asking.
+        #     **`dest_path` is None when this receipt has no copy in the
+        #     client folder**, which is the ordinary outcome on two of the
+        #     three triggers, so nothing below may format it into a path
+        #     without asking.
+        #
+        #     ~~None when no copy was written~~ **Corrected 2026-09-09 by
+        #     sub-step 10f.25**: a path also comes back when an identical
+        #     document was already under that name and nothing was written, so
+        #     a returned path means "the document is there" rather than "a file
+        #     was just created". `run.log` says which. **The operator message
+        #     below still reads `Filed to {path}` in that case**, which is true
+        #     and reads as though a file had been created; flagged in
+        #     `2026-09-09_REPORT_claude_code_duplicates.md` and not changed
+        #     here, because `RECEIPT_CAPTURE_GUIDE.md` documents that wording.
         dest_path = copy_for_published_receipt(
             repo,
             receipt_id=receipt_id,

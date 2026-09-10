@@ -212,8 +212,13 @@ extracted verbatim from the Desktop file before Paul imported them.
 | `f5c11c2` | Its report |
 | `493670f` | The consultant session's markdown, eleven files, 1,090 insertions, 11 deletions. **It replaces `93bbc1d`, amended for a wrong amendment range in its message. Claude Code proved the contents unchanged by the tree object, `93f47622`, identical before and after, and checked no remote branch held the original before rewriting it.** |
 
-**`feat/console-phase0` is ten commits ahead of `origin/feat/console-phase0`, which is still at
-`d4b5094`. Nothing has been pushed all day. The working tree is clean.**
+**`feat/console-phase0` was pushed at the end of this session**, `d4b5094..20080a2`, a fast-forward
+of twelve commits, no force. **Origin is at `20080a2c4b012c746c3cd685c0cc3830cc336acd`**, read with
+`git ls-remote` from the remote rather than from the tracking ref. Local and remote agree, zero
+commits ahead, working tree clean.
+
+**`493670f` is published from this point on.** Amending or rebasing anything at or below it is a
+rewrite of shared history and needs Paul's explicit say-so.
 
 ---
 

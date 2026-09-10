@@ -212,10 +212,11 @@ extracted verbatim from the Desktop file before Paul imported them.
 | `f5c11c2` | Its report |
 | `493670f` | The consultant session's markdown, eleven files, 1,090 insertions, 11 deletions. **It replaces `93bbc1d`, amended for a wrong amendment range in its message. Claude Code proved the contents unchanged by the tree object, `93f47622`, identical before and after, and checked no remote branch held the original before rewriting it.** |
 
-**`feat/console-phase0` was pushed at the end of this session**, `d4b5094..20080a2`, a fast-forward
-of twelve commits, no force. **Origin is at `20080a2c4b012c746c3cd685c0cc3830cc336acd`**, read with
-`git ls-remote` from the remote rather than from the tracking ref. Local and remote agree, zero
-commits ahead, working tree clean.
+**`feat/console-phase0` was pushed at the end of this session**, starting from `d4b5094`, in
+fast-forwards and with no force. **This file cannot name the commit that contains it**, so it gives
+no head hash at all: **read origin with `git ls-remote`, not from the tracking ref and not from
+here.** At the last push before this sentence was written, local, tracking ref and remote all agreed
+and the working tree was clean.
 
 **`493670f` is published from this point on.** Amending or rebasing anything at or below it is a
 rewrite of shared history and needs Paul's explicit say-so.

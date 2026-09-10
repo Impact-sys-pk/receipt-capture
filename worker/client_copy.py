@@ -417,6 +417,7 @@ def copy_for_published_receipt(
     gross: float,
     validation_status: str,
     filed_path: str | None,
+    at: str = None,
 ) -> Path | None:
     """Write this receipt's client folder copy if the firm's trigger says so.
 
@@ -444,27 +445,56 @@ def copy_for_published_receipt(
     `filed_path` is passed in rather than read here, because every caller has
     the receipt row in hand and a second read could disagree with the row the
     caller decided from.
+
+    ## `at` says which moment this call is. Sub-step 10f.37, 2026-09-10
+
+    **The firm's trigger names a moment and this parameter names the moment the
+    caller is at.** They have to match for a copy to be written. `publish` is
+    the default because four of the five callers are the publish path; the
+    fifth is `_apply_attached_note()` in the resolution service, which passes
+    `post` when IntelliBooks Desktop says a receipt is attached to a
+    transaction.
+
+    **Before this the `post` value had no mechanism and this function said so
+    in a warning.** It named sub-step 10f.16, which is BUILT: 10f.12 and 10f.16
+    each said the message was the other's and neither held it, so three places
+    pointed elsewhere. Amendment 315 gave it a number and it is 10f.37.
+
+    **The function's name is still true.** A receipt reaches the books through
+    the drain, which needs a publish, so a receipt named by a Post-time message
+    has published. See the report's question 1 for what happens if one has not.
     """
     global _POST_WARNED
+
+    at = at or config.CLIENT_COPY_ON_PUBLISH
 
     if config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_NEVER:
         return None
 
-    if config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_AT_POST:
-        # The trigger with no mechanism. Sub-step 10f.16 is the Post-time
-        # message from Desktop and it does not exist, so a `post` firm gets no
-        # copy from the pipeline. **Said out loud rather than looking like
-        # `never`**, because a firm that chose `post` and silently got nothing
-        # would have no way to tell the two apart. Once per process: a real
+    if config.CLIENT_COPY_TRIGGER != at:
+        # This call is not the moment this firm's trigger names, so it is not
+        # this call's turn. Two ways round, and only one of them needs saying.
+        #
+        # **A publish-time call on a `post` firm gets a line, once per
+        # process.** A firm that chose `post` and silently got nothing would
+        # have no way to tell it from `never`, which is what the warning this
+        # replaced was for. It is INFO rather than WARNING now, because the
+        # mechanism exists: this is the pipeline waiting for the message rather
+        # than the pipeline unable to act. Once per process, because a real
         # firm's every receipt would otherwise carry the same line.
-        if not _POST_WARNED:
+        #
+        # **A Post-time call on a `publish` firm gets nothing here**, and its
+        # own caller logs it: the copy already exists and there is nothing to
+        # report from inside the gate.
+        if (at == config.CLIENT_COPY_ON_PUBLISH
+                and config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_AT_POST
+                and not _POST_WARNED):
             _POST_WARNED = True
-            logger.warning(
-                "%s is %r, and the Post-time trigger has no mechanism yet: it "
-                "needs the message from IntelliBooks Desktop at sub-step "
-                "10f.16, which is not built. No copy is written into %s by this "
-                "pipeline until it is. Set %s to %r to copy on a successful "
-                "publish instead.",
+            logger.info(
+                "%s is %r, so no copy is written into %s when a receipt "
+                "publishes. The copy is written when IntelliBooks Desktop says "
+                "the receipt is attached to a transaction, which is sub-step "
+                "10f.37. Set %s to %r to copy on a successful publish instead.",
                 config.CLIENT_COPY_TRIGGER_FIELD, config.CLIENT_COPY_AT_POST,
                 config.CLIENTS_ROOT, config.CLIENT_COPY_TRIGGER_FIELD,
                 config.CLIENT_COPY_ON_PUBLISH)

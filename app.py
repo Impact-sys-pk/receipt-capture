@@ -26,7 +26,7 @@ from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler
-from worker.resolution.service import apply_resolution_note
+from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_note
 from worker.filing import (
     determine_tax_year,
     file_statement,
@@ -493,7 +493,7 @@ def _consume_resolution_notes(
 
         outcome = apply_resolution_note(repo, categorisation_engine, payload)
 
-        if outcome.outcome in ("filed", "discarded"):
+        if outcome.outcome in NOTE_APPLIED_OUTCOMES:
             logger.info(
                 f"resolution note {note_path.name} applied: {outcome.outcome}, {outcome.message}"
             )

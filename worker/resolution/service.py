@@ -53,7 +53,23 @@ AMOUNT_FIELDS = ("net_amount", "vat_amount", "gross_amount")
 
 # Design document 12.2. Bump only when both halves of the contract change.
 NOTE_SCHEMA = 1
-NOTE_ACTIONS = ("filed", "discarded")
+
+#: Sub-step 10f.37, 2026-09-10. "This receipt is attached to a transaction", so
+#: on the `post` trigger its client folder copy is written now.
+ATTACHED_ACTION = "attached"
+
+NOTE_ACTIONS = ("filed", "discarded", ATTACHED_ACTION)
+
+#: The outcomes that mean a note was applied and the caller may move it to
+#: `processed\`. Anything else goes to `failed\`.
+#:
+#: **One definition, imported by `app.py`, added 2026-09-10 with the third
+#: action.** `_consume_resolution_notes()` carried its own `("filed",
+#: "discarded")` literal and this module's idempotency return carried another,
+#: so a third word had to be added to two files that must agree. It was not,
+#: on the first run, and every successfully applied Post-time message went to
+#: `failed\` with an ERROR.
+NOTE_APPLIED_OUTCOMES = ("filed", "discarded", ATTACHED_ACTION)
 
 # The note's own timestamp, which is what 12.3 step 3 keys idempotency on.
 # resolution_events has no column for it, so it lives in corrections_json, which
@@ -90,6 +106,11 @@ EVENT_FILED_PATH_CLEARED_KEY = "filed_path_cleared"
 # went, the data file went, or the document went and there was no data file.
 # `worker\client_copy.py`'s CLIENT_COPY_SIDECAR_SUFFIX carries the convention.
 EVENT_CLIENT_COPY_SIDECAR_DELETED_KEY = "client_copy_sidecar_deleted"
+
+# Where a Post-time message put the client folder copy, sub-step 10f.37. On the
+# `publish` and `never` triggers no copy is written and the key is absent, so
+# its presence is what says this note caused a file to appear.
+EVENT_CLIENT_COPY_WRITTEN_KEY = "client_copy_written"
 
 # 12.3 step 4. `source` describes the tool, `actor` describes who: for a note both
 # are 'desktop', because Desktop has no user accounts. Note that the note's own
@@ -420,15 +441,21 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         )
         note.delete_client_copy = False
 
-    if action == "discarded":
+    if action in ("discarded", ATTACHED_ACTION):
         # 12.2: values and filed_path are absent for a discard. Present-and-ignored
         # rather than rejected: refusing a legitimate discard over a harmless extra
         # key would be the wrong trade, and the warning is enough to spot drift.
+        #
+        # **An `attached` note is the same shape and for a sharper reason.**
+        # Sub-step 10f.37: the pipeline composes the client folder name itself,
+        # and a name composed by Desktop cannot tell a collision's `-2` from
+        # its original, so a path here is a Desktop that has misread the
+        # contract. Ignored, and said out loud so that does not go on.
         for unexpected in ("values", "filed_path"):
             if raw.get(unexpected) is not None:
                 logger.warning(
-                    f"discard note for {note.receipt_id} carries '{unexpected}', which 12.2 "
-                    "says is absent for a discard; ignoring it"
+                    f"{action} note for {note.receipt_id} carries '{unexpected}', which 12.2 "
+                    f"says is absent for a {action} note; ignoring it"
                 )
         return note
 
@@ -1981,6 +2008,130 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         repo.release_receipt_lock(receipt_id)
 
 
+def _apply_attached_note(repo, receipt: Dict[str, Any],
+                         note: ResolutionNote) -> ResolutionOutcome:
+    """Sub-step 10f.37. IntelliBooks Desktop says this receipt is in the accounts.
+
+    **All it does is write the client folder copy on the `post` trigger, and
+    record that it was told.** No status change, no extraction row, no
+    categorisation row: the receipt was already `ok` and published, and nothing
+    about it has changed. What has changed is that a person attached it to a
+    transaction, which on the `post` trigger is the moment 18.2b's copy is due.
+
+    **Paul's reason, in his words**, and it is why this exists at all: on the
+    `publish` trigger the client folder holds whatever the pipeline succeeded
+    on, including duplicates that got through, strays and documents that turned
+    out to be personal, and nothing removes them.
+    `Clients\\{client}\\IntelliBooks\\Receipts\\{tax year}\\` should hold the
+    receipts relating to that client's transactions and make sense to him and
+    to the client years later. On `post` a document reaches the folder because
+    it was attached to a transaction, so the folder is curated by construction.
+
+    ## Four decisions in here, and each one is somebody else's rule
+
+    **It reaches the copy through `copy_for_published_receipt()`**, the gated
+    caller every other route uses, so the trigger, the one-copy rule, the
+    `ok`-only rule and 10d.18's missing-folder-name refusal are not
+    reimplemented. 10f.11's one writer stays one writer.
+
+    **It passes the receipt's own `status` as the validation status**, so a
+    receipt that is not `ok` is refused by that existing gate rather than by a
+    new one here. 18.2b: the folder shows the result of the work.
+
+    **On `publish` and on `never` it writes nothing and is still applied.** A
+    firm can be on any of the three and the same Desktop sends the same message
+    to all of them, so the pipeline decides and the note is not an error
+    anywhere. On `publish` the copy already exists, made when the receipt
+    published.
+
+    **A receipt with no `published` row is copied anyway, and warned about.** A
+    receipt reaches the books through the drain, which needs a publish, so this
+    cannot happen by the built route and means the two products disagree about
+    how the receipt got into the books. It is not refused: Desktop owns the
+    books and is the authority on what is in them, and refusing would leave a
+    receipt in the accounts with no copy AND a note in `failed\\`, which is the
+    worse of the two states. See the report of 2026-09-10 for the reasoning.
+    """
+    receipt_id = receipt["receipt_id"]
+
+    if not repo.is_published(receipt_id):
+        logger.warning(
+            "IntelliBooks Desktop says receipt %s is attached to a "
+            "transaction, and this pipeline has no `published` row for it. A "
+            "receipt reaches the books through the drain, which needs a "
+            "publish, so the two products disagree about how this one got "
+            "there. Applying the note anyway: Desktop owns the books",
+            receipt_id)
+
+    extraction = repo.get_extraction_for_receipt(receipt_id) or {}
+    source_path = Path(receipt["file_path"])
+
+    dest_path = None
+    if not source_path.exists():
+        # The archive of record is missing, so there is nothing to copy FROM.
+        # Reported and the note still applied: refusing would put a note in
+        # `failed\` for a state no second attempt can fix.
+        logger.error(
+            "receipt %s is attached to a transaction and the file it was "
+            "processed from is not at %s, so no client folder copy can be "
+            "made", receipt_id, source_path)
+    else:
+        dest_path = copy_for_published_receipt(
+            repo,
+            receipt_id=receipt_id,
+            client_id=receipt.get("client_id"),
+            source_file=source_path,
+            invoice_date=(extraction.get("invoice_date")
+                          or datetime.now(timezone.utc).date().isoformat()),
+            supplier=extraction.get("supplier_name") or "unknown",
+            gross=(extraction.get("gross_amount")
+                   if extraction.get("gross_amount") is not None else 0.0),
+            # The row's own status, so the `ok`-only gate does the deciding.
+            validation_status=receipt.get("status") or "",
+            filed_path=receipt.get("filed_path"),
+            # The moment this call is. Everything else that reaches that
+            # function is the publish path.
+            at=config.CLIENT_COPY_AT_POST,
+        )
+
+    if config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_ON_PUBLISH:
+        logger.info(
+            "receipt %s is attached to a transaction. %s is %r, so its client "
+            "folder copy was already made when it published and there is "
+            "nothing to write now",
+            receipt_id, config.CLIENT_COPY_TRIGGER_FIELD,
+            config.CLIENT_COPY_ON_PUBLISH)
+    elif config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_NEVER:
+        logger.info(
+            "receipt %s is attached to a transaction. %s is %r, so nothing is "
+            "written into %s",
+            receipt_id, config.CLIENT_COPY_TRIGGER_FIELD,
+            config.CLIENT_COPY_NEVER, config.CLIENTS_ROOT)
+    elif dest_path:
+        logger.info(
+            "receipt %s is attached to a transaction, so its client folder "
+            "copy is due: %s", receipt_id, dest_path)
+
+    detail = {ATTACHED_ACTION: True}
+    if dest_path:
+        detail[EVENT_CLIENT_COPY_WRITTEN_KEY] = str(dest_path)
+
+    # **The audit row is what makes the note idempotent**, because
+    # `_note_already_applied()` finds a note by its `resolved_at` in this
+    # blob. A handler that wrote no row would apply the same message on every
+    # poll for ever.
+    _record_event(repo, receipt_id, DESKTOP_ACTOR, DESKTOP_SOURCE,
+                  "attach", ATTACHED_ACTION,
+                  note_resolved_at=note.resolved_at, detail=detail)
+
+    return ResolutionOutcome(
+        outcome=ATTACHED_ACTION, receipt_id=receipt_id,
+        filed_path=str(dest_path) if dest_path else None,
+        message=(f"Attached to a transaction. Filed to {dest_path}"
+                 if dest_path else "Attached to a transaction."),
+    )
+
+
 def apply_resolution_note(repo, categorisation_engine, note: dict) -> ResolutionOutcome:
     """Back-feed entry point. Design document 12.3.
 
@@ -2032,7 +2183,7 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
         )
         outcome = applied["outcome"]
         return ResolutionOutcome(
-            outcome=outcome if outcome in ("filed", "discarded") else parsed.action,
+            outcome=outcome if outcome in NOTE_APPLIED_OUTCOMES else parsed.action,
             receipt_id=receipt_id,
             extraction_id=applied.get("extraction_id"),
             filed_path=receipt.get("filed_path"),
@@ -2051,6 +2202,11 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
             # action but this one.
             delete_client_copy=parsed.delete_client_copy,
         )
+
+    if parsed.action == ATTACHED_ACTION:
+        # Sub-step 10f.37. It takes no `categorisation_engine`, because it
+        # writes no categorisation: nothing about the receipt changes.
+        return _apply_attached_note(repo, receipt, parsed)
 
     # Sub-step 10f.14. **The field chooses, not the action word.** See
     # `parse_resolution_note()` for what each shape means and

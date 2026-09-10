@@ -558,12 +558,20 @@ class StillOneWriterTest(unittest.TestCase):
     def test_nothing_but_client_copy_calls_the_writer(self):
         self.assertEqual(self._calls_to("write_client_copy"), [])
 
-    def test_the_gated_entry_point_has_four_callers_and_this_is_the_fourth(self):
+    def test_the_gated_entry_point_has_five_callers_and_this_is_the_fourth(self):
+        """~~Four callers~~ **five from 2026-09-10, sub-step 10f.37.**
+
+        The fifth is the Post-time message from IntelliBooks Desktop, and it
+        reaches the same gated function rather than writing beside it, which is
+        what keeps 10f.11's one writer true. It is the only one that passes
+        `at=config.CLIENT_COPY_AT_POST`; the other four are the publish path.
+        """
         self.assertEqual(
             self._calls_to("copy_for_published_receipt"),
             ["app.py::_copy_missing_client_copies",
              "app.py::_publish_unpublished_receipts",
              "worker/extraction_pipeline.py::process_extraction_result",
+             "worker/resolution/service.py::_apply_attached_note",
              "worker/resolution/service.py::resolve_receipt"])
 
     def test_the_retry_sweep_publishes_nothing_and_categorises_nothing(self):

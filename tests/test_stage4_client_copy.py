@@ -257,6 +257,13 @@ class ClientFolderWritersTest(unittest.TestCase):
         "worker/client_copy.py::write_client_copy",
         "worker/client_copy.py::copy_for_published_receipt",
         "worker/client_copy.py::remove_client_copy",
+        # **Sub-step 10f.37, 2026-09-10.** The Post-time message's handler
+        # names `config.CLIENTS_ROOT` in the log line it writes when the
+        # firm's trigger is `never`, so it appears here. **It writes nothing
+        # itself**: it reaches `copy_for_published_receipt()` like every other
+        # caller, which is asserted by
+        # `test_every_caller_goes_through_the_gated_entry_point` below.
+        "worker/resolution/service.py::_apply_attached_note",
         "worker/filing.py::get_client_directory",
         "worker/filing.py::file_statement",
         "app.py::process_once",
@@ -333,9 +340,14 @@ class ClientFolderWritersTest(unittest.TestCase):
             # is flag 6 of this stage's report. It reaches the same gated
             # function rather than writing anything of its own, which is what
             # keeps 10f.11's "one writer" true.
+            # The fifth arrived 2026-09-10 with sub-step 10f.37, the
+            # Post-time message from IntelliBooks Desktop. It is the only one
+            # that passes `at=config.CLIENT_COPY_AT_POST`; the other four are
+            # the publish path.
             ["app.py::_copy_missing_client_copies",
              "app.py::_publish_unpublished_receipts",
              "worker/extraction_pipeline.py::process_extraction_result",
+             "worker/resolution/service.py::_apply_attached_note",
              "worker/resolution/service.py::resolve_receipt"])
 
 
@@ -656,28 +668,38 @@ class TheTriggerDecidesTest(unittest.TestCase):
                              "proves nothing at all")
             self.assertIsNone(receipt["filed_path"])
 
-    def test_post_writes_nothing_and_says_so_once(self):
-        """The trigger with no mechanism yet, and the decision is mine.
+    def test_post_writes_nothing_at_publish_time_and_says_so_once(self):
+        """~~The trigger with no mechanism yet~~ **it has one from 2026-09-10.**
 
-        `post` needs the Desktop-to-pipeline message at sub-step 10f.16, which
-        does not exist. So a `post` firm gets no copy from the pipeline, and
-        that is said out loud rather than looked like `never`: a firm that chose
-        `post` and silently got nothing would have no way to tell.
+        **Sub-step 10f.37 built the Post-time message**, so this line changed
+        twice over and both changes are the point. It used to be a WARNING
+        saying the mechanism did not exist and naming sub-step 10f.16, which
+        was BUILT and was never the home of that work. **It is now an INFO
+        saying the pipeline is waiting for the message, and it names 10f.37.**
+
+        What has not changed is that a `post` firm gets no copy when a receipt
+        publishes, and that it is said out loud rather than looked like
+        `never`: a firm that chose `post` and silently got nothing would have
+        no way to tell. `tests/test_post_time_client_copy.py` holds what
+        happens when the message arrives.
 
         Once per process, not once per receipt, because a real firm's every
         receipt would otherwise carry the same line.
         """
         with TempEnvironment(), trigger("post"):
             client_copy._reset_post_warning()
-            with captured("worker.client_copy", logging.WARNING) as log:
+            with captured("worker.client_copy", logging.INFO) as log:
                 drive(self, "ok")
                 receipt, = receipts()
                 self.assertEqual(everything_under(config.CLIENTS_ROOT), [])
                 self.assertIsNone(receipt["filed_path"])
-                warnings = log.messages(logging.WARNING)
-                self.assertEqual(len(warnings), 1, warnings)
-                self.assertIn("post", warnings[0])
-                self.assertIn("10f.16", warnings[0])
+                self.assertEqual(
+                    log.messages(logging.WARNING), [],
+                    "the publish-time no-op is a WARNING again, and the "
+                    "mechanism exists now")
+                said = [m for m in log.messages(logging.INFO) if "10f.37" in m]
+                self.assertEqual(len(said), 1, log.messages(logging.INFO))
+                self.assertIn("post", said[0])
 
                 repo = Repository()
                 try:
@@ -688,8 +710,10 @@ class TheTriggerDecidesTest(unittest.TestCase):
                         gross=12.0, validation_status="ok", filed_path=None)
                 finally:
                     repo.close()
-                self.assertEqual(len(log.messages(logging.WARNING)), 1,
-                                 "the post warning repeated")
+                self.assertEqual(
+                    len([m for m in log.messages(logging.INFO)
+                         if "10f.37" in m]), 1,
+                    "the post line repeated")
 
     def test_a_client_with_no_folder_name_is_reported_and_not_guessed(self):
         """10d.18, and it is the one refusal that keeps its own reason.
@@ -1002,6 +1026,12 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
         `app.py`, and `is_published()` has the one this replaced.
         `CLAUDE.md`'s rule: only a guard over the set proves the set is
         complete, and it is what catches the fifth call site added without one.
+
+        **`is_published()` gained a second caller on 2026-09-10, sub-step
+        10f.37**, and it asks a different question there: not "is this receipt
+        worth duplicating" but "does this pipeline agree that the receipt
+        Desktop says is in the accounts ever reached them". It does not gate
+        anything, it warns. See `_apply_attached_note()`.
         """
         sites = {}
         for name in ("is_recorded_and_filed", "is_published"):
@@ -1018,7 +1048,9 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
             sites,
             {"is_recorded_and_filed": ["app.py::process_once"] * 3,
              "is_published": ["worker/extraction_pipeline.py::"
-                              "process_extraction_result"]},
+                              "process_extraction_result",
+                              "worker/resolution/service.py::"
+                              "_apply_attached_note"]},
             f"the callers moved: {sites}. is_recorded_and_filed() must keep "
             "its three file-hash sites in app.py and lose the semantic one, "
             "because _move_inbox_pair_to_processed() depends on a needs_review "

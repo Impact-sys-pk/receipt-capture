@@ -14,8 +14,10 @@ instruction. You do not write the pipeline; Claude Code does.**
 1. **This file, in full.**
 2. **`CLAUDE.md`**, section "How this project is worked", and the traps. **The traps live there and
    nowhere else.** Section 7 of this file adds only the ones this session actually hit.
-3. **`2026-07-25_CONSOLE_DESIGN.md`**, the amendment record from **312 to 316**, which is this
-   session's work. Then section 18, receipt and transaction integrity, before the body.
+3. **`2026-07-25_CONSOLE_DESIGN.md`**, the amendment record from **307 to 316**. **312 to 316 is this
+   session's own work. 307 to 311 is the session before it, and it is included because that session's
+   handover is now in `archive\` and you are told not to read it**, so the design document is the only
+   place those five survive. Then section 18, receipt and transaction integrity, before the body.
 4. **`IntelliBooks\App\Docs\IntelliBooks-Change-Log.md`**, items **74 to 78**, which are this
    session's Desktop work.
 5. **The two Claude Code reports of today**, both in the repository root:

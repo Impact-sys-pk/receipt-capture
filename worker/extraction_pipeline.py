@@ -65,6 +65,58 @@ def report_validation_outcome(receipt_id, client_id, status, notes):
     return reason
 
 
+def _comparable_ref(value):
+    """One reading's reference number as it is compared against another's.
+
+    **Surrounding whitespace stripped and lower-cased, and nothing else.**
+    Paul's decision of 2026-09-10, option 1 of three: the wider option also
+    ignored punctuation and internal spacing, and he ruled that out on the
+    grounds that it starts guessing at what a supplier meant. So a hyphen, a
+    space in the middle and a run of repeated characters are all still part of
+    the reference number.
+
+    **`.strip().lower()` is the treatment the supplier already gets**, in
+    `find_by_transaction_loose()`, which is called with
+    `case_insensitive=True`. Two readings of one document reaching this
+    function have already matched on a case-insensitive supplier, so comparing
+    the reference number case-sensitively was the inconsistency that let the
+    duplicate through. `.lower()` rather than `.casefold()` for the same
+    reason: it is what the supplier comparison does, and casefold changes a
+    few characters beyond their case, which is the guessing Paul ruled out.
+
+    **Returns the empty string wherever there is nothing to compare**: None, an
+    empty string, and whitespace alone. `_signals_differ()` reads this value
+    for truth in an `and` guard, so all three cannot veto a match, and a
+    reference number that is three spaces is a reading that found none rather
+    than one that distinguishes two transactions.
+
+    ~~`if not value: return None` and `or None` on the way out.~~ **Both
+    dropped 2026-09-10 after a mutation survived.** `"   ".strip()` is already
+    the empty string and already falsy, so `or None` could be removed with the
+    whole suite still green, and a clause no test can distinguish is one this
+    project does not keep. `(value or "")` is what handles None, so the
+    early return went with it.
+
+    **`str()` because the value need not be one.** `openai_vision.py` passes
+    `parsed.get("receipt_ref_number")` straight out of the model's JSON, and
+    the schema it asks for says "string or null" without enforcing it, so a
+    receipt numbered `01303` can come back as the JSON number 1303. `.strip()`
+    on an int raises `AttributeError`, and nothing between here and the intake
+    loop catches one: the `try` below covers the time parse only. The bare
+    `!=` this replaced compared an int without complaint, so the coercion is
+    what stops the fix introducing a crash the fault did not have. It changes
+    type and not content, which is not the normalising Paul ruled out.
+
+    **`value or ""` rather than a test against None**, so a falsy value keeps
+    the behaviour the two `and` guards below already gave it.
+
+    One normaliser, applied to both sides. Two builders of one comparable form
+    eventually disagree, which is the reasoning
+    `report_validation_outcome()` above carries for its reason string.
+    """
+    return str(value or "").strip().lower()
+
+
 def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
     """Check if extraction has distinguishing signals from a potential duplicate.
 
@@ -72,19 +124,28 @@ def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
     allowing the same-amount receipt to be filed separately (not flagged as duplicate).
 
     Returns True if:
-    - Both have different ref_numbers (both non-empty and differ)
+    - Both have different ref_numbers (both non-empty and differ, compared
+      through `_comparable_ref()` above)
     - Both have different receipt times (both non-empty and differ by >5 min)
 
     Returns False if:
     - Neither field differs, or fields are missing, or signals match
+
+    **The reference numbers were compared with a bare `!=` until 2026-09-10**,
+    and a RingGo receipt sent twice, once as the PDF and once as a screen
+    capture of that PDF, read as `LBCAMRL-2021-09-04-01303` and
+    `LBcAMRL-2021-09-04-01303`. One character of case vetoed the match, so a
+    real duplicate validated `ok`, published, reached the books and was copied
+    into the client folder beside the first. Found by sub-step 10f.30's check 5
+    on Paul's machine, and it is the first thing that check produced.
     """
     dup_extraction = repo.get_extraction_for_receipt(dup_receipt_id)
     if not dup_extraction:
         return False
 
     # Check reference numbers
-    ref_new = getattr(extraction, 'receipt_ref_number', None)
-    ref_dup = dup_extraction.get('receipt_ref_number')
+    ref_new = _comparable_ref(getattr(extraction, 'receipt_ref_number', None))
+    ref_dup = _comparable_ref(dup_extraction.get('receipt_ref_number'))
 
     if ref_new and ref_dup and ref_new != ref_dup:
         return True

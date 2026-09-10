@@ -958,5 +958,279 @@ class DeadFunctionsAreGoneTest(unittest.TestCase):
         self.assertTrue(hasattr(Repository, "find_by_transaction_loose"))
 
 
+class ReferenceNumberCaseTest(unittest.TestCase):
+    r"""A reference number differing only in case is one transaction, not two.
+
+    **A live fault, found on Paul's machine on 2026-09-10 and the first thing
+    sub-step 10f.30's check 5 produced.** A RingGo parking receipt was put
+    through twice, once as the PDF and once as a screen capture of that PDF, so
+    the bytes differ and the file-hash check cannot see it. That is amendment
+    107's own case. `find_by_transaction_loose()` matched, `is_published()`
+    passed, and then `_signals_differ()` compared
+    `LBCAMRL-2021-09-04-01303` with `LBcAMRL-2021-09-04-01303` using a plain
+    `!=`, said they were different transactions, and the receipt validated
+    `ok`, published, reached the books and was copied into the client folder
+    beside the first.
+
+    **The supplier was already compared case-insensitively and the reference
+    number was not**, and that inconsistency is the whole of the fault:
+    `find_by_transaction_loose()` is called with `case_insensitive=True`.
+
+    **The fix is narrow, on Paul's decision of 2026-09-10, option 1 of three.**
+    Case and surrounding whitespace only. No removing hyphens, no stripping
+    internal spaces, no collapsing runs, because the wider option starts
+    guessing at what a supplier meant.
+
+    **The veto itself stays**, and half the tests below are about that. A
+    reference number that genuinely differs still separates two transactions,
+    which is the only reason this comparison exists.
+    """
+
+    #: The two readings, as they sit in `C:\Intellibills\db\receipts.db`.
+    REF = "LBCAMRL-2021-09-04-01303"
+    REF_ONE_CHARACTER_OF_CASE = "LBcAMRL-2021-09-04-01303"
+
+    def _ringgo(self, ref):
+        from resolution_fixtures import extraction_result
+
+        return extraction_result(
+            supplier_name="RingGo",
+            invoice_date="2021-09-04",
+            net_amount=None,
+            vat_amount=None,
+            gross_amount=5.17,
+            receipt_ref_number=ref,
+            receipt_time="12:30",
+        )
+
+    def _receipts(self):
+        repo = Repository()
+        try:
+            return [dict(r) for r in repo._conn.execute(
+                "SELECT * FROM receipts ORDER BY created_at, receipt_id").fetchall()]
+        finally:
+            repo.close()
+
+    def _two_readings(self, first_ref, second_ref):
+        """Drive one document twice, each reading with its own reference number.
+
+        Different bytes each time, so the file-hash check cannot answer and the
+        semantic check is the one under test. Two `RecordingExtractor`s rather
+        than one, because one returns a fixed result and the reference number
+        is the thing that has to differ.
+
+        Returns the receipts in arrival order.
+        """
+        from resolution_fixtures import RecordingExtractor
+
+        with_email_client(self)
+        Routes(RecordingExtractor(self._ringgo(first_ref))).email_attachment(
+            message_id="the-pdf", data=b"the RingGo PDF")
+        Routes(RecordingExtractor(self._ringgo(second_ref))).email_attachment(
+            message_id="the-screenshot", data=b"a screen capture of that PDF")
+        return self._receipts()
+
+    def test_one_character_of_case_no_longer_defeats_the_check(self):
+        """The red case, with the values off Paul's machine."""
+        with TempEnvironment():
+            first, second = self._two_readings(
+                self.REF, self.REF_ONE_CHARACTER_OF_CASE)
+            self.assertEqual(first["status"], "ok")
+            self.assertEqual(
+                second["status"], "possible_duplicate",
+                f"{self.REF_ONE_CHARACTER_OF_CASE!r} against {self.REF!r} was "
+                "treated as a second transaction, so the reference numbers are "
+                "still being compared case-sensitively")
+            self.assertEqual(second["duplicate_of"], first["receipt_id"])
+
+    def test_the_same_reference_number_twice_is_still_caught(self):
+        """The control. Byte-different scans of one document, one reference.
+
+        Without it the test above is satisfied by a comparison that always says
+        the signals match, which would be the veto deleted rather than fixed.
+        """
+        with TempEnvironment():
+            first, second = self._two_readings(self.REF, self.REF)
+            self.assertEqual(
+                [first["status"], second["status"]],
+                ["ok", "possible_duplicate"])
+            self.assertEqual(second["duplicate_of"], first["receipt_id"])
+
+    def test_a_genuinely_different_reference_number_still_separates_them(self):
+        """The veto, which is what this comparison is for and it stays.
+
+        Same supplier, same date, same amount, same time: two RingGo sessions
+        an operator really did pay for. Both must reach `ok`.
+        """
+        with TempEnvironment():
+            first, second = self._two_readings(
+                self.REF, "LBCAMRL-2021-09-04-09999")
+            self.assertEqual(
+                [first["status"], second["status"]], ["ok", "ok"],
+                "two genuinely different reference numbers were collapsed into "
+                "one transaction, so the fix has traded one fault for another")
+            self.assertIsNone(second["duplicate_of"])
+
+    def test_surrounding_whitespace_is_stripped(self):
+        with TempEnvironment():
+            first, second = self._two_readings(self.REF, f"  {self.REF}\t")
+            self.assertEqual(
+                [first["status"], second["status"]],
+                ["ok", "possible_duplicate"])
+
+    def test_internal_spacing_is_left_alone(self):
+        """Paul's decision, pinned so a later widening is a deliberate one.
+
+        Option 2 of the three would have ignored punctuation and spacing as
+        well. He chose not to, on the grounds that it starts guessing. A
+        reference number with a space in the middle of it is therefore still a
+        different reference number.
+        """
+        with TempEnvironment():
+            first, second = self._two_readings(
+                self.REF, "LB CAMRL-2021-09-04-01303")
+            self.assertEqual(
+                [first["status"], second["status"]], ["ok", "ok"],
+                "internal spacing is being normalised, which is option 2 and "
+                "was not chosen")
+
+    def test_a_hyphen_is_left_alone(self):
+        with TempEnvironment():
+            first, second = self._two_readings(
+                self.REF, "LBCAMRL 2021-09-04-01303")
+            self.assertEqual(
+                [first["status"], second["status"]], ["ok", "ok"])
+
+    def test_one_reference_number_missing_behaves_as_it_did(self):
+        """The absent case, and it falls through to the time comparison.
+
+        Neither `and` in `_signals_differ()` changes, so a reading with no
+        reference number cannot veto anything: the times are both 12:30, the
+        comparison finds no difference, and the receipt is flagged.
+        """
+        with TempEnvironment():
+            first, second = self._two_readings(self.REF, None)
+            self.assertEqual(
+                [first["status"], second["status"]],
+                ["ok", "possible_duplicate"])
+
+    def test_an_empty_reference_number_behaves_as_it_did(self):
+        with TempEnvironment():
+            first, second = self._two_readings(self.REF, "")
+            self.assertEqual(
+                [first["status"], second["status"]],
+                ["ok", "possible_duplicate"])
+
+    def test_a_reference_number_of_only_whitespace_vetoes_nothing(self):
+        """Where stripping changes an answer, and it changes it the right way.
+
+        `"   "` is truthy, so before this it was compared as itself and vetoed
+        against any real reference number. Stripped it is empty and vetoes
+        nothing, which is what a reading that found no reference number should
+        do. Stated because it is the one behaviour change beyond case.
+        """
+        with TempEnvironment():
+            first, second = self._two_readings(self.REF, "   ")
+            self.assertEqual(
+                [first["status"], second["status"]],
+                ["ok", "possible_duplicate"])
+
+    def test_a_reference_number_the_model_returned_as_a_number(self):
+        """Through the real pipeline, because the risk here is an exception.
+
+        `openai_vision.py` passes `parsed.get("receipt_ref_number")` out of the
+        model's JSON without coercing it, and the schema it asks for says
+        "string or null" without enforcing that. The bare `!=` this brief
+        replaced compared an int without complaint; `.strip()` on one raises
+        `AttributeError`, and the only `try` in `_signals_differ()` is around
+        the time parse, so it would come out through
+        `process_extraction_result()`. This is the pair that says it does not.
+        """
+        with TempEnvironment():
+            first, second = self._two_readings("1303", 1303)
+            self.assertEqual(
+                [first["status"], second["status"]],
+                ["ok", "possible_duplicate"])
+
+    def test_the_signals_helper_answers_the_same_way_on_its_own(self):
+        """The same matrix at the level of the function, table-driven.
+
+        The pipeline tests above are the ones that matter, per the brief: they
+        prove the receipt reaches `possible_duplicate` with `duplicate_of` set.
+        This one is here because it enumerates the pairs cheaply, including
+        both orders of every asymmetric pair, which the pipeline tests do not.
+        """
+        from worker.extraction_pipeline import _signals_differ
+
+        cases = [
+            (self.REF, self.REF, False, "identical"),
+            (self.REF, self.REF_ONE_CHARACTER_OF_CASE, False,
+             "one character of case"),
+            (self.REF_ONE_CHARACTER_OF_CASE, self.REF, False,
+             "the same pair, reversed"),
+            (self.REF, self.REF.lower(), False, "every character of case"),
+            (self.REF, f" {self.REF} ", False, "surrounding whitespace"),
+            (f" {self.REF} ", self.REF, False,
+             "surrounding whitespace, reversed"),
+            (self.REF, "LBCAMRL-2021-09-04-09999", True, "a different session"),
+            (self.REF, "LB CAMRL-2021-09-04-01303", True,
+             "internal spacing, kept"),
+            (self.REF, None, False, "the new reading has none"),
+            (None, self.REF, False, "the earlier reading has none"),
+            (self.REF, "", False, "the new reading has an empty one"),
+            ("", self.REF, False, "the earlier reading has an empty one"),
+            (self.REF, "   ", False, "the new reading has only whitespace"),
+            ("   ", self.REF, False, "the earlier reading has only whitespace"),
+            (None, None, False, "neither has one"),
+            # A number rather than a string, which the model can return: the
+            # schema in `openai_vision.py` asks for "string or null" and does
+            # not enforce it, and the value goes into the extraction as parsed.
+            # `.strip()` on an int raises AttributeError and nothing here
+            # catches one, so these are about the fix not introducing a crash
+            # the bare `!=` did not have.
+            #
+            # **Only the new reading can be a number, and that is checked
+            # rather than assumed.** `receipt_ref_number` is a TEXT column, and
+            # SQLite's TEXT affinity converts a numeric value to text on the
+            # way in: 1303 written through `save_extraction()` comes back as
+            # `'1303'`, `typeof()` `'text'`. So the row below that writes a
+            # number pins that conversion; it cannot exercise the coercion.
+            (1303, "1303", False, "the new reading gave a number"),
+            ("1303", 1303, False, "a number stored, which comes back as text"),
+            (1303, "01303", True, "two numbers that really differ"),
+            (1303, None, False, "a number against nothing"),
+        ]
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                for i, (new, dup, expected, label) in enumerate(cases):
+                    with self.subTest(case=label):
+                        receipt_id = f"r-{i}"
+                        seed_receipt(repo, receipt_id, CLIENT_A,
+                                     file_hash=f"h-{i}", published=True)
+                        repo.save_extraction(
+                            extraction_id=f"x-{i}",
+                            receipt_id=receipt_id,
+                            engine="fake",
+                            supplier_name="RingGo",
+                            invoice_date="2021-09-04",
+                            net_amount=None,
+                            vat_amount=None,
+                            gross_amount=5.17,
+                            currency="GBP",
+                            raw_response="{}",
+                            validation_status="ok",
+                            validation_notes=[],
+                            receipt_ref_number=dup,
+                            receipt_time="12:30",
+                        )
+                        self.assertIs(
+                            _signals_differ(self._ringgo(new), receipt_id, repo),
+                            expected,
+                            f"{new!r} against {dup!r}")
+            finally:
+                repo.close()
+
+
 if __name__ == "__main__":
     unittest.main()

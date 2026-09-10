@@ -243,9 +243,20 @@ class ClientFolderWritersTest(unittest.TestCase):
     #: `process_once()` and writes a PHV platform statement, which nothing
     #: publishes, so stopping it would leave a statement no route into the books.
     #: Out of scope, reported, not repaired.
+    #:
+    #: **`remove_client_copy()` joined the set on 2026-09-10**, and this guard
+    #: is what noticed: the whole suite was green except for this test. It is
+    #: the first code in the product that DELETES from `Clients\`, on Paul's
+    #: decision that an operator deleting a receipt from the books may take its
+    #: copy with it. It reads `config.CLIENTS_ROOT` for the containment check
+    #: that refuses any path resolving outside the root, which is why it is
+    #: here at all. **In the same module as the writer deliberately**: one
+    #: owner for that tree, which is what this module's docstring is about.
+    #: `tests/test_discard_client_copy.py` holds the deletion's own guards.
     ALLOWED = {
         "worker/client_copy.py::write_client_copy",
         "worker/client_copy.py::copy_for_published_receipt",
+        "worker/client_copy.py::remove_client_copy",
         "worker/filing.py::get_client_directory",
         "worker/filing.py::file_statement",
         "app.py::process_once",

@@ -120,6 +120,117 @@ class ClientCopy(NamedTuple):
     collided_with: list
 
 
+#: The file was there and is not any more.
+REMOVAL_DELETED = "deleted"
+
+#: There was nothing at that path. A normal outcome, not a failure: 18.2b says a
+#: copy is never withdrawn, so anything that removed it did so outside this
+#: product and the operator's intent is satisfied either way.
+REMOVAL_ALREADY_GONE = "already_gone"
+
+#: The path is not one this function will touch. Nothing was deleted and the
+#: caller reports it: a `filed_path` that does not resolve to a file inside
+#: `config.CLIENTS_ROOT` is a corrupt stored value rather than a client copy.
+REMOVAL_REFUSED = "refused"
+
+#: The unlink raised. On OneDrive a locked or syncing file is the ordinary case.
+REMOVAL_FAILED = "failed"
+
+
+class ClientCopyRemoval(NamedTuple):
+    """What `remove_client_copy()` did, with enough to log and to record.
+
+    `path` is the resolved path it considered, or None where the value could not
+    be resolved at all. `detail` is the reason on `refused` and `failed`, and
+    None on the two outcomes that need no explanation.
+
+    A tuple rather than a bare bool for `ClientCopy`'s reason: the caller does
+    the reporting, because only `discard_receipt()` knows the receipt id and
+    only this function knows what happened to the file.
+    """
+
+    outcome: str
+    path: Path | None
+    detail: str | None
+
+
+def remove_client_copy(filed_path) -> ClientCopyRemoval:
+    """Delete one document from the client folder. **The only deleter.**
+
+    Paul's decision of 2026-09-10, the first of four: an operator deleting a
+    receipt from the books in IntelliBooks Desktop is asked whether the copy in
+    the client folder goes too, and this is what happens when they say yes.
+
+    **It deletes exactly the file it is given and nothing else.** Not a composed
+    name, not a glob, not a directory. The path comes from `receipts.filed_path`,
+    which is what `copy_for_published_receipt()` below recorded when it wrote the
+    copy, so a `-2` from a collision is already resolved and Desktop never has to
+    guess at a name it cannot tell apart from the original.
+
+    **Three refusals, and each is a real stored value away.**
+
+    - **Anything outside `config.CLIENTS_ROOT`**, resolved first so a `..` in
+      the middle of the path cannot walk back out of the root. This is what
+      keeps `Intellibills\\Documents\\` safe, and that folder is the archive of
+      record per 18.2a and the reason deleting the client copy is safe at all.
+    - **A directory.** The tax year folder is one bad value away, and refusing
+      explicitly is better than relying on `unlink()` to raise.
+    - **A relative path.** The caller resolves 12.2's practice-root convention
+      with `resolve_practice_path()` in the resolution service, and a second
+      copy of that here would be the drift this module already warns about for
+      `_unique_path()`.
+
+    **It never raises**, for `copy_for_published_receipt()`'s reason applied to
+    the other direction: the status change is the point of a discard, and a file
+    left behind is untidy and recoverable, while a note stuck in
+    `Resolutions\\failed\\` leaves the database saying `ok` about a receipt the
+    books say is gone. That is the disagreement amendment 306 exists to remove.
+
+    **This is the first code in the product that deletes anything under
+    `Clients\\`.** Before it, production code deleted files in five places and
+    none of them was there: `_cleanup_old_backups()`, `acquire_lock()` and
+    `release_lock()` for the lock file, `_delete_review_pair()` for the Review
+    pair, and `write_item()` for its own partial. Enumerated from the syntax
+    tree, and `tests/test_discard_client_copy.py` holds a guard that keeps the
+    deletion in this one function.
+    """
+    try:
+        candidate = Path(filed_path)
+    except TypeError as error:
+        return ClientCopyRemoval(REMOVAL_REFUSED, None, f"{type(error).__name__}: {error}")
+
+    if not candidate.is_absolute():
+        return ClientCopyRemoval(
+            REMOVAL_REFUSED, candidate,
+            "the path is relative, and this function does not resolve 12.2's "
+            "practice-root convention: the caller does")
+
+    # `strict=False`, so a path whose file has already gone still resolves and
+    # is still checked for containment. The check has to come first either way:
+    # a refusal is about where the path points, not about what is there.
+    resolved = candidate.resolve()
+    root = Path(config.CLIENTS_ROOT).resolve()
+    if resolved == root or root not in resolved.parents:
+        return ClientCopyRemoval(
+            REMOVAL_REFUSED, resolved,
+            f"the path does not resolve to a file inside {root}")
+
+    if resolved.is_dir():
+        return ClientCopyRemoval(
+            REMOVAL_REFUSED, resolved, "the path is a directory")
+
+    if not resolved.exists():
+        return ClientCopyRemoval(REMOVAL_ALREADY_GONE, resolved, None)
+
+    try:
+        resolved.unlink()
+    except Exception as error:
+        return ClientCopyRemoval(
+            REMOVAL_FAILED, resolved, f"{type(error).__name__}: {error}")
+
+    return ClientCopyRemoval(REMOVAL_DELETED, resolved, None)
+
+
 def _digest(path: Path) -> str:
     """SHA256 of a file, read in chunks. The same hash `file_hash` uses."""
     digest = hashlib.sha256()

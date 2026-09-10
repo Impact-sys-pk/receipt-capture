@@ -294,7 +294,17 @@ def process_extraction_result(
         # `_move_inbox_pair_to_processed()` depends in terms on a `needs_review`
         # receipt NOT counting as filed, so a widened helper would make a file
         # an operator puts back by hand look like a duplicate. Amendment 303.
-        if dup and repo.is_published(dup):
+        # **And `is_discarded()`, from 2026-09-10.** Paul's decision, the third
+        # of four: a discarded receipt no longer blocks a resend of the same
+        # document. `publish_events` is append-only, so a receipt the operator
+        # deleted from the books keeps its `published` row for ever and this
+        # guard went on treating it as something worth duplicating. His case is
+        # that the operator deletes a receipt, decides it was a mistake, and
+        # sends the document again. `Repository._NOT_DISCARDED` says the same
+        # thing inside the query above, and both are needed: that query narrows
+        # and then takes `LIMIT 1`, so it would otherwise hand back a discarded
+        # row while a live one existed.
+        if dup and repo.is_published(dup) and not repo.is_discarded(dup):
             # Check if distinguishing signals differ (ref_number, receipt_time)
             # Only flag as possible_duplicate if signals do NOT distinguish them
             if not _signals_differ(extraction, dup, repo):

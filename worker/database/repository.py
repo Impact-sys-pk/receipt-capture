@@ -342,12 +342,49 @@ class Repository:
     def mark_receipt_filed(self, receipt_id: str, filed_path: str):
         """Record where a receipt was filed, and when.
 
-        The only writer of filed_path, and therefore the only writer of filed_at,
-        so the two cannot disagree. Design document 5.1a.
+        ~~The only writer of filed_path, and therefore the only writer of
+        filed_at, so the two cannot disagree.~~ **Narrowed 2026-09-10: the only
+        writer of a VALUE into filed_path.** `clear_receipt_filed_path()` below
+        is the only thing that takes one out, on Paul's decision that a
+        discarded receipt is not filed. Design document 5.1a.
         """
         self._conn.execute(
             "UPDATE receipts SET filed_path = ?, filed_at = ? WHERE receipt_id = ?",
             (str(filed_path), datetime.now(timezone.utc).isoformat(), receipt_id)
+        )
+        self._conn.commit()
+
+    def clear_receipt_filed_path(self, receipt_id: str):
+        """Forget where a receipt was filed. Paul's decision of 2026-09-10.
+
+        Called on every discard, whether or not the copy in the client folder
+        was deleted: a discarded receipt is not filed, whatever became of the
+        file. Otherwise the column names a file that may not be there, and this
+        project has been caught more than once by a stored value that outlived
+        what it described.
+
+        **`filed_at` is deliberately left alone**, because Paul's decision named
+        one column and clearing the other is a behaviour change nobody asked
+        for. So a row with a `filed_at` and no `filed_path` is now reachable,
+        which it was not before. ~~Nothing in production reads `filed_at`.~~
+        **Corrected before this shipped: `resolve_receipt()` does, and it reads
+        it only inside `if filed_path:`**, so the stale value cannot be reached
+        by the one reader there is. Enumerated from the syntax tree and flagged
+        in `2026-09-10_REPORT_claude_code_discard_and_client_copy.md`.
+
+        **Two things this changes for a reader of the column, both intended.**
+        `is_recorded_and_filed()` goes False, which is what lets the identical
+        document be sent again, per deliverable 3 of the same brief. And
+        `get_published_receipts_without_client_copy()` selects on
+        `filed_path IS NULL`, so a cleared column would queue the receipt for a
+        copy on the next poll **were it not for that query's own
+        `status = 'ok'`**, which a discarded receipt fails.
+        `tests/test_discard_client_copy.py` asserts that, because without it the
+        deletion would be undone within five minutes.
+        """
+        self._conn.execute(
+            "UPDATE receipts SET filed_path = NULL WHERE receipt_id = ?",
+            (receipt_id,)
         )
         self._conn.commit()
 
@@ -826,6 +863,33 @@ class Repository:
         )
     """
 
+    #: "And the operator has not deleted it", as a condition on the same alias.
+    #:
+    #: **Paul's decision of 2026-09-10, the third of four: a discarded receipt
+    #: no longer blocks a resend of the same document.** His case is that the
+    #: operator deletes a receipt from the books, decides it was a mistake, and
+    #: sends the document again. `publish_events` is append-only and a discarded
+    #: receipt keeps its `published` row for ever, so `_PUBLISHED` above goes on
+    #: saying yes about a receipt nobody wants any more, and a re-photographed
+    #: resend came back `possible_duplicate`. 10f.24 routes one of those to
+    #: Review and never publishes it, so the resend disappeared from the
+    #: operator's point of view.
+    #:
+    #: **What this gives up, and it is Paul's decision rather than an
+    #: oversight**: a discarded receipt stops protecting against anything at
+    #: all, including a genuine second arrival of a document that was correctly
+    #: discarded as a duplicate. It is the price of the resend working.
+    #:
+    #: **A separate string rather than a clause inside `_PUBLISHED`**, because
+    #: that constant answers "did this land at a destination" and a discard does
+    #: not change the answer to it. `is_published()` keeps its meaning for the
+    #: same reason, and the call site asks both questions. Same shape as
+    #: `is_recorded_and_filed()` not being widened by 10f.24.
+    #:
+    #: **`status` is NOT NULL on `receipts`**, per `worker/database/schema.py`,
+    #: so there is no third case to handle.
+    _NOT_DISCARDED = " r.status != 'discarded' "
+
     def find_by_transaction_loose(self, supplier_name: str, invoice_date: str, gross_amount: float,
                                    client_id: str,
                                    case_insensitive: bool = True, amount_tolerance: float = 0.01) -> str:
@@ -875,6 +939,7 @@ class Repository:
                   AND e.gross_amount BETWEEN ? AND ?
                   AND r.client_id = ?
                   AND """ + self._PUBLISHED + """
+                  AND """ + self._NOT_DISCARDED + """
                 LIMIT 1
             """
             row = self._conn.execute(query, (supplier_search, supplier_name, invoice_date, min_amount, max_amount, client_id)).fetchone()
@@ -888,6 +953,7 @@ class Repository:
                   AND e.gross_amount BETWEEN ? AND ?
                   AND r.client_id = ?
                   AND """ + self._PUBLISHED + """
+                  AND """ + self._NOT_DISCARDED + """
                 LIMIT 1
             """
             row = self._conn.execute(query, (supplier_search, supplier_name, min_amount, max_amount, client_id)).fetchone()
@@ -935,6 +1001,30 @@ class Repository:
         row = self._conn.execute(
             "SELECT 1 FROM publish_events "
             "WHERE receipt_id = ? AND outcome = 'published' LIMIT 1",
+            (receipt_id,)
+        ).fetchone()
+        return row is not None
+
+    def is_discarded(self, receipt_id: str) -> bool:
+        """Whether the operator has deleted this receipt. 2026-09-10.
+
+        The call-site half of `_NOT_DISCARDED` above, which carries the
+        reasoning. The semantic duplicate check asks this beside
+        `is_published()` rather than instead of it, because the two questions
+        are different and both have to be true of a receipt worth duplicating:
+        it landed somewhere, and nobody has since deleted it.
+
+        **`is_published()` is not widened**, on the precedent of
+        `is_recorded_and_filed()` at 10f.24: a discarded receipt did publish,
+        `publish_events` is append-only, and a function that started answering
+        no about it would be lying to its other readers.
+
+        An id that names no receipt is not discarded, which is the same answer
+        `is_recorded_and_filed()` gives and for the same reason: there is
+        nothing there to have been deleted.
+        """
+        row = self._conn.execute(
+            "SELECT 1 FROM receipts WHERE receipt_id = ? AND status = 'discarded'",
             (receipt_id,)
         ).fetchone()
         return row is not None

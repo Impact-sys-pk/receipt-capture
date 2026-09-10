@@ -27,7 +27,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from worker.categorisation.chart import get_chart_accounts_for_client
-from worker.client_copy import copy_for_published_receipt
+from worker.client_copy import (
+    REMOVAL_ALREADY_GONE,
+    REMOVAL_DELETED,
+    copy_for_published_receipt,
+    remove_client_copy,
+)
 from worker.categorisation.fallback import resolve_against_chart
 from worker.extraction.base import ExtractionResult
 from worker.filing import (
@@ -54,6 +59,29 @@ NOTE_ACTIONS = ("filed", "discarded")
 # resolution_events has no column for it, so it lives in corrections_json, which
 # is already a JSON blob and is already the record of what the note corrected.
 NOTE_RESOLVED_AT_KEY = "note_resolved_at"
+
+# Paul's decision of 2026-09-10, the first of four. The operator deleting a
+# receipt from the books in IntelliBooks Desktop is asked whether the copy in
+# the client folder goes too, and this is how the answer travels.
+#
+# **Top level, not inside `values`**, on `remember_gl_for_supplier`'s precedent:
+# it is not something read off the receipt, it is what the operator asked the
+# pipeline to do with one. Absent or false means today's behaviour, which is
+# that nothing in the client folder is touched, so `NOTE_SCHEMA` stays 1 and
+# neither half of the contract has to ship first.
+#
+# **No path travels with it.** `receipts.filed_path` already names the file,
+# because `copy_for_published_receipt()` recorded it when it wrote the copy, and
+# the composed name carries a `-2` on a collision that nothing on Desktop's side
+# can tell from the original.
+NOTE_DELETE_CLIENT_COPY_KEY = "delete_client_copy"
+
+# The two things a discard records in `resolution_events.corrections_json`, per
+# the brief of 2026-09-10: the path that was cleared, and the path that was
+# deleted where one was. 5.1 has no column for either, and that blob is already
+# where this kind of detail lives. See NOTE_RESOLVED_AT_KEY above.
+EVENT_CLIENT_COPY_DELETED_KEY = "client_copy_deleted"
+EVENT_FILED_PATH_CLEARED_KEY = "filed_path_cleared"
 
 # 12.3 step 4. `source` describes the tool, `actor` describes who: for a note both
 # are 'desktop', because Desktop has no user accounts. Note that the note's own
@@ -241,6 +269,12 @@ class ResolutionNote:
     # asked the pipeline to do with one. Absent means False, which is what every
     # note written before 2026-09-05 means.
     remember_gl_for_supplier: bool = False
+    # Paul's decision of 2026-09-10. The operator deleting a receipt from the
+    # books said the copy in the client folder should go too. Absent means False,
+    # which is what every note written before 2026-09-10 means, and False is
+    # today's behaviour: nothing in the client folder is touched.
+    # See NOTE_DELETE_CLIENT_COPY_KEY, and `discard_receipt()` for what it does.
+    delete_client_copy: bool = False
 
 
 def _note_text(raw: Dict[str, Any], key: str) -> Optional[str]:
@@ -250,6 +284,29 @@ def _note_text(raw: Dict[str, Any], key: str) -> Optional[str]:
     if not isinstance(value, str):
         raise ResolutionNoteError(f"'{key}' must be text, got {type(value).__name__}")
     return value.strip() or None
+
+
+def _note_flag(raw: Dict[str, Any], key: str) -> bool:
+    """One of the note's top-level booleans. Absent means False.
+
+    **A non-boolean is refused rather than coerced.** Both flags this serves
+    decide something durable and irreversible: `remember_gl_for_supplier`
+    writes into the client's mapping table, which layer 1 then reads back as an
+    exact match with confidence `high`, and `delete_client_copy` deletes a file.
+    `"false"` is a true string in every language that would send one, and `0`
+    and `1` are the shapes a form serialiser reaches for, so all of them are
+    errors here rather than guesses.
+
+    **One reader for both flags, added 2026-09-10 with the second of them.**
+    `remember_gl_for_supplier` was parsed by six lines saying exactly this and
+    the new field would have been a second copy of them. Behaviour is unchanged
+    for it, message included.
+    """
+    value = raw.get(key, False)
+    if not isinstance(value, bool):
+        raise ResolutionNoteError(
+            f"'{key}' must be true or false, got {type(value).__name__}")
+    return value
 
 
 def _note_amount(value: Any, key: str) -> Optional[float]:
@@ -303,17 +360,12 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     if not isinstance(review_files, list) or not all(isinstance(f, str) for f in review_files):
         raise ResolutionNoteError("'original_review_files' must be a list of filenames")
 
-    # 11.3's opt-in tick, sub-step 10j.11. Top level, not inside `values`, and
-    # absent means False, so a note written before this field existed parses
-    # exactly as it did before. A non-boolean is refused rather than coerced:
-    # this flag decides a durable write into the client's mapping table, and
-    # "false" is a true string in every language that would send one.
-    remember = raw.get("remember_gl_for_supplier", False)
-    if not isinstance(remember, bool):
-        raise ResolutionNoteError(
-            "'remember_gl_for_supplier' must be true or false, got "
-            f"{type(remember).__name__}"
-        )
+    # 11.3's opt-in tick, sub-step 10j.11, and Paul's delete flag of 2026-09-10.
+    # Both are top level rather than inside `values`, and absent means False, so
+    # a note written before either field existed parses exactly as it did
+    # before. `_note_flag()` carries why a non-boolean is refused.
+    remember = _note_flag(raw, "remember_gl_for_supplier")
+    delete_client_copy = _note_flag(raw, NOTE_DELETE_CLIENT_COPY_KEY)
 
     note = ResolutionNote(
         action=action,
@@ -324,7 +376,21 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         original_review_files=list(review_files),
         reason=_note_text(raw, "reason"),
         remember_gl_for_supplier=remember,
+        delete_client_copy=delete_client_copy,
     )
+
+    if action != "discarded" and delete_client_copy:
+        # A contradiction rather than a shape the contract forbids, so it is
+        # said out loud and ignored, which is the treatment the discard branch
+        # below already gives `values` and `filed_path`. The field means "the
+        # operator deleted this receipt and asked for its copy to go with it",
+        # and a note that files or settles a receipt is not that.
+        logger.warning(
+            f"the note for {note.receipt_id} has action {action!r} and carries "
+            f"'{NOTE_DELETE_CLIENT_COPY_KEY}', which only a discard can mean; "
+            "ignoring it and deleting nothing"
+        )
+        note.delete_client_copy = False
 
     if action == "discarded":
         # 12.2: values and filed_path are absent for a discard. Present-and-ignored
@@ -541,7 +607,7 @@ def _now() -> str:
 
 def _record_event(repo, receipt_id, actor, source, action, outcome,
                   extraction_id=None, corrections=None, gl_override_code=None,
-                  reason=None, note_resolved_at=None) -> None:
+                  reason=None, note_resolved_at=None, detail=None) -> None:
     """One audit row per resolution.
 
     Written for filed, discarded and still_invalid only. Not for not_found, stale
@@ -551,12 +617,21 @@ def _record_event(repo, receipt_id, actor, source, action, outcome,
 
     note_resolved_at is the back-feed's idempotency key, stored in corrections_json
     because 5.1 has no column for it. See NOTE_RESOLVED_AT_KEY.
+
+    `detail` is anything else the caller wants on the row, merged into the same
+    blob. Added 2026-09-10 for the two paths a discard records: the client
+    folder copy it deleted and the `filed_path` it cleared. **Merged last and
+    deliberately**, so a key of the same name in `corrections.values` cannot
+    silently take its place; nothing named in `CORRECTABLE_FIELDS` collides
+    with either today, and this is what keeps that true.
     """
     payload: Dict[str, Any] = {}
     if corrections is not None and corrections.values:
         payload.update(corrections.values)
     if note_resolved_at:
         payload[NOTE_RESOLVED_AT_KEY] = note_resolved_at
+    if detail:
+        payload.update(detail)
     corrections_json = json.dumps(payload, sort_keys=True, default=str) if payload else None
     repo.save_resolution_event(
         event_id=str(uuid.uuid4()),
@@ -1116,8 +1191,54 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         repo.release_receipt_lock(receipt_id)
 
 
+def _delete_the_client_copy(receipt_id: str, filed_path: str) -> Optional[str]:
+    """Delete this receipt's copy in the client folder. Returns the path, or None.
+
+    The reporting half of `worker\\client_copy.py`'s `remove_client_copy()`,
+    which owns `Clients\\` and does the deciding. Split out so
+    `discard_receipt()` below reads as the sequence of decisions it is rather
+    than as four log lines.
+
+    **Nothing here raises and nothing here fails the discard.** The status
+    change is the point: a file left behind is untidy and recoverable, while a
+    note stuck in `Resolutions\\failed\\` leaves the database saying `ok` about a
+    receipt the books say is gone, which is the disagreement amendment 306
+    exists to remove.
+
+    Returns the deleted path only on a real deletion, because the caller writes
+    it into the audit row and "already gone" is not a path this run removed.
+    """
+    result = remove_client_copy(resolve_practice_path(filed_path))
+
+    if result.outcome == REMOVAL_DELETED:
+        logger.info(
+            "receipt %s was discarded and the operator asked for its client "
+            "folder copy to go: deleted %s. The document store still holds the "
+            "archive of record, per 18.2a",
+            receipt_id, result.path)
+        return str(result.path)
+
+    if result.outcome == REMOVAL_ALREADY_GONE:
+        logger.info(
+            "receipt %s was discarded and the operator asked for its client "
+            "folder copy to go, and there is nothing at %s. Not a failure",
+            receipt_id, result.path)
+        return None
+
+    # REFUSED or FAILED. Both are ERROR, and for the same reason: one says a
+    # stored path is not what it claims to be and the other says the file could
+    # not be removed, and in both cases a person has to look.
+    logger.error(
+        "receipt %s was discarded and the operator asked for its client folder "
+        "copy to go, and it was not deleted (%s): %s. filed_path was %r. The "
+        "discard stands and the file is where it was",
+        receipt_id, result.outcome, result.detail, filed_path)
+    return None
+
+
 def discard_receipt(repo, receipt_id, reason, actor, source,
-                    note_resolved_at=None) -> ResolutionOutcome:
+                    note_resolved_at=None,
+                    delete_client_copy: bool = False) -> ResolutionOutcome:
     """Status to 'discarded'. Never deletes the original file or any extraction row.
 
     Design document 4.2. Used for a confirmed duplicate, and for a failed receipt
@@ -1127,6 +1248,27 @@ def discard_receipt(repo, receipt_id, reason, actor, source,
     carries the note's own timestamp for the idempotency check in 12.3 step 3. It is
     additive: the CLI and the console do not pass it. 4.2's signature does not list
     it, and that is a divergence worth knowing about rather than hiding.
+
+    ## Two things this does to `Clients\\`, from Paul's decisions of 2026-09-10
+
+    **`delete_client_copy` deletes the copy in the client folder**, and only when
+    the caller asks. It is the answer to the second question Desktop puts to an
+    operator deleting a receipt from the books. **Absent is today's behaviour**,
+    so the CLI and the back-feed's other paths do not move, and the sentence at
+    the top of this docstring still holds for them: the original file in the
+    document store is never deleted on any path, whatever this flag says.
+
+    **`filed_path` is cleared on every discard**, deleted copy or not. A
+    discarded receipt is not filed, whatever became of the file, and the column
+    would otherwise name something that may not be there.
+
+    **The status is set before either**, so a receipt whose copy is being deleted
+    cannot be picked up by `get_published_receipts_without_client_copy()` and
+    have the copy written back on the next poll. That query filters
+    `status = 'ok'`, and this ordering is what makes that filter enough.
+
+    **The paths are recorded in the audit row**, in `corrections_json`: 5.1 has
+    no column for either. See `EVENT_CLIENT_COPY_DELETED_KEY`.
     """
     receipt = repo.get_receipt(receipt_id)
     if not receipt:
@@ -1144,6 +1286,33 @@ def discard_receipt(repo, receipt_id, reason, actor, source,
     try:
         repo.update_receipt_status(receipt_id, "discarded")
 
+        # Read off the row this function already has, rather than asked for
+        # again: a second read could disagree with the row the caller decided
+        # from, which is `copy_for_published_receipt()`'s reasoning for taking
+        # `filed_path` as a parameter.
+        filed_path = receipt.get("filed_path")
+        detail: Dict[str, Any] = {}
+
+        if delete_client_copy and filed_path:
+            deleted = _delete_the_client_copy(receipt_id, filed_path)
+            if deleted:
+                detail[EVENT_CLIENT_COPY_DELETED_KEY] = deleted
+        elif delete_client_copy:
+            # The live shape for a firm whose `client_copy_trigger` is `never`
+            # or `post`: the receipt published and no copy was ever written, so
+            # there is nothing to delete and the operator's intent is already
+            # satisfied. Said out loud, because "asked to delete and deleted
+            # nothing" should be readable in the log rather than inferred from
+            # its absence.
+            logger.info(
+                "receipt %s was discarded and the operator asked for its "
+                "client folder copy to go, and it has no filed_path, so there "
+                "is nothing to delete", receipt_id)
+
+        if filed_path:
+            repo.clear_receipt_filed_path(receipt_id)
+            detail[EVENT_FILED_PATH_CLEARED_KEY] = str(filed_path)
+
         # The receipt's life in the Review folder is over. Leaving the pair behind
         # is what made IntelliBooks file a duplicate, per 3.5.
         removed = remove_review_pair(receipt_id, receipt.get("client_id"), receipt.get("filename"))
@@ -1151,7 +1320,7 @@ def discard_receipt(repo, receipt_id, reason, actor, source,
             logger.info(f"no review pair removed for {receipt_id}, nothing on disk")
 
         _record_event(repo, receipt_id, actor, source, "discard", "discarded", reason=reason,
-                      note_resolved_at=note_resolved_at)
+                      note_resolved_at=note_resolved_at, detail=detail or None)
         logger.info(f"receipt {receipt_id} discarded by {actor} via {source}: {reason}")
 
         return ResolutionOutcome(
@@ -1805,6 +1974,11 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
             reason=parsed.reason or "discarded in IntelliBooks Desktop",
             actor=DESKTOP_ACTOR, source=DESKTOP_SOURCE,
             note_resolved_at=parsed.resolved_at,
+            # Paul's decision of 2026-09-10. The operator was asked whether the
+            # copy in the client folder goes too, and this is their answer.
+            # `parse_resolution_note()` has already forced it to False on any
+            # action but this one.
+            delete_client_copy=parsed.delete_client_copy,
         )
 
     # Sub-step 10f.14. **The field chooses, not the action word.** See

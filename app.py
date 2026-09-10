@@ -1503,19 +1503,19 @@ def process_once():
                 # the only copy and a statement could not be reconstructed where a
                 # receipt could.
                 store_path = save_inbox_file(statement_id, intake.client_id, intake.source_path)
-                dest_path, sidecar_path = file_statement(
+                # One path back, and no sidecar payload. Paul's decision of
+                # 2026-09-10: the copy in the client folder is the document
+                # alone, per 18.2b, so the dict that used to be built here
+                # existed only to be written into a file nothing read.
+                # `sidecar_path` was unpacked at this one call site and never
+                # used. See `file_statement()`.
+                dest_path = file_statement(
                     intake.source_path,
                     statement_folder_name,
                     tax_year,
                     intake.statement_metadata["platform"],
                     intake.statement_metadata["week_ending"],
                     intake.source_path.suffix,
-                    intake.sidecar or {
-                        "type": "statement",
-                        "platform": intake.statement_metadata["platform"],
-                        "week_ending": intake.statement_metadata["week_ending"],
-                        "source": intake.source,
-                    },
                 )
                 repo.save_statement(
                     statement_id=statement_id,

@@ -88,8 +88,48 @@ def file_statement(
     platform: str,
     week_ending: str,
     original_extension: str,
-    enriched_sidecar: dict[str, Any],
-) -> tuple[Path, Path]:
+) -> Path:
+    """Copy one platform statement into the client's folder. **The document alone.**
+
+    Returns where it landed. A statement here is a PHV platform statement, uber,
+    bolt or freenow, and never a bank statement.
+
+    ## The sidecar stopped on 2026-09-10, on Paul's decision
+
+    ~~`_write_json(dest_file.with_suffix(dest_file.suffix + ".json"), enriched_sidecar)`~~
+    **This wrote a second file beside every statement it filed**, the same name
+    with `.json` appended, and it was the last thing writing a data file into
+    `Clients\\`. Flag 4 of
+    `2026-09-10_REPORT_claude_code_sidecar_and_cli_output.md`, raised because
+    receipt sidecars there had become a closed legacy set and these had not.
+
+    **18.2b applied to a folder it was not written against.** Its Image only
+    rule is stated about the receipt copy, and its reasoning is about the client
+    folder rather than about receipts: "No data file beside it. The sidecar
+    existed to carry figures between the two modules, and 18.3 replaces that.
+    The copy is a document for a person and a portal, so nothing needs to parse
+    it." A statement copy is the same kind of thing for the same two readers.
+
+    **Nothing read it.** Enumerated on the pipeline side from the syntax tree,
+    and the consultant session enumerated every `.json` reference in
+    `IntelliBooks-Desktop-v3.html` and found no reader there either.
+
+    **`enriched_sidecar` went with the write, and the second return value with
+    it.** The parameter existed only to be written into that file and the one
+    caller unpacked a path it never used. Deleted rather than left dead, which
+    is the reasoning the `file_receipt()` tombstone above already carries: a
+    parameter nothing reads is one edit away from looking as though it does
+    something, and a returned path naming a file this function does not write is
+    worse than either.
+
+    **Sidecars already on disk are left exactly where they are.** No deletion,
+    no sweep, no migration; they are inert. Paul's decision, and it is the
+    opposite of the receipt discard earlier the same day, where a sidecar goes
+    with a document being deleted.
+
+    **`_unique_path()` is untouched**: two statements for one week are two
+    documents and the second gets a `-2`.
+    """
     client_dir = get_client_directory(client_folder_name)
     destination_dir = client_dir / config.CLIENT_STATEMENTS_FOLDER_NAME / tax_year / platform
     destination_dir.mkdir(parents=True, exist_ok=True)
@@ -97,11 +137,9 @@ def file_statement(
     ext = original_extension if original_extension.startswith(".") else f".{original_extension}"
     base_name = f"{platform}_{week_ending}"
     dest_file = _unique_path(destination_dir, base_name, ext)
-    dest_sidecar = dest_file.with_suffix(dest_file.suffix + ".json")
 
     shutil.copy2(source_file, dest_file)
-    _write_json(dest_sidecar, enriched_sidecar)
-    return dest_file, dest_sidecar
+    return dest_file
 
 
 def file_review(

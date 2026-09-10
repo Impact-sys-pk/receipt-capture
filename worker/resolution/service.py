@@ -83,6 +83,14 @@ NOTE_DELETE_CLIENT_COPY_KEY = "delete_client_copy"
 EVENT_CLIENT_COPY_DELETED_KEY = "client_copy_deleted"
 EVENT_FILED_PATH_CLEARED_KEY = "filed_path_cleared"
 
+# The legacy data file beside a client folder copy, `x.pdf.json`, where one was
+# there and went with the document. Added 2026-09-10 after a real orphan on
+# Paul's machine: the document had been deleted and its data file had not.
+# **Recorded separately from the document**, so the row can say the document
+# went, the data file went, or the document went and there was no data file.
+# `worker\client_copy.py`'s CLIENT_COPY_SIDECAR_SUFFIX carries the convention.
+EVENT_CLIENT_COPY_SIDECAR_DELETED_KEY = "client_copy_sidecar_deleted"
+
 # 12.3 step 4. `source` describes the tool, `actor` describes who: for a note both
 # are 'desktop', because Desktop has no user accounts. Note that the note's own
 # `source` field is the receipt's intake route, carried through from the pipeline,
@@ -159,6 +167,26 @@ class ResolutionOutcome:
     validation_notes: List[str] = field(default_factory=list)
     message: str = ""               # safe to show an operator
     error_detail: Optional[str] = None  # logs only, never rendered
+    # The two things a discard now has to be able to report, added 2026-09-10.
+    # **`discard_receipt()` is the only thing that sets either**, and every
+    # other construction site leaves both None, which is what the defaults are
+    # for: there were fifteen of those and none of them is about a client
+    # folder copy.
+    #
+    # `filed_path_cleared` is the path that WAS in `filed_path` before the
+    # discard forgot it. **It is deliberately not `filed_path` above**, which
+    # means "this is where the receipt is filed": on a discard the receipt is
+    # not filed anywhere, and reusing the field would make an outcome that
+    # reads as a filing. `filed_path` has no production reader at all, which is
+    # exactly why reusing it would have gone unnoticed.
+    #
+    # `client_copy_deleted` is the document that was deleted, where the caller
+    # asked and it worked. The two together are what let an operator be told
+    # the difference between a copy that has gone and one that has been left.
+    # The data file is NOT here: no command-line caller can produce one, and
+    # `run.log` and the audit row carry it.
+    filed_path_cleared: Optional[str] = None
+    client_copy_deleted: Optional[str] = None
 
 
 def parse_corrections(raw: dict) -> Tuple[Corrections, Dict[str, str]]:
@@ -1191,13 +1219,19 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         repo.release_receipt_lock(receipt_id)
 
 
-def _delete_the_client_copy(receipt_id: str, filed_path: str) -> Optional[str]:
-    """Delete this receipt's copy in the client folder. Returns the path, or None.
+def _delete_the_client_copy(receipt_id: str, filed_path: str) -> Dict[str, Any]:
+    """Delete this receipt's copy in the client folder, and its data file.
+
+    Returns the detail for the audit row: `client_copy_deleted` where the
+    document went, and `client_copy_sidecar_deleted` where the legacy
+    `x.pdf.json` beside it went too. **Only real deletions are recorded**,
+    because "already gone" is not a path this run removed. An empty dict means
+    nothing was deleted.
 
     The reporting half of `worker\\client_copy.py`'s `remove_client_copy()`,
     which owns `Clients\\` and does the deciding. Split out so
     `discard_receipt()` below reads as the sequence of decisions it is rather
-    than as four log lines.
+    than as five log lines.
 
     **Nothing here raises and nothing here fails the discard.** The status
     change is the point: a file left behind is untidy and recoverable, while a
@@ -1205,35 +1239,68 @@ def _delete_the_client_copy(receipt_id: str, filed_path: str) -> Optional[str]:
     receipt the books say is gone, which is the disagreement amendment 306
     exists to remove.
 
-    Returns the deleted path only on a real deletion, because the caller writes
-    it into the audit row and "already gone" is not a path this run removed.
+    **The data file is reported separately from the document**, so `run.log`
+    can say which of three things happened: both went, the document went and
+    there was no data file, or the document went and its data file would not.
+    A data file that could not be deleted is an ERROR of its own and does not
+    change the document's outcome, which is already done and cannot be undone.
     """
     result = remove_client_copy(resolve_practice_path(filed_path))
+    detail: Dict[str, Any] = {}
 
     if result.outcome == REMOVAL_DELETED:
-        logger.info(
-            "receipt %s was discarded and the operator asked for its client "
-            "folder copy to go: deleted %s. The document store still holds the "
-            "archive of record, per 18.2a",
-            receipt_id, result.path)
-        return str(result.path)
+        detail[EVENT_CLIENT_COPY_DELETED_KEY] = str(result.path)
+        if result.sidecar_outcome == REMOVAL_DELETED:
+            detail[EVENT_CLIENT_COPY_SIDECAR_DELETED_KEY] = str(result.sidecar_path)
+            logger.info(
+                "receipt %s was discarded and the operator asked for its "
+                "client folder copy to go: deleted %s and its data file %s. "
+                "The document store still holds the archive of record, per "
+                "18.2a",
+                receipt_id, result.path, result.sidecar_path)
+        elif result.sidecar_outcome == REMOVAL_ALREADY_GONE:
+            logger.info(
+                "receipt %s was discarded and the operator asked for its "
+                "client folder copy to go: deleted %s, and it had no data "
+                "file beside it. The document store still holds the archive "
+                "of record, per 18.2a",
+                receipt_id, result.path)
+        else:
+            # REFUSED or FAILED on the data file alone. The document is already
+            # gone, so this leaves the orphan the change exists to prevent and
+            # a person has to remove it by hand. Named in full for that reason.
+            logger.info(
+                "receipt %s was discarded and the operator asked for its "
+                "client folder copy to go: deleted %s. The document store "
+                "still holds the archive of record, per 18.2a",
+                receipt_id, result.path)
+            logger.error(
+                "the data file beside receipt %s's client folder copy was not "
+                "deleted (%s): %s. It is at %s and it is now an orphan, "
+                "because the document it described has gone",
+                receipt_id, result.sidecar_outcome, result.sidecar_detail,
+                result.sidecar_path)
+        return detail
 
     if result.outcome == REMOVAL_ALREADY_GONE:
         logger.info(
             "receipt %s was discarded and the operator asked for its client "
-            "folder copy to go, and there is nothing at %s. Not a failure",
+            "folder copy to go, and there is nothing at %s. Not a failure. Any "
+            "data file beside it is left alone, because whatever removed the "
+            "document did not say the data file was stale",
             receipt_id, result.path)
-        return None
+        return detail
 
-    # REFUSED or FAILED. Both are ERROR, and for the same reason: one says a
-    # stored path is not what it claims to be and the other says the file could
-    # not be removed, and in both cases a person has to look.
+    # REFUSED or FAILED on the document. Both are ERROR, and for the same
+    # reason: one says a stored path is not what it claims to be and the other
+    # says the file could not be removed, and in both cases a person has to
+    # look.
     logger.error(
         "receipt %s was discarded and the operator asked for its client folder "
         "copy to go, and it was not deleted (%s): %s. filed_path was %r. The "
         "discard stands and the file is where it was",
         receipt_id, result.outcome, result.detail, filed_path)
-    return None
+    return detail
 
 
 def discard_receipt(repo, receipt_id, reason, actor, source,
@@ -1294,9 +1361,7 @@ def discard_receipt(repo, receipt_id, reason, actor, source,
         detail: Dict[str, Any] = {}
 
         if delete_client_copy and filed_path:
-            deleted = _delete_the_client_copy(receipt_id, filed_path)
-            if deleted:
-                detail[EVENT_CLIENT_COPY_DELETED_KEY] = deleted
+            detail.update(_delete_the_client_copy(receipt_id, filed_path))
         elif delete_client_copy:
             # The live shape for a firm whose `client_copy_trigger` is `never`
             # or `post`: the receipt published and no copy was ever written, so
@@ -1326,6 +1391,12 @@ def discard_receipt(repo, receipt_id, reason, actor, source,
         return ResolutionOutcome(
             outcome="discarded", receipt_id=receipt_id,
             message=f"Discarded: {reason}" if reason else "Discarded.",
+            # What a caller has to be able to tell an operator: the copy has
+            # gone, or the copy has been left and nothing records its path any
+            # more. Both are read off `detail` rather than rebuilt, so the
+            # audit row and the message cannot disagree about what happened.
+            filed_path_cleared=detail.get(EVENT_FILED_PATH_CLEARED_KEY),
+            client_copy_deleted=detail.get(EVENT_CLIENT_COPY_DELETED_KEY),
         )
 
     except Exception as exc:

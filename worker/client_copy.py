@@ -137,6 +137,43 @@ REMOVAL_REFUSED = "refused"
 REMOVAL_FAILED = "failed"
 
 
+#: The suffix a filed receipt's data file APPENDS to the document's full name,
+#: so `x.pdf` pairs with `x.pdf.json`.
+#:
+#: **Section 3 of `IntelliBooks-System-Specification.md` states both
+#: conventions and says both are deliberate**: this one appends, and an inbox
+#: sidecar REPLACES the extension, `x.json` for `x.pdf`. Getting them the wrong
+#: way round here would delete a file this change has no business touching, so
+#: it is a named constant and a test asserts an extension-replaced name
+#: survives.
+#:
+#: **Nothing writes one of these any more.** 18.2b makes the client folder copy
+#: the image alone and `write_client_copy()` below writes nothing beside it, so
+#: the set of these on disk is finite and predates 2026-09-09.
+CLIENT_COPY_SIDECAR_SUFFIX = ".json"
+
+
+def _refuse_reason(resolved: Path, root: Path) -> str | None:
+    """Why this resolved path is not one to delete, or None if it is.
+
+    **Two checks, and both are applied to the data file as well as to the
+    document.** Split out for that reason rather than for brevity: a second
+    copy of the containment rule is how the two would come to disagree, and the
+    data file is the half a reader would assume is safe because its parent
+    already passed.
+
+    **It is not safe by inheritance.** `Path.resolve()` follows a link, so a
+    document inside the root can have a `.json` beside it that resolves
+    somewhere else entirely, which is exactly the case
+    `tests/test_discard_sidecar_and_cli.py` builds.
+    """
+    if resolved == root or root not in resolved.parents:
+        return f"the path does not resolve to a file inside {root}"
+    if resolved.is_dir():
+        return "the path is a directory"
+    return None
+
+
 class ClientCopyRemoval(NamedTuple):
     """What `remove_client_copy()` did, with enough to log and to record.
 
@@ -147,11 +184,28 @@ class ClientCopyRemoval(NamedTuple):
     A tuple rather than a bare bool for `ClientCopy`'s reason: the caller does
     the reporting, because only `discard_receipt()` knows the receipt id and
     only this function knows what happened to the file.
+
+    ## The three sidecar fields, added 2026-09-10
+
+    They describe the document's data file, the legacy `x.pdf.json` beside a
+    receipt filed before 2026-09-09, and they are **separate from the document's
+    own three** so a caller can say the document went, the data file went, or
+    the document went and there was no data file.
+
+    **`sidecar_outcome` is None where the data file was never considered**,
+    which is every branch that did not delete the document: `refused`,
+    `already_gone` and `failed`. None is therefore different from
+    `already_gone`, and the difference matters: a data file beside a document
+    something else removed is left exactly where it is, because this function
+    has no business deciding it is stale.
     """
 
     outcome: str
     path: Path | None
     detail: str | None
+    sidecar_outcome: str | None = None
+    sidecar_path: Path | None = None
+    sidecar_detail: str | None = None
 
 
 def remove_client_copy(filed_path) -> ClientCopyRemoval:
@@ -193,6 +247,26 @@ def remove_client_copy(filed_path) -> ClientCopyRemoval:
     pair, and `write_item()` for its own partial. Enumerated from the syntax
     tree, and `tests/test_discard_client_copy.py` holds a guard that keeps the
     deletion in this one function.
+
+    ## The document's data file goes with it. Added 2026-09-10
+
+    **A real orphan on Paul's machine at 14:30 on 2026-09-10**: one document had
+    been deleted and `2026-08-15_octopus-energy_248.33.jpeg.json` was still
+    beside where it had been. He removed that pair by hand.
+
+    **The name is derived from the document, never composed**, by appending
+    `CLIENT_COPY_SIDECAR_SUFFIX` to the resolved document's full name. Not a
+    glob, not a pattern, not a directory sweep, and not the inbox convention,
+    which replaces the extension instead.
+
+    **It happens only after the document has actually been deleted**, which is
+    structural rather than a rule to remember: it is below the `unlink()` and
+    every other branch has already returned. An `already_gone` document does
+    not take a data file with it, because if something else removed the
+    document then nothing here knows the data file is stale.
+
+    **Its absence is the normal case and is not a failure.** Everything filed
+    since sub-step 10f.11 has no data file at all.
     """
     try:
         candidate = Path(filed_path)
@@ -210,14 +284,9 @@ def remove_client_copy(filed_path) -> ClientCopyRemoval:
     # a refusal is about where the path points, not about what is there.
     resolved = candidate.resolve()
     root = Path(config.CLIENTS_ROOT).resolve()
-    if resolved == root or root not in resolved.parents:
-        return ClientCopyRemoval(
-            REMOVAL_REFUSED, resolved,
-            f"the path does not resolve to a file inside {root}")
-
-    if resolved.is_dir():
-        return ClientCopyRemoval(
-            REMOVAL_REFUSED, resolved, "the path is a directory")
+    refusal = _refuse_reason(resolved, root)
+    if refusal:
+        return ClientCopyRemoval(REMOVAL_REFUSED, resolved, refusal)
 
     if not resolved.exists():
         return ClientCopyRemoval(REMOVAL_ALREADY_GONE, resolved, None)
@@ -228,7 +297,27 @@ def remove_client_copy(filed_path) -> ClientCopyRemoval:
         return ClientCopyRemoval(
             REMOVAL_FAILED, resolved, f"{type(error).__name__}: {error}")
 
-    return ClientCopyRemoval(REMOVAL_DELETED, resolved, None)
+    # The document is gone. Now its data file, if there is one, and only now:
+    # everything above has already returned, so this is unreachable unless the
+    # unlink succeeded.
+    sidecar = (resolved.with_name(resolved.name + CLIENT_COPY_SIDECAR_SUFFIX)
+               .resolve())
+    sidecar_refusal = _refuse_reason(sidecar, root)
+    if sidecar_refusal:
+        return ClientCopyRemoval(REMOVAL_DELETED, resolved, None,
+                                 REMOVAL_REFUSED, sidecar, sidecar_refusal)
+    if not sidecar.exists():
+        return ClientCopyRemoval(REMOVAL_DELETED, resolved, None,
+                                 REMOVAL_ALREADY_GONE, sidecar, None)
+    try:
+        sidecar.unlink()
+    except Exception as error:
+        return ClientCopyRemoval(
+            REMOVAL_DELETED, resolved, None, REMOVAL_FAILED, sidecar,
+            f"{type(error).__name__}: {error}")
+
+    return ClientCopyRemoval(REMOVAL_DELETED, resolved, None,
+                             REMOVAL_DELETED, sidecar, None)
 
 
 def _digest(path: Path) -> str:

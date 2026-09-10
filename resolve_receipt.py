@@ -172,6 +172,44 @@ def _raw_from_flags(args) -> dict:
     return {k: v for k, v in supplied.items() if v is not None}
 
 
+def report_client_copy(outcome) -> None:
+    """Say what a discard did to the copy in the client folder, if anything.
+
+    **One definition, shared with `discard_receipt.py` rather than copied**,
+    which is the arrangement `default_actor()` and `make_output_safe()` already
+    have with that script. Two copies of an operator-facing sentence drift, and
+    the half that drifts first is the one nobody is reading.
+
+    Three things it can say, and an operator has to be able to tell them apart:
+
+    - **The copy has gone.** Only the back-feed can ask for that, so a
+      command-line run never sees this line today. It is here because the
+      alternative is a helper that reads one field and silently says nothing
+      about the other.
+    - **The copy has been left, and its path is no longer recorded.** This is
+      the command-line case, and it is what flag 5 of
+      `2026-09-10_REPORT_claude_code_discard_and_client_copy.md` asked for: the
+      operator was being left with a document in `Clients\\` that nothing could
+      find any more, and nothing said so.
+    - **Nothing at all**, where the receipt had no copy. Which is every receipt
+      on a firm whose `client_copy_trigger` is `never` or `post`, so silence
+      here is the ordinary outcome rather than an omission.
+
+    **The path is named in full**, because it is the only place it appears from
+    now on: the column that held it has just been cleared. See question 1 of
+    `2026-09-10_REPORT_claude_code_sidecar_and_cli_output.md`.
+    """
+    if outcome.client_copy_deleted:
+        print("  The copy in the client folder has been deleted:")
+        print(f"    {outcome.client_copy_deleted}")
+        return
+    if outcome.filed_path_cleared:
+        print("  The copy in the client folder has been LEFT where it is:")
+        print(f"    {outcome.filed_path_cleared}")
+        print("  This receipt no longer records that path, so note it now if "
+              "you want to find that file again.")
+
+
 def _report(outcome) -> int:
     """Print the outcome for an operator and return its exit code."""
     if outcome.outcome == "filed":
@@ -180,6 +218,7 @@ def _report(outcome) -> int:
             print(f"  Category: {outcome.category_code} ({outcome.category_confidence})")
     elif outcome.outcome == "discarded":
         print(f"✓ {outcome.message}")
+        report_client_copy(outcome)
     elif outcome.outcome == "already_filed":
         # Not a failure. The operator needs to know where the file is.
         print(f"• {outcome.message}")

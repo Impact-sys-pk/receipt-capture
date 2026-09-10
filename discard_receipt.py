@@ -25,9 +25,11 @@ from worker.database.schema import init_db
 from worker.logging_setup import attach_log_handler
 from worker.resolution.service import discard_receipt, get_resolution_view
 
-# One definition of "who is running this" and one of the console-encoding guard,
-# shared with the resolve CLI rather than copied.
-from resolve_receipt import default_actor, make_output_safe
+# One definition of "who is running this", one of the console-encoding guard and
+# one of the client-folder-copy sentence, shared with the resolve CLI rather than
+# copied. `report_client_copy()` joined them 2026-09-10: both scripts have to say
+# the same thing about a file they have just stopped recording the path of.
+from resolve_receipt import default_actor, make_output_safe, report_client_copy
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +73,14 @@ def main():
         print(f"  File: {view.receipt['filename']}")
         if view.receipt.get('filed_path'):
             print(f"  Filed at: {view.receipt['filed_path']}")
-            print("  Note: discarding does not remove the filed copy.")
+            # ~~Note: discarding does not remove the filed copy.~~
+            # **Rewritten 2026-09-10.** That was true and had become half the
+            # story: since Paul's decision of that morning a discard also
+            # clears `filed_path`, so the copy is kept AND the receipt stops
+            # recording where it is. A note saying only the first half tells an
+            # operator the state is unchanged when it is not.
+            print("  Note: discarding keeps that copy and stops recording "
+                  "where it is.")
         print()
 
         outcome = discard_receipt(
@@ -80,6 +89,7 @@ def main():
 
         if outcome.outcome == "discarded":
             print(f"✓ {outcome.message}")
+            report_client_copy(outcome)
             return 0
         print(f"✗ {outcome.message}")
         return 1

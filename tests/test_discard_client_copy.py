@@ -1232,9 +1232,27 @@ class FiledAtOutlivesFiledPathTest(unittest.TestCase):
                         and isinstance(node.args[0], ast.Constant)
                         and node.args[0].value == "filed_at"):
                     readers.append((path, node))
-        where = sorted(f"{p.name}:{n.lineno}" for p, n in readers)
+        # **The enclosing function, not the line number.** `CLAUDE.md`'s rule
+        # about not citing a line number, applied to a guard: the first version
+        # of this test asserted `service.py:801` and went red hours later when
+        # an unrelated change to the same file moved the reader to :829. A name
+        # does not move.
+        def enclosing(tree, node):
+            best = None
+            for candidate in ast.walk(tree):
+                if not isinstance(candidate, ast.FunctionDef):
+                    continue
+                if candidate.lineno <= node.lineno <= (candidate.end_lineno
+                                                       or candidate.lineno):
+                    if best is None or candidate.lineno > best.lineno:
+                        best = candidate
+            return best.name if best else "<module scope>"
+
+        where = sorted(
+            f"{p.name}::{enclosing(ast.parse(p.read_text(encoding='utf-8')), n)}"
+            for p, n in readers)
         self.assertEqual(
-            where, ["service.py:801"],
+            where, ["service.py::resolve_receipt"],
             "the set of readers of filed_at has changed, and a stale filed_at "
             f"with a NULL filed_path is reachable since 2026-09-10: {where}")
 

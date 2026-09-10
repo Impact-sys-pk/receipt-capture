@@ -175,6 +175,17 @@ class ThroughTheRealPipelineTest(unittest.TestCase):
 
     `file_statement()` has exactly one production caller, the statement branch
     of the folder-intake loop, enumerated from the syntax tree.
+
+    **`StatementCopyTest` in `tests/test_step10d_routing.py` is the neighbour**
+    and it was here first: 10d.55 and 10d.56 gave a statement its document
+    store copy, and it drives the same branch to assert that both copies exist
+    and that `file_path` and `filed_path` mean what they mean on `receipts`.
+    **It asserts nothing about a sidecar**, which is why this change did not
+    break it. Named here because it took a mutation to find it: a
+    case-sensitive grep for "Statements" missed it, since it reaches the folder
+    through `config.CLIENT_STATEMENTS_FOLDER_NAME`. What this class adds is
+    what the client folder holds afterwards, and that the document store is
+    untouched by the change.
     """
 
     def drive(self, name="uber_2026-04-05.pdf"):

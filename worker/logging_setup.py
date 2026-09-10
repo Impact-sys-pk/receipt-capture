@@ -34,6 +34,20 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s — %(message)s"
 MAX_BYTES = 5 * 1024 * 1024
 BACKUP_COUNT = 3
 
+#: The level every entry point logs at, applied by `attach_log_handler()`.
+#:
+#: **Paul's decision of 2026-09-10, on flag 1 of
+#: `2026-09-10_REPORT_claude_code_sidecar_and_cli_output.md`.** `discard.log`
+#: was 0 bytes after a full CLI discard that had logged four INFO lines: the two
+#: CLIs attached a handler and set no level, the root logger's default is
+#: `WARNING`, and a logger with no level of its own delegates upward, so every
+#: INFO record was discarded before it reached the file it had just opened.
+#:
+#: **It matches the level `app.py` asks for**, and a test reads that call's own
+#: `level=` keyword rather than trusting this line, because two entry points
+#: logging at different levels is the fault being removed.
+LOG_LEVEL = logging.INFO
+
 # The entry points that have a log file. Adding one here is the whole change
 # needed to give a new entry point its own file.
 ENTRY_POINT_LOGS = {
@@ -57,9 +71,36 @@ def attach_log_handler(entry_point: str) -> Optional[Path]:
     it attached, or the path it found already attached.
 
     Call from `main()`, never at import.
+
+    ## It also makes sure the level lets a record through. 2026-09-10
+
+    **Paul's decision, and the point is that it is here rather than in each
+    script.** `LOG_LEVEL` above carries what was wrong. Two entry points set a
+    level and two did not, because `logging.basicConfig` had been copied into
+    some of them and not others, so `discard.log` and `resolve.log` were
+    effectively empty. Putting it where the handler already goes makes all four
+    the same **by construction**, and `console`, whose handler nothing attaches
+    yet, inherits it rather than having to remember.
+
+    **It only ever raises verbosity, never lowers it.** `app.py` already calls
+    `basicConfig(level=logging.INFO)`, so the pipeline runs at exactly the level
+    it ran at before this; and a caller that has asked for `DEBUG` keeps it.
+    `NOTSET` on the root is left alone deliberately: level 0 there passes every
+    record, so setting INFO over it would be the one case where this reduced
+    what is logged.
+
+    **The level goes on the root logger and not on the handler**, because the
+    handler is not what was dropping the records. A logger checks its own
+    effective level before it hands a record to any handler at all, so a
+    handler at INFO behind a root at WARNING would still have received nothing.
     """
     root = logging.getLogger()
     path = log_path_for(entry_point)
+
+    # Before the early return below, so a second call still fixes a level that
+    # something changed in between.
+    if root.level > LOG_LEVEL:
+        root.setLevel(LOG_LEVEL)
 
     for existing in root.handlers:
         if isinstance(existing, logging.handlers.RotatingFileHandler):

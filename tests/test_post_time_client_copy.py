@@ -235,8 +235,14 @@ class TheNoteShapeTest(unittest.TestCase):
     """Deliverable 1's contract, which the Desktop half is written to."""
 
     def test_the_action_word_is_attached_and_it_is_a_third_action(self):
+        """**A fourth word joined it on 2026-09-11**, `corrected`, step 10k.
+        This assertion holds the whole tuple rather than membership, so a word
+        added to it fails here and has to be considered against this sub-step
+        before the list is updated. That is what it is for.
+        """
         self.assertEqual(ATTACHED_ACTION, "attached")
-        self.assertEqual(NOTE_ACTIONS, ("filed", "discarded", "attached"))
+        self.assertEqual(NOTE_ACTIONS,
+                         ("filed", "discarded", "attached", "corrected"))
 
     def test_it_parses_with_no_values_and_no_filed_path(self):
         note = parse_resolution_note(attached_note())
@@ -284,7 +290,7 @@ class TheNoteShapeTest(unittest.TestCase):
         showed.
         """
         self.assertEqual(NOTE_APPLIED_OUTCOMES,
-                         ("filed", "discarded", "attached"))
+                         ("filed", "discarded", "attached", "corrected"))
 
 
 class OnThePostTriggerTest(PostTimeTestCase):

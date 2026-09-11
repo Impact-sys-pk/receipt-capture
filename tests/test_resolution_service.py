@@ -877,10 +877,15 @@ class DecidedByOperatorTest(unittest.TestCase):
 
         `CLAUDE.md`: where two or more call sites must all use one helper,
         assert it on the source, because only a guard over the set catches the
-        third one added without thinking. **Exactly one of the two passes the
-        keyword**, and if that ever stops being true somebody has decided that
-        a person at a keyboard in the CLI may override a validator, which is
-        Paul's decision and not a code change.
+        third one added without thinking. **The CLI does not pass the keyword
+        and the two back-feed paths do**, and if the CLI ever stops being False
+        somebody has decided that a person at a keyboard may override a
+        validator, which is Paul's decision and not a code change.
+
+        **Three call sites from 2026-09-11, and the third is step 10k's**:
+        `_apply_corrected_note()` passes it for the reason amendment 309 gives
+        for `_settle_note()`, and with more force, because a correction reaches
+        a receipt whose row has been in the books since before the edit.
         """
         import ast
 
@@ -904,6 +909,7 @@ class DecidedByOperatorTest(unittest.TestCase):
             sorted((name.split(":")[0], passes)
                    for name, passes in found.items()),
             [("resolve_receipt.py", False),
+             ("worker/resolution/service.py", True),
              ("worker/resolution/service.py", True)],
             f"the callers of resolve_receipt() changed: {found}")
 

@@ -344,6 +344,12 @@ def process_extraction_result(
     # What the chart check did, for the event log at the end. None on every path
     # that never categorises, which is every path but the ok one.
     chart_outcome = None
+    # Step 10l. The categorisation, for the published item's
+    # `category_unconfirmed` key. **None on every path that never categorises**,
+    # which is the same set as `chart_outcome` above and for the same reason:
+    # only the `ok` branch categorises, and `extra_for()` is called below both
+    # branches. Without this the name would be unbound on the other one.
+    categorisation = None
 
     # 10d.16 and 10d.18. An unresolved client files nothing into Clients and the
     # item goes to Review, so a clean extraction for a client nobody can name is
@@ -517,7 +523,12 @@ def process_extraction_result(
     # record per 18.2a, so the bytes in the item are the bytes that arrived.
     published = publish_receipt(
         repo, receipt_id, sidecar_payload, file_path,
-        extra=extra_for(validation.notes, duplicate_of),
+        # `categorisation` is step 10l's, and it is None on every path but the
+        # `ok` one: nothing else categorises, so nothing else has a category
+        # that could be unconfirmed. Such an item is held by its
+        # `validation_status` instead.
+        extra=extra_for(validation.notes, duplicate_of,
+                        categorisation=categorisation),
     )
 
     # The copy into the firm's client folder, on a successful publish and on

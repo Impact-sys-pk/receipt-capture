@@ -154,17 +154,24 @@ class TempEnvironment:
         there is no sidecar there to read. The same `make_enriched_sidecar()`
         payload now travels inside the published item, so this reads that and
         drops the four keys the item adds on top of it: the document, its media
-        type, the validation notes and the id it duplicates.
+        type, the validation notes and the id it duplicates. ~~the four keys the
+        item adds on top of it~~ **Five from 2026-09-11, step 10l's
+        `category_unconfirmed`, and the list is no longer written out here.**
 
         Every assertion in this file is about the sidecar's own keys, so
-        dropping the item's four is what keeps those assertions saying the same
+        dropping the item's own is what keeps those assertions saying the same
         thing rather than being loosened to fit.
+
+        **`publish.ITEM_ONLY_KEYS` rather than a list repeated here.** The four
+        were written out until step 10l added a fifth, and this comparison then
+        failed with the new key counted as a sidecar key. A list in a test of
+        what another module adds goes stale the moment that module adds one, so
+        the module states it and this reads it.
         """
         found = sorted(config.INTELLIBOOKS_PUBLISH_DIR.glob("*.json"))
         assert len(found) == 1, f"expected exactly one published item, found {found}"
         payload = json.loads(found[0].read_text(encoding="utf-8"))
-        for item_only in (publish.IMAGE_KEY, publish.MEDIA_TYPE_KEY,
-                          publish.NOTES_KEY, publish.DUPLICATE_OF_KEY):
+        for item_only in publish.ITEM_ONLY_KEYS:
             payload.pop(item_only, None)
         # And the copy under Clients\ carries no data file at all, which is the
         # other half of the same rule and is free to assert here.

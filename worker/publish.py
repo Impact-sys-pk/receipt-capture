@@ -94,6 +94,57 @@ MEDIA_TYPES = {
 NOTES_KEY = "validation_notes"
 DUPLICATE_OF_KEY = "duplicate_of"
 
+#: Whether the category on this item is a machine's answer nobody has
+#: confirmed. **Step 10l, amendments 237, 330 and 331.** A fifth key whose name
+#: is part of the contract with IntelliBooks Desktop, and the one amendment 330
+#: deliberately left unnamed because the session that wrote it had not read this
+#: file.
+#:
+#: **Why not `category_needs_review`.** Desktop already compares a string
+#: against `"needs_review"` as a **validation status**, at line 3184 of
+#: `IntelliBooks-Desktop-v3.html`. Two keys one word apart meaning two different
+#: things is the `postTxn()` and `postReceiptToCashbook()` trap `CLAUDE.md`
+#: names. This wording also matches amendment 330's screen pill exactly,
+#: `Category unconfirmed`, so the key, the pill and the reason line are one
+#: phrase.
+#:
+#: **Why the positive sense rather than `category_confirmed`.** A missing key
+#: must not hold a receipt that is fine, which is the rule `drainInbox()`
+#: already follows for a blank `validation_status`. In JavaScript `undefined`
+#: is falsy, so an absent `category_unconfirmed` reads as "not held" with no
+#: special case in the reader. An absent `category_confirmed` would read as
+#: "not confirmed" and would hold every item written before the key existed.
+#:
+#: **It travels on every item**, for `NOTES_KEY`'s reason rather than
+#: `DUPLICATE_OF_KEY`'s: a reader must never have to tell "not held" from "an
+#: item written before this key existed". Both read as not held, so an absent
+#: key is safe either way, and a stated `false` is a positive answer.
+#:
+#: **The value is a JSON boolean and that matters.** The database column is 0 or
+#: 1, and `1 === true` is false in JavaScript, so a reader testing identity
+#: would never hold anything. `category_is_unconfirmed()` below coerces.
+CATEGORY_UNCONFIRMED_KEY = "category_unconfirmed"
+
+#: Every key a published item carries that the sidecar does not, in one place.
+#:
+#: **Added 2026-09-11 because adding the fifth broke a test that had the four
+#: written out by hand.** `tests/test_sidecar_category_keys.py` compares the
+#: sidecar's own keys across four call sites and reads two of them out of a
+#: published item, so it has to subtract the item's own keys first. It listed
+#: them, and a list in a test of what a module adds goes stale the moment the
+#: module adds one.
+#:
+#: It is a statement about this module's own output, so it belongs here, and a
+#: sixth key added below without joining it fails that comparison rather than
+#: passing it.
+ITEM_ONLY_KEYS = (
+    IMAGE_KEY,
+    MEDIA_TYPE_KEY,
+    NOTES_KEY,
+    DUPLICATE_OF_KEY,
+    CATEGORY_UNCONFIRMED_KEY,
+)
+
 #: The two outcomes a `publish_events` row can carry, sub-step 10f.36. The
 #: third state is no row at all, which is why neither word is "not attempted".
 PUBLISHED = "published"
@@ -204,24 +255,69 @@ def write_item(directory: Path, receipt_id: str, item: dict) -> Path:
     return final
 
 
-def extra_for(notes, duplicate_of=None) -> dict:
+def category_is_unconfirmed(categorisation) -> bool:
+    """Is this categorisation a machine's answer nobody has confirmed?
+
+    **The whole trigger for step 10l's hold, in one expression, on purpose.**
+    Amendment 330 decided the hold lives in `categorisations.needs_review`, so
+    that is what this reads, and narrowing it is a change to this one line.
+
+    **It takes the categorisation rather than a boolean** so no call site can
+    pass the wrong answer. `extra_for()`'s two callers each have the object in
+    hand at the point of the call.
+
+    `None` means nothing was categorised, which is every receipt that is not
+    `ok`: the receipt is not filed and no category was produced, so there is no
+    category to be unconfirmed about. It returns False, and such an item is held
+    by its `validation_status` instead, which is a different question.
+
+    **What `needs_review` covers, measured in `tests/test_category_hold.py`
+    rather than read off the engine**: it is True for layers 3, 4 and 5, for no
+    match at all, and for the two chart outcomes `resolve_against_chart()`
+    forces it on. It is False for layers 0, 1 and 2, which are a rule a person
+    wrote and two stored mappings a person taught. **So the hold is wider than
+    "a layer 5 guess"**, which is what amendment 237 originally described and
+    what the brief's section 6 expected. That divergence is reported rather than
+    resolved here: it is Paul's decision, and it is this function's one line.
+
+    `bool()` rather than the value itself: the dataclass field is a Python bool
+    but a caller reading the column back out of the database has 0 or 1, and
+    `1 === true` is false in JavaScript.
+    """
+    if categorisation is None:
+        return False
+    return bool(getattr(categorisation, "needs_review", False))
+
+
+def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:
     """The keys amendment 293 adds to a published item, built in one place.
 
     Two callers, `process_extraction_result()` and the recovery sweep in
     `app.py`, and one builder, so a review-queue entry arriving by the sweep
     cannot carry a different shape from one arriving on the poll.
+    `tests/test_category_hold.py` holds that set at two and asserts each one
+    passes a categorisation.
 
     `notes` is coerced to a list rather than trusted, because `validate()`
     returns one and a caller reading `extractions.validation_notes` back out of
     the database has a joined string. A string would silently publish as itself
     and Desktop would render one note reading `missing supplier_name, gross
     mismatch: ...`.
+
+    `categorisation` is step 10l's, and `None` is the honest value for a receipt
+    that was never categorised rather than a missing argument: see
+    `category_is_unconfirmed()`. It defaults to None so a caller that says
+    nothing publishes `false`, because a key that said nothing must not hold a
+    receipt that is fine.
     """
     if notes is None:
         notes = []
     elif isinstance(notes, str):
         notes = [part for part in notes.split(", ") if part]
-    extra = {NOTES_KEY: list(notes)}
+    extra = {
+        NOTES_KEY: list(notes),
+        CATEGORY_UNCONFIRMED_KEY: category_is_unconfirmed(categorisation),
+    }
     if duplicate_of:
         extra[DUPLICATE_OF_KEY] = duplicate_of
     return extra

@@ -735,7 +735,13 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 # An `ok` receipt has no notes and no duplicate, and the empty
                 # list is stated rather than left out so every item carries the
                 # key. extra_for() is the one builder, shared with the poll.
-                extra=extra_for([]),
+                #
+                # Step 10l: the categorisation this sweep has just produced,
+                # twenty lines above, so a receipt recovered here carries the
+                # same `category_unconfirmed` answer as one arriving on the
+                # poll. It is the reason `extra_for()` takes the object rather
+                # than a boolean: two call sites, one expression deciding.
+                extra=extra_for([], categorisation=categorisation),
             )
             if not published:
                 # publish_receipt() has already recorded why and logged it. The

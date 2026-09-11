@@ -4,15 +4,25 @@
 `PROMPT_claude_code_2026-09-11_capture_report.md`, md5 `41afd85e97e84a767ac4ce215fba2c3f`,
 verified before reading. Step 10n of `2026-07-25_CONSOLE_DESIGN.md`, amendments 319 and 327.
 
-**Commit `e02fe8f` on `feat/console-phase0`, not pushed.** Two files, both new:
-`capture_report.py` and `tests/test_capture_report.py`. Nothing else committed.
+**Commits on `feat/console-phase0`, not pushed.**
 
-This report is the commit after it, `7e8c406`, and a file cannot carry its own hash, so that
-number is here from `git log --oneline -2` rather than from the file it names.
+| Commit | What |
+|---|---|
+| `e02fe8f` | `capture_report.py` and `tests/test_capture_report.py`, both new |
+| `7e8c406` | this report |
+| `2ced7d0` | this table |
+| `f77cd39` | `tests/test_attached_document.py`, declaring the new receipts selector to an existing set guard. See section 7.1, which is the finding of the session |
 
-**The suite: 1222 passed, 1 skipped, 848 subtests, in 88 seconds**, run at 15:47 BST on
-2026-09-11. The baseline immediately before this work was **1186 passed, 1 skipped, 821
-subtests**, so the new file is exactly 36 tests and 27 subtests and nothing else moved.
+Nothing else committed. A file cannot carry its own hash, so the numbers above come from
+`git log --oneline -5` rather than from the files they name.
+
+**The suite: 1222 passed, 1 skipped, 848 subtests, in 87 seconds**, run at 16:09 BST on
+2026-09-11 with everything committed. The baseline immediately before this work was **1186
+passed, 1 skipped, 821 subtests**, so the new test file is exactly 36 tests and 27 subtests and
+nothing else moved.
+
+**A green run before `e02fe8f` was not the same claim as a green run after it, and I made the
+weaker claim first.** Section 7.1.
 
 ---
 
@@ -558,7 +568,85 @@ column would then disagree with every other timestamp in the system, which is wh
 
 ## 7. My own mistakes
 
-Three, all caught here rather than by anyone else.
+Five. The first is worth more than the rest put together, and it is the finding of the session
+rather than only a slip. The second sits inside my write-up of the first, which is the part of
+it I would read twice.
+
+### 7.1 A green suite before the commit is a weaker claim than a green suite after it
+
+**I ran the whole suite, got 1222 passed with no failures, committed, ran it again, and one
+test failed.** Nothing about the code had changed between the two runs.
+
+The test is
+`tests/test_attached_document.py::TheSweepsTest::test_every_production_selector_of_receipts_is_accounted_for`.
+It enumerates every production function whose SQL selects from `receipts` and holds the set to
+a declared list, and its own docstring says why: "a function added here later fails this test
+and has to be considered against an attached document, which is the only way *every sweep* can
+stay true."
+
+**It sweeps `tracked_python_files()`, meaning git-tracked files.** While `capture_report.py`
+was untracked, the guard could not see it, so the set looked unchanged and the suite was green
+for the wrong reason. The moment `e02fe8f` tracked the file, the guard found
+`receipts_for_client` and said so:
+
+```
+E       AssertionError: Items in the first set but not the second:
+E       'receipts_for_client' : the set of production functions that SELECT from `receipts`
+E       has moved.
+E       Each one has to be considered against a row carrying 'bank_attachment' before this
+E       list is updated.
+```
+
+**The guard was right and it did exactly the job it was built for.** The consideration it
+demanded, now written into the allowed set beside the entry: `receipts_for_client()` **does**
+find an attached document, and that is deliberate rather than an oversight. It applies no
+status filter, and its join to `extractions` is a `LEFT JOIN`, so a receipt with no extraction
+comes back with null columns rather than being dropped, which is what an attached document is.
+`bank_attachment` is one of the eight outcomes the report names in words, and a report that
+hid the marker could not answer "I sent this, where is it?" about a document somebody attached
+to a bank line. Commit `f77cd39`.
+
+**The general lesson, and it is not about this one test.** Some source guards here sweep the
+git-tracked set rather than the working tree, by shelling out to `git ls-files *.py`, and **a
+new production file is invisible to those until it is committed.** So on this project, "the
+suite passes" said before the commit and after it are two different claims, and only the
+second is worth anything for a change that adds a file.
+
+**How many, enumerated rather than estimated, because I got this wrong once in this very
+paragraph.** I first wrote "at least three source guards", naming this one,
+`ClientFolderWritersTest`'s allowed-routes guard and the `write_client_copy()` single-caller
+guard, without enumerating. That is `CLAUDE.md`'s own rule broken in the sentence drawing the
+lesson from breaking it, and its tell was present: "at least three" in front of a plural I had
+not counted. `grep -rn "tracked_python_files" tests/*.py` gives **two call sites and no more**:
+
+```
+tests/test_attached_document.py:764   TheSweepsTest::test_every_production_selector_of_receipts_is_accounted_for
+tests/test_corrected_note.py:780      TheSetClaimsTest::calls_passing(), used by its set tests
+```
+
+**The two I wrongly named are glob-based**, not tracked-based:
+`tests/test_stage4_client_copy.py`'s `production_files()` walks `app.py`, `worker\**\*.py` and
+the root scripts off the filesystem. **The evidence that it is a glob is already in this
+report**: the client-folder mutation in section 5.3 was caught by `ClientFolderWritersTest`
+during a run made **before** `e02fe8f`, which it could not have been had that guard needed the
+file tracked. I had the disproof in hand and asserted the claim anyway.
+
+So the accurate statement is: **two guards, both added in the last few days, read the tracked
+set; everything else globs.** Both exclude `.history\` by construction, which is why they are
+written that way, and the cost is the blind spot above.
+
+That is a candidate for `CLAUDE.md`'s standard-of-evidence section, in the same family as "a
+check that cannot fail is not a check": here the check was fine and the *timing* made it
+unable to fail. **I have not added it, because that file is not mine to edit.** Offered.
+
+### 7.2 A set claim asserted rather than enumerated, in the paragraph about enumerating sets
+
+Recorded above in 7.1 rather than repeated here, because the correction belongs beside the
+claim. In one line: I wrote "at least three source guards sweep the tracked set", named three,
+counted none, and the number is two. Caught by running the grep that the rule I was quoting
+tells you to run first.
+
+### 7.3 Three smaller ones
 
 1. **I asserted a read-only database open writes nothing, and it creates two files.** The test
    I had written for that requirement failed, which is how it surfaced. Quoted in full in
@@ -627,7 +715,14 @@ mine, not yours, and it is the one place I went past the brief. It is separated,
 counted, and four lines to remove.
 
 **High that the suite figures are right**: 1186 before, 1222 after, both measured in this
-session, and the difference is exactly the 36 tests added.
+session, and the difference is exactly the 36 tests added. **The 1222 that matters is the one
+run after `f77cd39`, with every new file git-tracked**, for the reason in 7.1.
+
+**High that two source guards read the tracked set and the rest glob**, because I ran the grep
+and printed both call sites, having first asserted three and been wrong. **Lower confidence in
+anything else I have said about a set in this report that I did not print whole** is the honest
+corollary, and the two places I did print whole are the status enumeration in section 4 and
+the three SQL writers in 4.1.
 
 **I have not seen the report run against your live database**, because the brief said nothing
 was to be run against the live practice root and I took the conservative reading. The commands

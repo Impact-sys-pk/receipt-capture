@@ -27,6 +27,11 @@ from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler
 from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_note
+from worker.attached import (
+    AttachedMessageError,
+    parse_attached_message,
+    record_attached_document,
+)
 from worker.filing import (
     determine_tax_year,
     file_statement,
@@ -511,6 +516,109 @@ def _consume_resolution_notes(
                 f"receipt_id: {outcome.receipt_id}\n"
                 f"reason: {outcome.error_detail or outcome.message}\n",
             )
+
+
+def _consume_attached_documents(repo: Repository, stats: dict[str, int]) -> None:
+    """Record the documents IntelliBooks Desktop attached to bank lines. 10f.38.
+
+    **Paul's requirement of 2026-09-10.** He is looking at a bank line, he has
+    the document in his hand, and IntelliBooks attaches it there and then and
+    hands it here to be archived and filed. `worker\\attached.py` holds the
+    contract and the reasoning.
+
+    **It runs before `_consume_resolution_notes()`, and that ordering is
+    load-bearing rather than tidy.** A document attached and then posted between
+    two polls leaves a message in `Attached\\` and an `attached` note in
+    `Resolutions\\`. Consumed in this order, one poll records the row and then
+    writes the client folder copy. The other way round, the note names a receipt
+    that does not exist yet, `_receipt_for_note()` finds nothing, and it goes to
+    `failed\\` with an ERROR and nothing retries it.
+    `tests/test_attached_document.py` drives both messages through a single
+    poll, which is what holds this.
+
+    **It moves the document as well as the message**, which is the one thing
+    here that is not `_consume_resolution_notes()`'s shape. A message names a
+    file beside it; left behind, that file would be archived again on the next
+    poll under a second receipt id, because the message connecting them has
+    gone.
+
+    Every failure moves the message to `failed\\` with the reason beside it and
+    logs at ERROR, and nothing is ever deleted. `_move_note()` and
+    `_unique_note_destination()` are reused rather than copied: two movers would
+    drift, and the half that drifted first would decide whether a handover can
+    be re-read.
+    """
+    attached_dir = config.ATTACHED_DIR
+    try:
+        attached_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.error(f"cannot reach the attached documents folder {attached_dir}: {exc}")
+        return
+
+    # Oldest first by filename, for the reason 12.3 gives about notes: the name
+    # is {transaction_id}_{unix_ms}.json, so this is time order per transaction,
+    # which is the order that matters. Nothing parses meaning out of the name.
+    messages = sorted(
+        (path for path in attached_dir.glob("*.json") if path.is_file()),
+        key=lambda path: path.name,
+    )
+    if not messages:
+        return
+
+    logger.info(f"attached documents to record: {len(messages)}")
+
+    for message_path in messages:
+        try:
+            payload = json.loads(message_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.error(f"unreadable attached document message {message_path.name}: {exc}")
+            stats["attached_failed"] = stats.get("attached_failed", 0) + 1
+            _move_note(message_path, NOTE_FAILED_DIRNAME,
+                       f"could not read this message: {exc}\n")
+            continue
+
+        try:
+            message = parse_attached_message(payload)
+        except AttachedMessageError as exc:
+            logger.error(f"attached document message {message_path.name} does not match "
+                         f"the handoff contract: {exc}")
+            stats["attached_failed"] = stats.get("attached_failed", 0) + 1
+            _move_note(message_path, NOTE_FAILED_DIRNAME,
+                       f"this message does not match the handoff contract: {exc}\n")
+            continue
+
+        document = message_path.parent / message.filename
+
+        try:
+            outcome = record_attached_document(repo, message, document)
+        except Exception as exc:
+            # One message must not take the poll down, which is every other
+            # per-item loop in this function's neighbourhood. The message stays
+            # in failed\ with the reason, so the state is readable rather than
+            # inferred from an absence.
+            logger.error(f"failed to record the attached document named by "
+                         f"{message_path.name}: {exc}", exc_info=True)
+            stats["attached_failed"] = stats.get("attached_failed", 0) + 1
+            _move_note(message_path, NOTE_FAILED_DIRNAME,
+                       f"{type(exc).__name__}: {exc}\n")
+            continue
+
+        if not outcome.recorded:
+            logger.error(f"attached document message {message_path.name} not recorded: "
+                         f"{outcome.reason}")
+            stats["attached_failed"] = stats.get("attached_failed", 0) + 1
+            _move_note(
+                message_path, NOTE_FAILED_DIRNAME,
+                f"receipt_id: {outcome.receipt_id}\nreason: {outcome.reason}\n")
+            continue
+
+        stats["attached_recorded"] = stats.get("attached_recorded", 0) + 1
+        _move_note(message_path, NOTE_PROCESSED_DIRNAME)
+        if document.exists():
+            # After the message, so a crash between the two leaves the document
+            # with no message naming it rather than a message naming nothing.
+            # The first is inert; the second would fail on every poll for ever.
+            _move_note(document, NOTE_PROCESSED_DIRNAME)
 
 
 def _publish_unpublished_receipts(repo: Repository, categorisation_engine: CategorisationEngine, stats: dict[str, int]) -> None:
@@ -1189,6 +1297,12 @@ def process_once():
         "retry_exhausted_count": 0,
         "notes_applied": 0,
         "notes_failed": 0,
+        # Sub-step 10f.38. Stated here for the reason every key above is: the
+        # run summary in runs.ndjson carries a fixed shape, so a run with no
+        # attached documents reports nought rather than omitting the field and
+        # making a reader guess whether the count was nought or the code old.
+        "attached_recorded": 0,
+        "attached_failed": 0,
     }
 
     try:
@@ -1202,6 +1316,14 @@ def process_once():
         repo = Repository()
         extractor = get_extractor()
         engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
+
+        # Sub-step 10f.38, and it runs before the back-feed deliberately. A
+        # document attached to a bank line and then posted between two polls
+        # leaves a message in Attached\ and an `attached` note in Resolutions\,
+        # and this order records the row before the note asks for it. The other
+        # way round the note lands in failed\ naming a receipt that did not
+        # exist yet, and nothing retries a failed note.
+        _consume_attached_documents(repo, stats)
 
         # Part 0: the resolution back-feed, design document 12.3. Before the retry
         # pass, so a receipt a human resolved in IntelliBooks Desktop is never

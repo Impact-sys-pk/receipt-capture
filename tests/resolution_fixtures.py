@@ -53,6 +53,13 @@ class TempEnvironment:
             "RECEIPT_INBOX_ROOT": config.RECEIPT_INBOX_ROOT,
             "REVIEW_ROOT": config.REVIEW_ROOT,
             "RESOLUTIONS_DIR": config.RESOLUTIONS_DIR,
+            # Sub-step 10f.38, added 2026-09-11. Without it every test that
+            # drives process_once() drains the one folder tests/live_paths.py
+            # set up for the whole run, so a handoff written by one test would
+            # be recorded by the next one's poll. Same class of leak as
+            # LOGS_DIR and CHARTS_DIR below, and named here for the same
+            # reason: the list is the guard.
+            "ATTACHED_DIR": config.ATTACHED_DIR,
             "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
             "BACKUPS_ROOT": config.BACKUPS_ROOT,
             # The chart bundle. Outstanding item 154, raised and fixed 2026-09-04:
@@ -98,6 +105,10 @@ class TempEnvironment:
         config.RECEIPT_INBOX_ROOT = self.path / "Receipt Inbox"
         config.REVIEW_ROOT = self.path / "Review"
         config.RESOLUTIONS_DIR = self.path / "Resolutions"
+        # Deliberately not created either, and config.py's rule for it is the
+        # same as Resolutions': the pipeline makes it on demand, and the tests
+        # that assert that have to start without it. Sub-step 10f.38.
+        config.ATTACHED_DIR = self.path / "Attached"
         config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
         config.BACKUPS_ROOT = self.path / "Backups"
         # Deliberately not created, which is config.py's own rule for this one:

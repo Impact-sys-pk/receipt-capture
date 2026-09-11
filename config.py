@@ -210,6 +210,25 @@ PIPELINE_LOCKFILE = UNSYNCED_ROOT / "pipeline.lock"
 # means "use the default", not "use the current directory".
 RESOLUTIONS_DIR = Path(os.environ.get("RESOLUTIONS_DIR") or (INTELLIBILLS_ROOT / "Resolutions"))
 
+# Where IntelliBooks Desktop hands over a document attached to a bank
+# transaction, per sub-step 10f.38. One folder, with `processed\` and `failed\`
+# inside it, exactly as RESOLUTIONS_DIR above: same never-delete rule, same
+# `.error.txt` beside a failure, and the pipeline drains it on every poll.
+#
+# **Desktop cannot write into `Intellibills\Documents\`**, which is the archive
+# of record and has one writer per 18.2, so it needs somewhere to put the file
+# and a message naming it. This is that somewhere.
+#
+# **`Attached`, not `Attachments`.** 18.2a plans `IntelliBooks\Attachments\`
+# for the evidence attached to a transaction on the other product's side, and
+# two folders one word apart in two product trees is the trap `CLAUDE.md`
+# records about `postTxn()` and `postReceiptToCashbook()`.
+#
+# Deliberately not created at import, for RESOLUTIONS_DIR's reason: importing
+# config should not make a folder in OneDrive on a machine that has never
+# attached a document. `_consume_attached_documents()` in `app.py` creates it.
+ATTACHED_DIR = INTELLIBILLS_ROOT / "Attached"
+
 # Three of these four are REQUIRED and none of the three has a default. Item 173
 # of 2026-08-20_LIST_outstanding_items_and_decisions.md, Paul's decision,
 # 2026-09-07. They were bare os.environ[...] subscripts, which is not the defect
@@ -537,6 +556,33 @@ CLIENT_COPY_TRIGGERS = (CLIENT_COPY_ON_PUBLISH, CLIENT_COPY_AT_POST,
 # rather than a bare string, so a second consumer can be added later without
 # moving the first. Amendment 280 fixes the spelling of the key.
 INTELLIBOOKS_DESTINATION = "intellibooks"
+
+# The marker on a `receipts` row whose document was attached to a bank
+# transaction in IntelliBooks Desktop rather than sent to the pipeline. Sub-step
+# 10f.38, Paul's decision of 2026-09-11, amendment 320.
+#
+# **An eighth `receipts.status` value, and the only new vocabulary this
+# sub-step adds.** It is not `ok` and not `failed`: it says the one true thing
+# about the document, which is that it was recorded and never offered to
+# extraction. The seven that existed are all validation or processing outcomes,
+# so every one of them would have claimed a validation that never ran.
+#
+# **Here rather than in `worker\attached.py`, because three modules read it**
+# and one definition is what stops them drifting. `NOTE_APPLIED_OUTCOMES` is
+# the precedent: `app.py` and `worker\resolution\service.py` each carried their
+# own tuple of the applied outcomes, a third word was added to one of them, and
+# every successfully applied Post-time message went to `failed\` on the first
+# run. This module is already where the shared vocabulary lives, next to
+# `UNKNOWN_CLIENT_ID`, `DEFAULT_FIRM_ID` and the three trigger values above,
+# and putting it in `worker\attached.py` would make `worker\client_copy.py`
+# import the intake module to read one string.
+#
+# **What reads it.** `worker\attached.py` writes it; `worker\client_copy.py`
+# lets it past the `ok`-only gate, because the folder shows the result of the
+# work and a document attached to a posted transaction is a result;
+# `worker\resolution\service.py` takes the copy's name from the transaction
+# rather than from an extraction row that does not exist.
+BANK_ATTACHMENT_STATUS = "bank_attachment"
 
 
 def _is_single_folder_name(value: str) -> bool:

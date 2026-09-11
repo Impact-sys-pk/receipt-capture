@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
+from worker import attached
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -2053,8 +2054,18 @@ def _apply_attached_note(repo, receipt: Dict[str, Any],
     worse of the two states. See the report of 2026-09-10 for the reasoning.
     """
     receipt_id = receipt["receipt_id"]
+    # Sub-step 10f.38. A document attached from the Bank Transactions tab was
+    # never offered to extraction, so there is nothing to name its copy from
+    # and nothing ever published it. Both of the things below turn on that, so
+    # it is read once here rather than twice.
+    is_bank_attachment = receipt.get("status") == config.BANK_ATTACHMENT_STATUS
+    # What the `ok`-only gate in `copy_for_published_receipt()` is asked about.
+    # The row's own status, so that gate does the deciding and this function
+    # adds no second rule; emptied below in the one case where an attached
+    # document cannot be named.
+    copy_status = receipt.get("status") or ""
 
-    if not repo.is_published(receipt_id):
+    if not is_bank_attachment and not repo.is_published(receipt_id):
         logger.warning(
             "IntelliBooks Desktop says receipt %s is attached to a "
             "transaction, and this pipeline has no `published` row for it. A "
@@ -2063,7 +2074,44 @@ def _apply_attached_note(repo, receipt: Dict[str, Any],
             "there. Applying the note anyway: Desktop owns the books",
             receipt_id)
 
-    extraction = repo.get_extraction_for_receipt(receipt_id) or {}
+    if is_bank_attachment:
+        # **Named from the transaction, per section 4 of 10f.38's brief and
+        # Paul's decision of 2026-09-11**: the transaction date, the
+        # description normalised the way a supplier name is, and the amount, so
+        # the client folder reads the same way whether a document came from a
+        # receipt or from a bank line. The three values were recorded at Attach
+        # because Attach and Post are two moments and `receipts` has no column
+        # for any of them.
+        #
+        # **The pipeline composes the name and the message carried the values,
+        # not a filename**, which is this function's existing rule: a name
+        # composed by Desktop cannot tell a collision's `-2` from its original.
+        values = attached.transaction_values(repo, receipt_id) or {}
+        extraction = {
+            "invoice_date": values.get(attached.ARRIVAL_DATE_KEY),
+            "supplier_name": values.get(attached.ARRIVAL_DESCRIPTION_KEY),
+            "gross_amount": values.get(attached.ARRIVAL_AMOUNT_KEY),
+        }
+        if not extraction["invoice_date"]:
+            # The row says it is an attached document and its arrival record is
+            # missing, unreadable or has no date. **Reported, and no copy
+            # written**, rather than papered over with today's date and
+            # `unknown`: the transaction date names the tax year folder as well
+            # as the file, so a substitute would file a real document into a
+            # year nobody would look in under a name nobody could trace back.
+            # The archive of record still holds it either way.
+            #
+            # `copy_status` is emptied rather than the receipt row edited, so
+            # the existing `ok`-only gate does the refusing and there is no
+            # second place that decides whether a copy happens.
+            logger.error(
+                "receipt %s carries %r and has no readable transaction record, "
+                "so there is nothing to name its client folder copy from and "
+                "none is written. %s still holds the document",
+                receipt_id, config.BANK_ATTACHMENT_STATUS, config.FILES_DIR)
+            copy_status = ""
+    else:
+        extraction = repo.get_extraction_for_receipt(receipt_id) or {}
     source_path = Path(receipt["file_path"])
 
     dest_path = None
@@ -2087,14 +2135,31 @@ def _apply_attached_note(repo, receipt: Dict[str, Any],
             gross=(extraction.get("gross_amount")
                    if extraction.get("gross_amount") is not None else 0.0),
             # The row's own status, so the `ok`-only gate does the deciding.
-            validation_status=receipt.get("status") or "",
+            validation_status=copy_status,
             filed_path=receipt.get("filed_path"),
             # The moment this call is. Everything else that reaches that
             # function is the publish path.
             at=config.CLIENT_COPY_AT_POST,
         )
 
-    if config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_ON_PUBLISH:
+    if config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_ON_PUBLISH and is_bank_attachment:
+        # **Sub-step 10f.38, and it is the one place the two sub-steps differ.**
+        # A receipt on this trigger already has its copy, made when it
+        # published. A document attached from a bank line is never published,
+        # by Paul's own condition, so the moment this trigger names never
+        # arrives for one and it gets no copy at all, ever. Said out loud
+        # because a firm on `publish` that attaches documents from bank lines
+        # would otherwise see nothing and have nothing to read.
+        logger.info(
+            "receipt %s is a document attached to a transaction and %s is %r. "
+            "An attached document is never published, so that moment never "
+            "comes for one and no copy is written into %s. Set %s to %r to "
+            "copy a document at the moment it is attached to a posted "
+            "transaction",
+            receipt_id, config.CLIENT_COPY_TRIGGER_FIELD,
+            config.CLIENT_COPY_ON_PUBLISH, config.CLIENTS_ROOT,
+            config.CLIENT_COPY_TRIGGER_FIELD, config.CLIENT_COPY_AT_POST)
+    elif config.CLIENT_COPY_TRIGGER == config.CLIENT_COPY_ON_PUBLISH:
         logger.info(
             "receipt %s is attached to a transaction. %s is %r, so its client "
             "folder copy was already made when it published and there is "

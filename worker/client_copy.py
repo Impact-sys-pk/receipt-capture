@@ -86,6 +86,13 @@ from worker.filing import _unique_path, determine_tax_year, get_client_directory
 
 logger = logging.getLogger(__name__)
 
+#: The validation status a receipt has to have reached for its document to go
+#: into a live client folder. A named constant from 2026-09-11, when sub-step
+#: 10f.38 gave the gate below a second value to let past: two bare literals in
+#: one condition read as a list of magic words, and one of them means "a
+#: validation ran and passed" while the other means "no validation ever ran".
+OK_STATUS = "ok"
+
 #: Whether the `post` trigger has already said it has no mechanism. Module
 #: state, so a real firm on `post` gets one line per run rather than one per
 #: receipt. Reset by `_reset_post_warning()`, which exists for the test.
@@ -500,8 +507,20 @@ def copy_for_published_receipt(
                 config.CLIENT_COPY_ON_PUBLISH)
         return None
 
-    if validation_status != "ok":
+    if validation_status not in (OK_STATUS, config.BANK_ATTACHMENT_STATUS):
         # See the module docstring. 18.2b's folder shows the result of the work.
+        #
+        # **The second value is sub-step 10f.38's marker, and it is let past
+        # rather than excluded.** The `ok`-only rule's own reason is that a
+        # receipt with no gross is not a result: amendment 293 widened
+        # publishing to all four validation statuses, so without it a `failed`
+        # receipt would reach a live client folder as
+        # `{date}_unknown_0.00.pdf`. **A document attached to a posted
+        # transaction has none of that problem.** It was never offered to
+        # extraction, so it has no validation status to pass or fail, and its
+        # date, description and amount come off the transaction, which is an
+        # accounting record rather than a reading of an image. 18.1: we record
+        # the transaction and the document is evidence of it.
         return None
 
     if filed_path:

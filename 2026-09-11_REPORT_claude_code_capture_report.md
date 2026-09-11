@@ -4,8 +4,11 @@
 `PROMPT_claude_code_2026-09-11_capture_report.md`, md5 `41afd85e97e84a767ac4ce215fba2c3f`,
 verified before reading. Step 10n of `2026-07-25_CONSOLE_DESIGN.md`, amendments 319 and 327.
 
-**Commit `e02fe8f` on `feat/console-phase0`.** Two files, both new:
-`capture_report.py` and `tests/test_capture_report.py`. Not pushed. Nothing else committed.
+**Commit `e02fe8f` on `feat/console-phase0`, not pushed.** Two files, both new:
+`capture_report.py` and `tests/test_capture_report.py`. Nothing else committed.
+
+This report is the commit after it, `7e8c406`, and a file cannot carry its own hash, so that
+number is here from `git log --oneline -2` rather than from the file it names.
 
 **The suite: 1222 passed, 1 skipped, 848 subtests, in 88 seconds**, run at 15:47 BST on
 2026-09-11. The baseline immediately before this work was **1186 passed, 1 skipped, 821

@@ -385,6 +385,8 @@ This is the part that has produced results, and it is not optional.
 - **A source guard parses the syntax tree rather than string-matching the source. Added 2026-09-08, third instance of one pattern in two days.** Two were guards that failed on their own docstrings, quoting the sentence they were asserting absent. The third string-matched `app.py` for `config.DEFAULT_FIRM_ID` and **failed on a comment explaining why that constant is deliberately not used.** **On this project a check on what the code does must never read prose about that code**, because the convention of keeping superseded wording guarantees the old version is a few lines away. Parsing the tree instead is three or four lines.
 - **A stub must model what the real function does, not record that it was called. Added 2026-09-08.** A stub for `move_email_to_folder()` recorded every call, so a second move of an email already moved looked as though it had succeeded. The real function copies, flags `\Deleted` and expunges, so a second move of one uid cannot succeed. **The faithful version is what caught the half-done change** where routing was added and the old unconditional move left behind; the recording version would have hidden it **and** reported the correct change as broken. **A stub that is wrong in one direction is usually wrong in both.**
 - **Where two or more call sites must all use one helper, assert it on the source: no unwrapped call remains, and the count of wrapped ones is what you expect. Added 2026-09-08.** `extract_with_transient_retry()` was used by three of the four intake paths for weeks and nobody noticed the fourth, because every test that mattered passed on every path. **A per-path test proves a path works. Only a guard over the set proves the set is complete**, and it is what catches the fifth path added without it.
+- **EVERY FLAG CARRIES THE OBVIOUS FIX, AND IF THE FIX IS TO REMOVE SOMETHING, SAY SO FIRST. Added 2026-09-11 on Paul's instruction, and he had to ask three times to get it.** A stale duplicate of the schema sat in this file and was wrong for the third time. The recommendation offered was **a test to keep the duplicate honest**. Paul asked "is this the obvious solution?", and it was not: the obvious solution was to delete the duplicate, which this file's own trap list had already done once for the same reason. **The same shape happened twice more in the same hour**, on a timezone flag answered with "ask for a day either side" when the answer is to convert at the point of display, and on a path flag left unrecommended. **His words, and they are the reason this is a rule rather than a note: "every one of those issues should have been accompanied by a recommendation to the obvious solution. This is an example of where the wasted development time is going."** **The tell is a recommendation that ADDS something to protect a thing that should not exist.** A test guarding a duplicate, a check reconciling two copies, a flag explaining a confusing output. Ask what would have to be untrue for the problem to be absent, and propose that first. **Analysis without a recommendation is not neutrality, it is work handed back to Paul**, who is the only channel between the sessions and the most expensive place to put it.
+- **A GREEN SUITE BEFORE A COMMIT IS A WEAKER CLAIM THAN A GREEN SUITE AFTER IT, WHEN THE CHANGE ADDS A FILE. Added 2026-09-11, from Claude Code's step 10n report, section 7.1.** It ran the whole suite green, committed, ran it again with nothing changed, and had a failure. **Two source guards sweep the git-tracked set** rather than the working tree, by shelling out to `git ls-files`, **so a new production file is invisible to them until it is committed.** The guard was right and was doing its job: it demanded that `capture_report.py`'s new receipts selector be considered against an attached document before being added to its allowed set. **Enumerated rather than estimated, and this is the part worth copying**: the report first said "at least three source guards", named three, counted none, and the number is two, `tests\test_attached_document.py` and `tests\test_corrected_note.py`; the other two named are glob-based. **It broke the enumerate-the-set rule inside the paragraph drawing a lesson from breaking it, and caught it by running the grep the rule prescribes.** So: **run the suite again after the commit whenever the change adds a file**, and treat the second run as the one that counts.
 
 ### Writing for the operator
 
@@ -535,7 +537,10 @@ comments had each numbered them differently. `worker\categorisation\engine.py` i
 **Key features:**
 
 - Preserves all vendor variants with UUID keys (audit trail)
-- Fast lookups via indexes on (client_id, vendor_code)
+- Fast lookups via `idx_client_vendor_key` on (client_id, vendor_key) and `idx_firm_vendor_key` on
+  (business_type, vendor_key). ~~indexes on (client_id, vendor_code)~~ **Corrected 2026-09-11: the
+  rename of 2026-09-06 retired `vendor_code`, and this line was the same drift as the schema section
+  above, outside it. Read off `schema.py`'s own `CREATE INDEX` statements.**
 - Supports custom rules with regex conditions
 - Confidence scoring and review flags
 - Multi-client and multi-business-type support
@@ -698,249 +703,130 @@ the time.** `email_delta` is still absent.
 not be one**, cancelled by amendment 96 and confirmed by 124. The chart of accounts is the bundle
 IntelliCharts publishes into `Intellibills\Charts\`, read by `worker\categorisation\chart.py`.
 
-### receipts
+### The column lists are gone, deliberately. 2026-09-11
 
-Seventeen columns. **No column on this table carries a SQL default**, sub-steps 10d.23 to 10d.28:
-each default was a value arriving as a fallback rather than as a recorded conclusion, and
-`save_receipt()` states every one.
+**This section no longer lists any table's columns. `worker\database\schema.py` is the authority and
+a second copy of it here drifts, which it has now done three times.** Removed on Paul's instruction,
+2026-09-11.
 
-| Field             | Type        | Notes                                                                                          |
-| ----------------- | ----------- | ---------------------------------------------------------------------------------------------- |
-| receipt_id        | TEXT (PK)   | UUID, one per attachment or inbox file                                                         |
-| firm_id           | TEXT NOT NULL | `config.DEFAULT_FIRM_ID`, `FIRM001`, is the single source. Not a column default             |
-| client_id         | TEXT NOT NULL | `config.UNKNOWN_CLIENT_ID`, `UNKNOWN`, when the client could not be resolved, 10d.16        |
-| source            | TEXT NOT NULL | `email` \| `phone` \| `desktop` \| `other`, and no other value, 10d.40                      |
-| message_id        | TEXT NOT NULL | Email message id, or a synthesised id for an inbox file. Duplicate detection                   |
-| email_subject     | TEXT        | Null off the email path                                                                        |
-| email_from        | TEXT        | Null off the email path                                                                        |
-| email_received_at | TEXT        | **ISO 8601 UTC, one format only, 10d.27**                                                      |
-| filename          | TEXT NOT NULL | Original attachment or file name                                                             |
-| file_path         | TEXT NOT NULL | **The copy in the Intellibills document store**                                              |
-| file_hash         | TEXT NOT NULL | SHA256, dedup                                                                                |
-| filed_path        | TEXT        | **The copy in the client folder.** Null until filed                                            |
-| filed_at          | TEXT        | ISO timestamp of filing                                                                        |
-| duplicate_of      | TEXT        | The `receipt_id` this one duplicates                                                           |
-| locked_at         | TEXT        | **TEXT, not INTEGER, 10d.28**, so it compares as a string against every other timestamp        |
-| status            | TEXT NOT NULL | See below                                                                                    |
-| created_at        | TEXT NOT NULL | ISO timestamp                                                                                |
+**The history, because the removal is the point rather than a tidy-up.** Step 10h reconciled this
+section on 2026-09-04 and found it named seven tables and described five of those wrongly. It was
+reconciled again on 2026-09-09. **On 2026-09-11 it was wrong again**, on four tables, and the fault
+was found by Claude Code while enumerating something else: the rename of 2026-09-06,
+`migrate_2026_09_06_vendor_key_naming.py`, moved `vendor_key` from meaning a learned mapping's primary
+key to meaning the normalised merchant code, and retired `vendor_code`. **The document kept the old
+reading.**
 
-**The seven statuses, each verified at its write site.** `pending` is the SQL literal in
+**Why that was worse than an ordinary stale document, and it is the reason the copy is gone rather
+than corrected a third time.** The name did not disappear, it moved. On `categorisations` the
+documented `vendor_key` no longer exists, so a query written from the document fails loudly. **On
+`categorisations_client_vendors`, `categorisations_firm_vendors` and `categorisations_client_rules` it
+does exist and holds something else**, so the same query succeeds and returns the wrong column.
+Nothing errors and the answer is wrong.
+
+**The precedent is this file's own.** The trap list below records a second copy in the project
+instructions being retired because two copies of one list drift, and that one had four entries when
+this had six. **The schema section was the same fault with more columns.**
+
+**Where to read the schema instead**, and neither of these can go stale:
+
+- **`worker\database\schema.py`**, the `CREATE TABLE` statements themselves. It is 278 lines of which
+  89 are explanatory `--` comments, measured 2026-09-11, so the reasoning sits beside the columns
+  rather than only here.
+- **`python schema_info.py`**, which lists what the live database actually holds. **That is a
+  different question from what `schema.py` creates**, and the two have disagreed: see `email_delta`
+  below.
+
+**A test comparing this file's column lists against `schema.py` was considered and rejected.** It
+would have to parse prose containing struck-through wording kept beside every correction, and the
+likely end state is a check that matches nothing and passes for ever, which amendment 97 already names
+on this project. **Deleting the duplicate needs no test.**
+
+### What is recorded here, because it is not in `schema.py`
+
+**ELEVEN tables**, counted from `schema.py`'s own `CREATE TABLE` statements rather than carried from
+this line.
+
+**There is no `client_code` on any table**, sub-step 10d.23 and Paul's ruling of 2026-09-02. **There
+is no `coa_accounts` table and there will not be one**, cancelled by amendment 96 and confirmed by
+124.
+
+**The eight `receipts` statuses, and where each is written.** This is a claim about other modules, so
+it does not live in `schema.py`.
+
+~~**The seven statuses, each verified at its write site.**~~ **EIGHT STATUSES, corrected 2026-09-11.
+`bank_attachment` was added the same day by sub-step 10f.38 and this paragraph did not move; the word
+appeared nowhere in this file at all, counted before the correction.** `pending` is the SQL literal in
 `save_receipt()`; `ok` and `needs_review` and `failed` come from validation in
 `worker\extraction_pipeline.py`; `possible_duplicate` from the semantic duplicate check in the same
-file; `retry_exhausted` from `app.py:650`; `discarded` from
-`worker\resolution\service.py:832`. **`filed` is not a receipt status**: it is the default status of a
-`statements` row, `worker\database\repository.py:92`.
+file; `retry_exhausted` from `_retry_failed_receipts()` in `app.py`; `discarded` from
+`discard_receipt()` in `worker\resolution\service.py`; **`bank_attachment` from
+`record_attached_document()` in `worker\attached.py`, which writes `config.BANK_ATTACHMENT_STATUS`**.
+**`filed` is not a receipt status**: it is the default status of a `statements` row, from
+`save_statement()`'s signature in `worker\database\repository.py`.
 
-### extractions
+~~`app.py:650`~~ ~~`worker\resolution\service.py:832`~~ ~~`worker\database\repository.py:92`~~
+**Three stale line numbers, struck 2026-09-11. Each was read before it was replaced and none of them
+pointed at what it claimed**: 650 is a `logger.warning` about a receipt marked ok with no extraction,
+832 is a docstring about the ordering of steps 7 and 8, and 92 is prose about `client_folder_name`.
+**The fix is the one the `config.py` rule below already prescribes: name the function, because a name
+does not move.** Found by Claude Code on 2026-09-11 while enumerating the status set for step 10n, and
+verified here by reading each of the three lines.
 
-Seventeen columns. **Append-only. One receipt can have many, and none is ever modified in place.**
+**The set is three SQL statements and no more**, all in `worker\database\repository.py`: the `INSERT`
+in `save_receipt()` and two byte-identical `UPDATE receipts SET status = ?` statements. Enumerated
+from the syntax tree over the 54 production files at the repository root and under `worker\`,
+independently by both sessions on 2026-09-11, and `tests\test_capture_report.py` asserts the count and
+the location so a fourth writer goes red.
 
-| Field              | Type        | Notes                                                                        |
-| ------------------ | ----------- | ---------------------------------------------------------------------------- |
-| extraction_id      | TEXT (PK)   | UUID, one per attempt                                                        |
-| receipt_id         | TEXT NOT NULL | FK to `receipts`                                                           |
-| engine             | TEXT NOT NULL | `openai_vision`, `manual_correction`, and swappable                        |
-| extracted_at       | TEXT NOT NULL | ISO timestamp                                                              |
-| supplier_name      | TEXT        | Null if not found                                                            |
-| invoice_date       | TEXT        | YYYY-MM-DD, null if not found                                                |
-| net_amount         | REAL        | Null if not found                                                            |
-| vat_amount         | REAL        | Null if not found                                                            |
-| gross_amount       | REAL        | Null if not found                                                            |
-| details            | TEXT        | **What post-processing changed on this extraction**, for example an amount read as net that was the gross. Design document 3.11. Deliberately not `validation_notes`: those are outcomes, these are changes the system made |
-| currency           | TEXT        | **No default, 10d.31.** `config.DEFAULT_CURRENCY` replaced twelve `"GBP"` literals |
-| raw_response       | TEXT        | Full OpenAI response, audit                                                  |
-| validation_status  | TEXT        | `ok` \| `needs_review` \| `failed`                                           |
-| validation_notes   | TEXT        | Comma-separated, append-only                                                 |
-| pipeline_version   | TEXT        | Which build produced this extraction                                         |
-| receipt_ref_number | TEXT        | The supplier's own reference off the document                                 |
-| receipt_time       | TEXT        | Time of day off the document, where there is one                             |
+**`extractions` is append-only.** One receipt can have many and none is ever modified in place.
 
-### categorisations
+**`categorisations` rows are updated in place, into the four correction columns only**, so a person's
+correction sits beside the engine's suggestion and never over it.
 
-Seventeen columns. **One row per categorisation, with the correction beside the suggestion rather
-than over it.** Foreign keys to `receipts` and `extractions`.
+**`receipts` rows are updated in place**: `status`, `filed_path`, `filed_at`, `locked_at` and
+`duplicate_of` all move after insert.
 
-| Field             | Type        | Notes                                                                     |
-| ----------------- | ----------- | ------------------------------------------------------------------------- |
-| categorisation_id | TEXT (PK)   | UUID                                                                      |
-| receipt_id        | TEXT NOT NULL | FK                                                                      |
-| extraction_id     | TEXT NOT NULL | FK                                                                      |
-| client_id         | TEXT NOT NULL |                                                                         |
-| trade             | TEXT NOT NULL | The client's trade, `UNSPECIFIED` when unknown                          |
-| vendor_key        | TEXT        | The learned mapping that matched, where one did                           |
-| suggested_code    | TEXT        | **A master account code, four digits.** Any three-digit code is legacy    |
-| suggested_name    | TEXT        | The account name                                                          |
-| confidence        | TEXT NOT NULL | `high` \| `medium` \| `low` \| `none`                                   |
-| match_source      | TEXT NOT NULL | `rule` \| `client` \| `firm` \| `fuzzy_client` \| `fuzzy_firm` \| `ai` \| `unmatched`. **Seven values, and `unmatched` is not a layer** |
-| matched_vendor    | TEXT        | What the fuzzy layers matched against                                     |
-| needs_review      | INTEGER     | Defaults to 1                                                             |
-| categorised_at    | TEXT NOT NULL | ISO timestamp                                                           |
-| corrected_at      | TEXT        | Set when a person changes it                                              |
-| correction_code   | TEXT        | The account a person chose                                                |
-| correction_name   | TEXT        | The name a person chose or typed                                          |
-| correction_reason | TEXT        | Free text                                                                 |
+**No column on `receipts` carries a SQL default**, sub-steps 10d.23 to 10d.28: each default was a
+value arriving as a fallback rather than as a recorded conclusion, and `save_receipt()` states every
+one.
 
-### statements
+**A `statements` row is a PHV platform statement**, uber, bolt or freenow, and **never a bank
+statement**. `filed` is its default status and is not a receipt status.
 
-Ten columns. **A statement here is a PHV platform statement**, uber, bolt or freenow, and never a
-bank statement. Indexed on `file_hash`.
+**`publish_events` has three states and the third is the absence of a row.** No row means the receipt
+was never offered to a destination; a `failed` row means it was tried and did not land; a `published`
+row means it landed.
 
-| Field        | Type        | Notes                                                       |
-| ------------ | ----------- | ----------------------------------------------------------- |
-| statement_id | TEXT (PK)   | UUID                                                        |
-| client_id    | TEXT NOT NULL |                                                           |
-| platform     | TEXT NOT NULL | uber \| bolt \| freenow                                   |
-| week_ending  | TEXT NOT NULL |                                                           |
-| source       | TEXT NOT NULL |                                                           |
-| file_hash    | TEXT NOT NULL | Indexed                                                   |
-| file_path    | TEXT NOT NULL | **The copy in the document store**, 10d.56                |
-| filed_path   | TEXT        | **The copy in the client folder**, 10d.56. One column name, one meaning, both tables |
-| status       | TEXT NOT NULL | `filed` is the default written by `save_statement()`       |
-| created_at   | TEXT NOT NULL |                                                           |
+**Neither `resolution_events` nor `publish_events` carries a foreign key on `receipt_id`**, sub-step
+10d.33. An audit row that cannot be written because the thing it describes has gone is worse than a
+dangling id, and **that is exactly when somebody wants the history**.
 
-### processed_attachments
-
-Six columns. Composite primary key `(message_id, attachment_id)`.
-
-| Field         | Type      | Notes                                                                        |
-| ------------- | --------- | ---------------------------------------------------------------------------- |
-| message_id    | TEXT NOT NULL | Composite PK                                                             |
-| attachment_id | TEXT NOT NULL | Composite PK                                                             |
-| file_hash     | TEXT NOT NULL | Dedup                                                                    |
-| processed_at  | TEXT NOT NULL | ISO timestamp                                                            |
-| receipt_id    | TEXT NOT NULL | Which receipt was created                                                |
-| firm_id       | TEXT      | **Informational, written and never read**, 10d.32. **The key deliberately does not include it**: a `message_id` is generated by the sender's mail client and is unique by design, so adding `firm_id` would loosen the key rather than tighten it. Amendment 129 |
-
-### resolution_events
-
-Eleven columns. **The audit trail: one row per resolution, whatever the entry point.** Indexed on
-`(receipt_id, created_at)`. Design document 5.1.
-
-| Field            | Type        | Notes                                                                  |
-| ---------------- | ----------- | ---------------------------------------------------------------------- |
-| event_id         | TEXT (PK)   | UUID                                                                   |
-| receipt_id       | TEXT NOT NULL | **No foreign key, 10d.33**, and neither has `extraction_id`         |
-| extraction_id    | TEXT        | **No foreign key**                                                     |
-| actor            | TEXT NOT NULL | Who resolved it                                                      |
-| source           | TEXT NOT NULL | Which tool                                                           |
-| action           | TEXT NOT NULL |                                                                      |
-| corrections_json | TEXT        | What was changed                                                       |
-| gl_override_code | TEXT        |                                                                        |
-| outcome          | TEXT NOT NULL |                                                                      |
-| reason           | TEXT        |                                                                        |
-| created_at       | TEXT NOT NULL |                                                                      |
-
-**Why neither id carries a foreign key**, because the reason recorded here was once wrong and is
-corrected in `schema.py`: an audit row that cannot be written because the thing it describes has gone
-is worse than a dangling id. `receipt_id`'s key also made this table refuse a row about a receipt a
-rebuild had dropped, **which is exactly when somebody wants the history**.
-
-### publish_events
-
-**Added 2026-09-09 by sub-step 10f.36, commit `ee9cb59`. The eleventh table.** One row per receipt per
-destination per attempt, on the `resolution_events` pattern.
-
-| Column      | Type          | Notes                                                              |
-| ----------- | ------------- | ------------------------------------------------------------------ |
-| event_id    | TEXT PRIMARY KEY NOT NULL | `uuid4()`. **`NOT NULL` is stated because a `TEXT PRIMARY KEY` in SQLite accepts NULL**: only an `INTEGER PRIMARY KEY` rejects one. Added 2026-09-09 |
-| receipt_id  | TEXT NOT NULL |                                                                    |
-| destination | TEXT NOT NULL | `intellibooks` today. 18.3 gives the pipeline three eventually     |
-| outcome     | TEXT NOT NULL | `published` or `failed`, the constants in `worker\publish.py`       |
-| item_path   | TEXT          | The item on a success, null on a failure                           |
-| reason      | TEXT          | The reason on a failure, null on a success                         |
-| created_at  | TEXT NOT NULL |                                                                    |
-
-Indexed on `(receipt_id, created_at)`.
-
-**Three states and the third is the absence of a row.** No row means the receipt was never offered to
-a destination; a `failed` row means it was tried and did not land; a `published` row means it landed.
-**That is what sub-step 10f.13's repointed recovery sweep asks**, being "publish anything that was
-read and never published", and `filed_path` served the same purpose for filing.
-
-**No foreign key on `receipt_id`**, for the reason `resolution_events` already gives above.
-
-**No column carries a SQL default**, per sub-steps 10d.23 to 10d.28. `item_path` and `reason` are each
-null in one of the two outcomes, so neither can be NOT NULL.
-
-**Not in the live database yet.** Read directly on 2026-09-09: it is created the first time Paul starts
-the pipeline on `ee9cb59` or later, and it is created with the `NOT NULL`.
+**Layer 0 is `categorisations_client_rules`**, the only layer a person authors by hand. **Layer 1 is
+`categorisations_client_vendors`**, this client's learned mappings. **Layer 2 is
+`categorisations_firm_vendors`**, the firm's shared pool. **`categorisations_firm_vendors` holds 0
+rows and has no writer**: `upsert_firm_vendor()` exists and its only caller was deleted at amendment
+234. Step 10m gives it one.
 
 ### ~~email_delta~~ Removed 2026-09-04
 
-**Not created any more, and nothing reads or writes it.** Outstanding item 159. It held a
-`delta_link` from the Microsoft Graph design that was never built and a `last_uid` implying an
-incremental IMAP fetch that does not exist: **`fetch_new_messages()` searches `ALL` on every poll and
-deduplicates on the header `message_id`**, per rule 6 below, because an IMAP UID cannot be carried
-between polls. `Repository.get_delta_link()`, `save_delta_link()`, `get_last_uid()` and
-`save_last_uid()` went with it, and `fetch_new_messages()` no longer takes the `repo` it never used.
-~~A database created before 2026-09-04 still has the table, empty.~~ **Corrected 2026-09-09: the live database does not have it.** Read directly with sqlite3 in read-only mode: ten tables and no `email_delta`. The backup `receipts-backup-2026-09-05-pre-email-delta-drop.db` in `C:\Intellibills\db\` names the drop, so it was done by hand on or about 2026-09-05. **The general statement was true of `schema.py` and false of this machine**, which is the difference between what a file creates and what a database holds.
+**Not created any more, and nothing reads or writes it.** Outstanding item 159. It held a `delta_link`
+from a Microsoft Graph design that was never built and a `last_uid` implying an incremental IMAP fetch
+that does not exist: **`fetch_new_messages()` searches `ALL` on every poll and deduplicates on the
+header `message_id`**, because an IMAP UID cannot be carried between polls.
+`Repository.get_delta_link()`, `save_delta_link()`, `get_last_uid()` and `save_last_uid()` went with
+it.
 
-### email_alerts
+**The live database does not have it.** Read directly with sqlite3 in read-only mode on 2026-09-09.
+The backup `receipts-backup-2026-09-05-pre-email-delta-drop.db` in `C:\Intellibills\db\` names the
+drop, so it was done by hand rather than by `schema.py`, **which only creates**. ~~A database created
+before 2026-09-04 still has the table, empty.~~ **The general statement was true of `schema.py` and
+false of this machine**, which is the difference between what a file creates and what a database
+holds, and is why `schema_info.py` is a separate question from reading `schema.py`.
 
-Five columns. Composite primary key `(message_id, alert_type)`, which is what stops a second alert
-for the same email. Indexed on `message_id`.
-
-| Field           | Type        | Notes                                            |
-| --------------- | ----------- | ------------------------------------------------ |
-| message_id      | TEXT NOT NULL | Composite PK                                   |
-| alert_type      | TEXT NOT NULL | Composite PK                                   |
-| recipient_email | TEXT NOT NULL |                                                |
-| firm_name       | TEXT NOT NULL | The firm the client recognises, not the software |
-| alert_sent_at   | TEXT NOT NULL |                                                |
-
-### categorisations_client_vendors
-
-Nine columns. `UNIQUE(client_id, vendor_code, vendor_name)`, indexed on `(client_id, vendor_code)`.
-**Layer 1, this client's learned mappings.**
-
-| Field        | Type      | Notes                                    |
-| ------------ | --------- | ---------------------------------------- |
-| vendor_key   | TEXT (PK) | UUID, unique per variant                 |
-| client_id    | TEXT NOT NULL |                                      |
-| vendor_code  | TEXT NOT NULL | Normalised merchant code, apcoa, amazon |
-| nominal_code | TEXT NOT NULL | The account code                     |
-| account_name | TEXT NOT NULL | The account name                     |
-| vendor_name  | TEXT      | As it was read or imported                |
-| detail       | TEXT      | Additional detail, audit trail            |
-| times_seen   | INTEGER   | Defaults to 1                             |
-| last_updated | TEXT NOT NULL |                                       |
-
-### categorisations_firm_vendors
-
-Nine columns. `UNIQUE(business_type, vendor_code, vendor_name)`, indexed on
-`(business_type, vendor_code)`. **Layer 2, the firm's shared pool.**
-
-| Field         | Type      | Notes                                                                     |
-| ------------- | --------- | ------------------------------------------------------------------------- |
-| vendor_key    | TEXT (PK) | UUID, unique per variant                                                  |
-| business_type | TEXT NOT NULL | PHV_DRIVER, CONTRACTOR, UNSPECIFIED                                   |
-| vendor_code   | TEXT NOT NULL |                                                                       |
-| nominal_code  | TEXT NOT NULL |                                                                       |
-| account_name  | TEXT NOT NULL |                                                                       |
-| vendor_name   | TEXT      |                                                                           |
-| times_seen    | INTEGER   | Defaults to 1                                                             |
-| last_updated  | TEXT NOT NULL |                                                                       |
-| firm_id       | TEXT      | **10d.39, closing outstanding items 17 and 47. Written and never read, and deliberately not in the UNIQUE key**, so the learned pool stays shared and behaviour does not change. The column exists so the provenance of a learned mapping is captured while it is still capturable |
-
-### categorisations_client_rules
-
-Eleven columns. **Layer 0, and the only layer a person authors by hand.**
-
-| Field           | Type      | Notes                                    |
-| --------------- | --------- | ---------------------------------------- |
-| rule_id         | TEXT (PK) | UUID                                     |
-| client_id       | TEXT NOT NULL | Which client the rule applies to     |
-| rule_name       | TEXT NOT NULL | Human-readable                       |
-| priority        | INTEGER NOT NULL | Defaults to 50, higher runs first  |
-| vendor_code     | TEXT      | NULL matches any vendor                  |
-| condition_type  | TEXT NOT NULL | contains, exact_match, startswith, regex |
-| condition_field | TEXT NOT NULL | detail or vendor_code                |
-| condition_value | TEXT NOT NULL | Pattern to match                     |
-| nominal_code    | TEXT NOT NULL | The account code if the rule matches |
-| account_name    | TEXT NOT NULL |                                      |
-| created_at      | TEXT NOT NULL |                                      |
-
----
+**`publish_events` went the other way on the same day.** It was absent from the live database when
+that reading was taken and present later the same day, because Paul restarted the pipeline at 11:18:25
+on a commit after `ee9cb59` and `schema.py` created it then.
 
 ## Development Rules
 

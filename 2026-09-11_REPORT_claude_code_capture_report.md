@@ -13,8 +13,12 @@ verified before reading. Step 10n of `2026-07-25_CONSOLE_DESIGN.md`, amendments 
 | `2ced7d0` | this table |
 | `f77cd39` | `tests/test_attached_document.py`, declaring the new receipts selector to an existing set guard. See section 7.1, which is the finding of the session |
 
-Nothing else committed. A file cannot carry its own hash, so the numbers above come from
-`git log --oneline -5` rather than from the files they name.
+Nothing else committed, and `capture_report.py` was committed once and not touched since.
+
+**A file cannot carry its own hash**, so this table lists every commit up to the one before
+whichever revision of this file you are reading, and later edits to this report are not in it.
+`git log --oneline --grep=10n` gives the lot. The only one that changes behaviour is `e02fe8f`;
+`f77cd39` changes a test; the rest are this document.
 
 **The suite: 1222 passed, 1 skipped, 848 subtests, in 87 seconds**, run at 16:09 BST on
 2026-09-11 with everything committed. The baseline immediately before this work was **1186

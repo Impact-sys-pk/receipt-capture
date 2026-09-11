@@ -742,6 +742,23 @@ class TheSweepsTest(AttachedTestCase):
             # that matters, so a new selector anywhere fails it and gets
             # considered.
             "latest_extractions", "main", "recent_receipt_paths",
+            # **Finds it, and is meant to.** `capture_report.py`, step 10n,
+            # added 2026-09-11. No status filter at all, and its join to
+            # `extractions` is a LEFT JOIN, so a receipt with no extraction
+            # comes back with null columns rather than being dropped, which is
+            # what an attached document is.
+            #
+            # That is the deliberate answer rather than an oversight: the
+            # capture report exists to say what became of every document
+            # captured for one client, `bank_attachment` is one of the eight
+            # outcomes it names in words, and a report that hid the marker
+            # would be unable to answer "I sent this, where is it?" about a
+            # document somebody attached to a bank line.
+            #
+            # It is also not a sweep in this test's sense. Nothing in the poll
+            # calls it, it opens the database `mode=ro`, and it writes one text
+            # file into `exports\`.
+            "receipts_for_client",
         }
         found = set()
         for path in tracked_python_files():

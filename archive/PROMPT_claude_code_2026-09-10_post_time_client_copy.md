@@ -4,9 +4,6 @@
 afternoon. Sub-step 10f.37 of `2026-07-25_CONSOLE_DESIGN.md`, given its own
 number today by amendment 315.**
 
-**HOLD UNTIL THE CURRENT BRIEF IS REPORTED.** This is the next one, not a second
-one open at the same time.
-
 **Read first, in this order:** `CLAUDE.md`, the section "How this project is
 worked" and the seven traps. Then 18.2a and 18.2b of
 `2026-07-25_CONSOLE_DESIGN.md`, then section 12, the resolution back-feed
@@ -78,6 +75,15 @@ composed by Desktop cannot tell a collision's `-2` from its original.
 2. **Whether the sweep interferes.** `_copy_missing_client_copies()` runs every
    poll and I read a trigger test in it. Confirm from the code that it does
    nothing on `post`, and that the two cannot write the same file twice.
+
+**And the comment and the warning in `copy_for_published_receipt()` come with
+it.** `worker\client_copy.py` says the Post-time message is sub-step 10f.16 and
+that it is not built. Amendment 315 gave that work its own number and 10f.16 is
+BUILT, so the code is sending its reader to a sub-step that is finished. **Where
+the `post` branch survives this change in any form, its comment and its warning
+name 10f.37.** Where the branch goes altogether, so does the reference. Do it in
+the same commit as deliverable 1, and say in the report which of the two
+happened.
 
 ---
 

@@ -1277,7 +1277,49 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         effective_code = override_code or categorisation.suggested_code
         effective_name = override_name or categorisation.suggested_name
 
-        # 10. Sidecar from the effective code and name, all three keys.
+        # 10. The payload this route WOULD write, and the invoice date that
+        #     names the client folder copy at step 11.
+        #
+        #     ~~Sidecar from the effective code and name, all three keys.~~
+        #     **Struck 2026-09-12 by amendment 346, on Paul's decision. No
+        #     sidecar is produced here and none has been since stage 4.** The
+        #     old sentence told the next reader a file is written at this step,
+        #     which is the only thing about it that cost anything.
+        #
+        #     **What actually happens: this route builds the payload and writes
+        #     nothing.** `sidecar_payload` is assigned and read nowhere in this
+        #     function, and `make_enriched_sidecar()` makes no calls and returns
+        #     a dict, so the dictionary is built and dropped. It used to be
+        #     handed to `file_receipt()`, which wrote it beside the filed image;
+        #     18.2b made the client folder copy image only, so **the consumer
+        #     went and the producer stayed.**
+        #
+        #     **The call is kept deliberately and amendment 346 is the decision
+        #     to keep it.** Amendment 344 point four said to delete it; deleting
+        #     it was tried on 2026-09-12 and reverted the same hour, for two
+        #     reasons neither amendment had in front of it.
+        #
+        #     **One.** `AllFourCallSitesTest` in
+        #     `tests/test_sidecar_category_keys.py` spies on THIS call to
+        #     capture what this route would write, and compares its key set
+        #     against the other three writers. Its reason is in its own
+        #     docstring: four writers of one file format is how the format
+        #     diverged. Delete the call and a four-way comparison silently
+        #     becomes three-way.
+        #
+        #     **Two.** That a CLI-resolved receipt's corrected values reach the
+        #     database and no file at all is a known, open question, not an
+        #     oversight: flagged in
+        #     `2026-09-09_REPORT_claude_code_stage4_pipeline.md` and **it is
+        #     sub-step 10f.15's to answer.** This payload is the only executable
+        #     record of what this route would write, which is 10f.15's own
+        #     input, so deleting it now would both destroy that and pre-empt the
+        #     decision.
+        #
+        #     **`invoice_date` below is NOT dead** and is the reason the two
+        #     lines are read together: step 11 names the client folder copy from
+        #     it. It falls back to today only where the document carried no date
+        #     at all, because that filename needs one.
         invoice_date = merged["invoice_date"] or datetime.now(timezone.utc).date().isoformat()
         sidecar_payload = make_enriched_sidecar(
             receipt_id=receipt_id,

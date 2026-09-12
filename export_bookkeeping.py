@@ -1,7 +1,6 @@
 import csv
 import sqlite3
 import sys
-from pathlib import Path
 
 import config
 
@@ -14,9 +13,17 @@ db = config.DB_PATH
 if not db.exists():
     sys.exit(f"no database at {db}. Set INTELLIBILLS_UNSYNCED_ROOT if it has moved.")
 
-# Relative to the working directory, and the folder is created rather than
-# assumed: it is not in the repository and this script used to fail on open.
-output = Path("exports/bookkeeping_export.csv")
+#: Where the export is written. **Derived from `config.BASE_DIR` rather than
+#: written relative to the working directory**, so running this from anywhere
+#: but the repository root still writes here rather than scattering an
+#: `exports\` wherever the shell happened to be standing. Flag 5 of the step 10n
+#: report and Paul's decision of 2026-09-11; `capture_report.py` already did
+#: this and its `OUTPUT_DIR` carries the reasoning for the folder itself.
+#:
+#: The folder is created rather than assumed: it is not in the repository, it is
+#: gitignored, and this script used to fail on open.
+OUTPUT_DIR = config.BASE_DIR / "exports"
+output = OUTPUT_DIR / "bookkeeping_export.csv"
 output.parent.mkdir(parents=True, exist_ok=True)
 
 conn = sqlite3.connect(db)
@@ -50,6 +57,14 @@ with output.open("w", newline="", encoding="utf-8") as f:
         "receipt_id", "firm_id", "client_id",
         "supplier_name", "invoice_date",
         "net_amount", "vat_amount", "gross_amount", "currency",
+        # `first_extracted_at` keeps the stored UTC value and the stored
+        # column name. **This CSV is a handoff format**, its headers are the
+        # database's own column names, and nothing in this repository reads it
+        # back, so converting a column while leaving its name alone would make
+        # the file disagree with the column it claims to carry. Store UTC, show
+        # London applies to what a person reads on a screen or in a report;
+        # this is neither. Reported as a decision rather than taken quietly, per
+        # section 2 of the brief of 2026-09-11.
         "status", "first_extracted_at", "latest_validation_status", "latest_review_reason"
     ])
     for row in rows:

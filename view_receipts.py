@@ -2,6 +2,7 @@ import sqlite3
 import sys
 
 import config
+from worker import london_time
 
 # config.DB_PATH is the one place the database path lives. This script used to
 # open Path("data/receipts.db"), a path amendment 76 removed, and an sqlite
@@ -20,7 +21,8 @@ for receipt in c.execute("SELECT * FROM receipts ORDER BY created_at DESC"):
     print(f"Receipt ID: {receipt['receipt_id']}")
     print(f"  File: {receipt['filename']}")
     print(f"  Status: {receipt['status']}")
-    print(f"  Created: {receipt['created_at']}")
+    # Store UTC, show London, 2026-09-11. `stamp()` appends BST or GMT.
+    print(f"  Created: {london_time.stamp(receipt['created_at'])}")
 
     extraction = c.execute(
         "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",

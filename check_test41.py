@@ -13,6 +13,7 @@ import sqlite3
 from pathlib import Path
 
 import config
+from worker import london_time
 
 DB = config.DB_PATH
 
@@ -59,7 +60,7 @@ def main() -> None:
         if latest["validation_notes"]:
             print(f"    notes   {latest['validation_notes']}")
 
-    print("\n=== RESOLUTION EVENTS ===")
+    print(f"\n=== RESOLUTION EVENTS ===  (times in {london_time.ZONE_LABEL})")
     events = conn.execute(
         """
         SELECT receipt_id, outcome, actor, source, created_at
@@ -71,7 +72,8 @@ def main() -> None:
     for event in events:
         print(
             f"  {event['receipt_id'][:8]}...  {event['outcome']:<14} "
-            f"{event['actor']}/{event['source']}  {event['created_at']}"
+            f"{event['actor']}/{event['source']}  "
+            f"{london_time.stamp(event['created_at'])}"
         )
 
     conn.close()

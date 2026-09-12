@@ -45,6 +45,7 @@ sys.modules.setdefault("openai", fake_openai)
 
 import config
 import app
+from worker import london_time
 
 WINDOWS = sys.platform == "win32"
 SYSTEM_PID = 4  # The Windows System process: always present, never openable.
@@ -364,14 +365,23 @@ class LogMessageTest(LockFileFixture):
     """
 
     def test_the_refusal_names_the_pid_and_when_that_process_started(self):
+        """**Updated 2026-09-12 by the London change.** The lock FILE still
+        carries UTC, because `_lock_describes_process()` compares it against a
+        process creation time. What the refusal says out loud is the London
+        reading of it, with BST or GMT on the end, so it agrees with the
+        timestamp the log line itself now carries.
+        """
         with Orphan() as pid:
             started_at = datetime.now(timezone.utc).isoformat()
             self.write_lock(pid, started_at)
+            self.assertIn(started_at, self.lock.read_text(encoding="utf-8"),
+                          "the lock file must still record UTC")
             with self.assertLogs("app", level="ERROR") as captured:
                 self.assertFalse(app.acquire_lock())
         message = "\n".join(captured.output)
         self.assertIn(str(pid), message)
-        self.assertIn(started_at, message)
+        self.assertIn(london_time.stamp(started_at), message)
+        self.assertNotIn(started_at, message)
 
     def test_the_four_stale_reasons_are_four_different_sentences(self):
         """Asserted as distinctness rather than as four exact strings.

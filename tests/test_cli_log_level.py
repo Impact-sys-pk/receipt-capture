@@ -511,11 +511,18 @@ class ARealRunFillsTheFileTest(unittest.TestCase):
         names = []
         for line in body.splitlines():
             parts = line.split()
-            # `%(asctime)s %(levelname)s %(name)s` is the first three fields,
-            # and asctime itself is two.
-            if len(parts) >= 4 and parts[2] in ("INFO", "WARNING", "ERROR",
-                                                "DEBUG", "CRITICAL"):
-                names.append(parts[3])
+            # `%(asctime)s %(levelname)s %(name)s` is the first three
+            # fields, and **asctime itself is now three**: the London change of
+            # 2026-09-11 put the zone on the end of it, so a line reads
+            # `2026-07-01 00:30:00,000 BST INFO worker.x - message`. It was
+            # two fields until then.
+            #
+            # The level is found rather than indexed, so the next change to the
+            # timestamp format does not break this the way that one did.
+            levels = ("INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL")
+            at = next((i for i, part in enumerate(parts) if part in levels), None)
+            if at is not None and len(parts) > at + 1:
+                names.append(parts[at + 1])
         self.assertTrue(names, f"no log lines were parsed from:\n{body}")
         strangers = sorted({n for n in names
                             if not n.startswith(("worker.", "app", "__main__",

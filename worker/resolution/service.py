@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from worker import attached
+from worker import attached, london_time
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -909,7 +909,10 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         # filed_at is NULL for anything filed before 5.1a added the column, and is
         # deliberately not back-filled, so the date is offered when it is known and
         # left out rather than guessed when it is not.
-        filed_at = receipt.get("filed_at")
+        # Store UTC, show London, 2026-09-11. The column keeps UTC; this is
+        # the sentence an operator reads back off the CLI, so it converts and
+        # says BST or GMT.
+        filed_at = london_time.stamp(receipt.get("filed_at"))
         when = f" on {filed_at}" if filed_at else ""
         return ResolutionOutcome(
             outcome="already_filed", receipt_id=receipt_id,
@@ -1813,8 +1816,9 @@ def _settle_note(repo, categorisation_engine, receipt: Dict[str, Any],
 
     logger.info(
         f"settling receipt {receipt_id} from the IntelliBooks Desktop note "
-        f"resolved at {note.resolved_at}: the note names no filed_path, so the "
-        "client folder copy is this pipeline's to make on the firm's trigger"
+        f"resolved at {london_time.stamp(note.resolved_at)}: the note names no "
+        "filed_path, so the client folder copy is this pipeline's to make on "
+        "the firm's trigger"
     )
     outcome = resolve_receipt(
         repo, categorisation_engine, receipt_id, corrections,
@@ -2390,7 +2394,7 @@ def _apply_corrected_note(repo, categorisation_engine, receipt: Dict[str, Any],
 
     logger.info(
         f"correcting receipt {receipt_id} from the IntelliBooks Desktop note "
-        f"resolved at {note.resolved_at}: it is already filed at "
+        f"resolved at {london_time.stamp(note.resolved_at)}: it is already filed at "
         f"{receipt.get('filed_path')!r}, so no file moves and nothing is "
         "copied or withdrawn"
     )
@@ -2466,8 +2470,9 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
     applied = _note_already_applied(repo, receipt_id, parsed.resolved_at)
     if applied:
         logger.info(
-            f"note for {receipt_id} resolved at {parsed.resolved_at} was already applied "
-            f"on {applied['created_at']}; nothing to do"
+            f"note for {receipt_id} resolved at "
+            f"{london_time.stamp(parsed.resolved_at)} was already applied on "
+            f"{london_time.stamp(applied['created_at'])}; nothing to do"
         )
         outcome = applied["outcome"]
         return ResolutionOutcome(
@@ -2475,7 +2480,9 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
             receipt_id=receipt_id,
             extraction_id=applied.get("extraction_id"),
             filed_path=receipt.get("filed_path"),
-            message=f"Already applied on {applied['created_at']}. Nothing was changed.",
+            message=("Already applied on "
+                     f"{london_time.stamp(applied['created_at'])}. "
+                     "Nothing was changed."),
         )
 
     if parsed.action == "discarded":

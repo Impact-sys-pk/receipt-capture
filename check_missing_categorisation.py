@@ -7,10 +7,18 @@ import logging
 import config
 from worker.database.schema import init_db
 from worker.database.repository import Repository
+from worker.logging_setup import LOG_FORMAT, console_handler
+from worker import london_time
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+    # `LOG_FORMAT` rather than a second copy of the same string, and a
+    # handler that already carries the London formatter: store UTC, show
+    # London, Paul's decision of 2026-09-11. Without the handler this
+    # script's console lines would be an hour out from run.log's for seven
+    # months of the year, and would not say which zone they were in.
+    format=LOG_FORMAT,
+    handlers=[console_handler()],
 )
 logger = logging.getLogger(__name__)
 
@@ -40,7 +48,10 @@ def main():
     if missing_cat:
         logger.warning(f"\nFound {len(missing_cat)} receipts with NO categorisation:")
         for receipt in missing_cat:
-            logger.warning(f"  {receipt['receipt_id']} | {receipt['filename']} | created={receipt['created_at']}")
+            # Store UTC, show London, 2026-09-11, and the log line's own
+            # timestamp is in the same zone, so the two cannot disagree.
+            created = london_time.stamp(receipt['created_at'])
+            logger.warning(f"  {receipt['receipt_id']} | {receipt['filename']} | created={created}")
         return 1
     else:
         logger.info("\n✓ All filed ok receipts have categorisation")

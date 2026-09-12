@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import config
+from worker import london_time
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +419,10 @@ def _warn_if_already_published(repo, receipt_id, destination) -> None:
         "last at %s as %s. Publishing again overwrites it, which is deliberate: "
         "an auto-retry that turns a failed receipt into an ok one has to reach "
         "IntelliBooks a second time.",
-        receipt_id, destination, len(landed), previous.get("created_at"),
+        # Store UTC, show London, 2026-09-11. `publish_events.created_at`
+        # keeps UTC on the row; this is the reading of it a person sees.
+        receipt_id, destination, len(landed),
+        london_time.stamp(previous.get("created_at")),
         previous.get("item_path"))
 
 

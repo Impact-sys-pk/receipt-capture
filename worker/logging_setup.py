@@ -28,8 +28,21 @@ from pathlib import Path
 from typing import Optional
 
 import config
+from worker.london_time import LondonFormatter
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s — %(message)s"
+
+#: What renders `%(asctime)s`. **Store UTC, show London**, Paul's decision of
+#: 2026-09-11: every timestamp stored on this system is UTC and every one a
+#: person reads is converted to `Europe/London` and says which zone it is in.
+#:
+#: A log line is read by a person and by nothing else, so it is one of the
+#: surfaces that converts. It now reads `2026-07-01 00:30:15,123 BST`, where it
+#: read `2026-07-01 00:30:15,123` before: the same instant, said out loud.
+#:
+#: **Named here rather than instantiated inline** so a test can assert the four
+#: process logs share one formatter rather than checking each file's output.
+FORMATTER_CLASS = LondonFormatter
 
 MAX_BYTES = 5 * 1024 * 1024
 BACKUP_COUNT = 3
@@ -56,6 +69,27 @@ ENTRY_POINT_LOGS = {
     "discard": "discard.log",  # discard_receipt.py
     "console": "console.log",  # console/, step 14 onwards
 }
+
+
+def console_handler(stream=None) -> logging.StreamHandler:
+    """A console handler already showing London time.
+
+    **For the `logging.basicConfig(handlers=[...])` call at each entry point.**
+    `basicConfig(format=...)` builds a plain `logging.Formatter`, whose
+    `asctime` is the machine's local time with no zone written on it, so a
+    console line and the line the same record wrote into the log file would be
+    formatted by two different rules. This is how the console gets the same one.
+
+    `basicConfig` only applies its own formatter to a handler that has none, so
+    passing one of these keeps it.
+
+    `stream=None` is `logging.StreamHandler`'s own default, which is
+    `sys.stderr`. Each caller passes what it was already using; this changes how
+    a line is formatted and not where it goes.
+    """
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(FORMATTER_CLASS(LOG_FORMAT))
+    return handler
 
 
 def log_path_for(entry_point: str) -> Path:
@@ -114,6 +148,6 @@ def attach_log_handler(entry_point: str) -> Optional[Path]:
         backupCount=BACKUP_COUNT,
         encoding="utf-8",
     )
-    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    handler.setFormatter(FORMATTER_CLASS(LOG_FORMAT))
     root.addHandler(handler)
     return path

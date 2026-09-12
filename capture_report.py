@@ -47,11 +47,10 @@ import re
 import sqlite3
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
 import config
-from worker import attached
+from worker import attached, london_time
 from worker.filing import determine_tax_year
 
 #: Where the report is written. In the repository, beside `export_bookkeeping.py`'s
@@ -159,7 +158,11 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 #: Column widths. The row is one line and the two lines under it are indented to
 #: the second column, so the table stays under a hundred characters and a long
 #: reason wraps beneath its own row rather than pushing the table sideways.
-_W_ARRIVED = 16
+# `2026-07-01 00:30 BST` is 20 characters, where `2026-07-01 00:30` was 16.
+# The heading `Arrived (London) *` is 18. Widened by the London conversion of
+# 2026-09-11 rather than chosen: a narrower column truncates the zone, and the
+# zone is the thing that says which reading of the clock this is.
+_W_ARRIVED = 20
 _W_HOW = 8
 _W_DOCDATE = 16
 _W_SUPPLIER = 26
@@ -265,8 +268,19 @@ def tax_year_of(date_str):
 
 
 def arrival_date(row) -> str:
-    """The date part of `receipts.created_at`, which is ISO 8601 UTC."""
-    return (row.get("created_at") or "")[:10]
+    """The LONDON calendar date of `receipts.created_at`, which is stored as UTC.
+
+    Store UTC, show London: Paul's decision of 2026-09-11. **This is what a date
+    range filters on, and it has to be the same conversion the Arrived column
+    displays**, or the report selects on one day and prints another. A receipt
+    stored at `2026-06-30T23:30:00+00:00` arrived on 1 July as far as anybody in
+    Britain is concerned, and both the filter and the column now say so.
+
+    An unreadable value comes back as an empty string, which sorts before every
+    real date and therefore falls outside any range rather than into an
+    arbitrary one.
+    """
+    return london_time.day(row.get("created_at"))
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +364,8 @@ def why_for(conn, row):
             return f"a copy is in the client folder at {filed_path}"
         publish = _newest_publish(conn, receipt_id)
         if publish and publish.get("outcome") == PUBLISHED_OUTCOME:
-            return f"handed to the books on {publish['created_at'][:16].replace('T', ' ')}"
+            return ("handed to the books on "
+                    f"{london_time.stamp(publish['created_at'])}")
         if publish:
             return (f"handing it to the books did not work: "
                     f"{publish.get('reason') or 'no reason recorded'}")
@@ -363,7 +378,7 @@ def why_for(conn, row):
 
 
 def _row_lines(conn, row) -> list[str]:
-    arrived = (row.get("created_at") or "")[:16].replace("T", " ")
+    arrived = london_time.stamp(row.get("created_at"))
     how = row.get("source") or "-"
     document_date = row.get("invoice_date") or "-"
     supplier = row.get("supplier_name") or "-"
@@ -390,7 +405,7 @@ def _row_lines(conn, row) -> list[str]:
 def _table(conn, rows, marked_column: str) -> list[str]:
     """The header and one block per receipt. `marked_column` carries the `*`."""
     headers = {
-        "arrived": "Arrived (UTC)",
+        "arrived": f"Arrived ({london_time.ZONE_LABEL})",
         "document": "Document date",
     }
     headers[marked_column] = headers[marked_column] + " *"
@@ -431,7 +446,7 @@ def render(conn, client_id: str, scope) -> list[str]:
 
     record = (config.CLIENTS_BY_ID or {}).get(client_id) or {}
     client_name = record.get("client_name") or CLIENT_NOT_IN_REGISTRY
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    now = london_time.stamp(london_time.now())
 
     rule = "=" * 96
     lines = [
@@ -441,7 +456,7 @@ def render(conn, client_id: str, scope) -> list[str]:
         f"Client   {client_id}  {client_name}",
         f"Scope    {scope.description}",
         f"Selected on {scope.column_description}, marked * in the table below",
-        f"Run at   {now} UTC",
+        f"Run at   {now}",
         f"Source   {config.DB_PATH}, opened read-only",
         rule,
         "",
@@ -497,9 +512,9 @@ def _closing_notes() -> list[str]:
         "  Arrived is when the pipeline captured the document, not when the",
         "    client pressed send. Email is polled, so the two differ by up to",
         "    one poll interval.",
-        "  Times are UTC. Between late March and late October that is one hour",
-        "    behind the clock, so something sent at 00:30 on a British summer",
-        "    evening is dated the previous day here.",
+        "  Times are London time and every one says BST or GMT. The database",
+        "    stores UTC, which is what keeps the two 01:30s on the last Sunday",
+        "    in October apart, and what you see here is that converted.",
         "  Only receipts are listed. Platform statements are a separate record",
         "    and are not in this report.",
     ]
@@ -541,7 +556,9 @@ class ArrivalScope:
 
     Paul's instruction: "I sent it last week" is a question about when it was
     sent, not about what the document says. Inclusive at both ends, and on the
-    UTC date, which `_closing_notes()` says out loud.
+    LONDON date, which is the date the Arrived column beside it shows. It was
+    the UTC date until 2026-09-11, which meant a receipt that arrived at half
+    past midnight on a British summer morning was selected into the day before.
     """
 
     marked_column = "arrived"
@@ -550,7 +567,8 @@ class ArrivalScope:
     def __init__(self, first: str, last: str):
         self.first = first
         self.last = last
-        self.description = f"arrived {first} to {last} inclusive, UTC"
+        self.description = (f"arrived {first} to {last} inclusive, "
+                            f"{london_time.ZONE_LABEL} dates")
         self.slug = f"{first}_to_{last}"
 
     def split(self, rows):
@@ -657,7 +675,10 @@ def main() -> int:
 
     text = "\n".join(lines) + "\n"
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    # The London clock, so the file an operator is looking for in `exports\`
+    # is named for the time they ran it rather than an hour earlier. It is the
+    # same instant as the `Run at` line inside the report.
+    stamp = london_time.now().strftime("%Y%m%d-%H%M%S")
     written = _next_free_path(
         OUTPUT_DIR,
         f"capture-report_{_safe(args.client)}_{_safe(scope.slug)}_{stamp}",

@@ -146,7 +146,7 @@ class TempEnvironment:
         )
 
     def filed_sidecar(self):
-        """The payload that travelled with this receipt, minus the item's own keys.
+        r"""The payload that travelled with this receipt, minus the item's own keys.
 
         **Repointed 2026-09-09 by stage 4, and the name is kept on purpose.**
         ~~Amendment 170: Clients\{name}\IntelliBooks\Receipts\{tax year}\.~~

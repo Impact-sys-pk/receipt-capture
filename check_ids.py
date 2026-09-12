@@ -2,6 +2,7 @@ import sqlite3
 import sys
 
 import config
+from worker import london_time
 
 # config.DB_PATH is the one place the database path lives. This script used to
 # open Path("data/receipts.db"), a path amendment 76 removed, and an sqlite
@@ -36,8 +37,10 @@ rows = conn.execute('''
 if rows:
     print(f'  FOUND {len(rows)} orphaned row(s):')
     for row in rows:
+        # Store UTC, show London, 2026-09-11. `stamp()` appends BST or GMT.
         print(f'    categorisation_id={row["categorisation_id"]} receipt_id={row["receipt_id"]} '
-              f'extraction_id={row["extraction_id"]} categorised_at={row["categorised_at"]}')
+              f'extraction_id={row["extraction_id"]} '
+              f'categorised_at={london_time.stamp(row["categorised_at"])}')
 else:
     print('  none found')
 

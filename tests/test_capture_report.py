@@ -466,6 +466,20 @@ class ScopeTest(unittest.TestCase):
             self.assertNotIn(capture_report.DOCUMENT_DATE_COLUMN, dates)
 
     def test_the_range_is_inclusive_at_both_ends(self):
+        """Inclusive at both ends, on the LONDON day.
+
+        **Rewritten 2026-09-12 by the London change**, and the rewrite is the
+        point rather than a repair. The four timestamps below are the ones this
+        test always used; what moved is which of them are in the range, because
+        `--from 2026-09-05` now means the British day and September is British
+        Summer Time. `2026-09-11T23:59:59+00:00` is one minute to one in the
+        morning of the 12th in London and is now out; `2026-09-04T23:59:59+00:00`
+        is one minute to one in the morning of the 5th and is now in.
+
+        The old names are kept so the change is legible against the old test.
+        `last-day` is no longer the last day and `day-before` is no longer the
+        day before, which is exactly what this change did.
+        """
         with TempReport() as env:
             env.receipt("first-day", arrived="2026-09-05T00:00:01+00:00")
             env.receipt("last-day", arrived="2026-09-11T23:59:59+00:00")
@@ -473,10 +487,93 @@ class ScopeTest(unittest.TestCase):
             env.receipt("day-after", arrived="2026-09-12T00:00:01+00:00")
             _code, out = env.run(["--client", CLIENT,
                                   "--from", "2026-09-05", "--to", "2026-09-11"])
-            self.assertIn("first-day", out)
-            self.assertIn("last-day", out)
-            self.assertNotIn("day-before", out)
-            self.assertNotIn("day-after", out)
+            self.assertIn("first-day", out)        # 01:00:01 BST on the 5th
+            self.assertIn("day-before", out)       # 00:59:59 BST on the 5th
+            self.assertNotIn("last-day", out)      # 00:59:59 BST on the 12th
+            self.assertNotIn("day-after", out)     # 01:00:01 BST on the 12th
+
+    def test_the_london_day_is_what_bounds_the_range_exactly(self):
+        """The instants either side of both ends of the London day.
+
+        The test above uses timestamps chosen when the range meant the UTC day,
+        so it happens to land an hour inside each boundary. These four are the
+        boundary itself: midnight and one second before it, London, at both
+        ends of the range.
+        """
+        with TempReport() as env:
+            # 2026-09-05 00:00:00 BST, the first instant of the first day.
+            env.receipt("in-at-the-start", arrived="2026-09-04T23:00:00+00:00")
+            # 2026-09-04 23:59:59 BST, one second earlier.
+            env.receipt("out-at-the-start", arrived="2026-09-04T22:59:59+00:00")
+            # 2026-09-11 23:59:59 BST, the last instant of the last day.
+            env.receipt("in-at-the-end", arrived="2026-09-11T22:59:59+00:00")
+            # 2026-09-12 00:00:00 BST, one second later.
+            env.receipt("out-at-the-end", arrived="2026-09-11T23:00:00+00:00")
+            _code, out = env.run(["--client", CLIENT,
+                                  "--from", "2026-09-05", "--to", "2026-09-11"])
+            self.assertIn("in-at-the-start", out)
+            self.assertIn("in-at-the-end", out)
+            self.assertNotIn("out-at-the-start", out)
+            self.assertNotIn("out-at-the-end", out)
+
+    def test_the_column_shows_the_same_day_the_filter_selected_on(self):
+        """The one thing that must not come apart.
+
+        A filter that converts while the column beside it does not would select
+        a receipt into 1 July and print 30 June on the same line, and the report
+        would be arguing with itself. This drives both halves at the boundary.
+        """
+        with TempReport() as env:
+            env.receipt("just-after-midnight",
+                        arrived="2026-06-30T23:30:00+00:00")
+            _code, out = env.run(["--client", CLIENT,
+                                  "--from", "2026-07-01", "--to", "2026-07-01"])
+            self.assertIn("just-after-midnight", out)
+            self.assertIn("2026-07-01 00:30 BST", out)
+            self.assertNotIn("2026-06-30", out)
+
+    def test_the_report_says_which_zone_it_is_showing(self):
+        """Every time on the page is labelled, and the closing note explains it.
+
+        A converted time with no zone on it is the worse of the two failures:
+        it is indistinguishable from an unconverted one.
+        """
+        with TempReport() as env:
+            env.receipt("r-1", arrived="2026-06-30T23:30:00+00:00")
+            _code, out = env.run(["--client", CLIENT,
+                                  "--from", "2026-07-01", "--to", "2026-07-01"])
+            self.assertIn("Arrived (London)", out)
+            self.assertIn("London dates", out)
+            self.assertRegex(out, r"Run at   \d{4}-\d{2}-\d{2} \d{2}:\d{2} (BST|GMT)")
+            self.assertIn("Times are London time", out)
+            self.assertNotIn("Arrived (UTC)", out)
+            self.assertNotIn("Times are UTC", out)
+
+    def test_a_document_date_is_not_converted(self):
+        """`extractions.invoice_date` is a date. It has no time and no zone.
+
+        A conversion there would file a document into a tax year nobody would
+        look in, which is why it is asserted on the page rather than argued.
+        """
+        with TempReport() as env:
+            env.receipt("r-1", arrived="2026-09-08T09:00:00+00:00")
+            env.extraction("r-1", invoice_date="2026-04-06",
+                           supplier="Supplier", gross=10.0)
+            _code, out = env.run(["--client", CLIENT, "--tax-year", "2026-27"])
+            self.assertIn("2026-04-06", out)
+            # No zone on it, because nothing converted it. A converted value
+            # would carry BST or GMT, and 6 April in BST read as an instant and
+            # shifted back would become 5 April, which is the other tax year.
+            # The direct form: a document date that has acquired a time has
+            # been through a conversion, whatever the clock then said. This is
+            # what catches the conversion being applied at the call site as
+            # well as inside the module.
+            self.assertNotRegex(out, r"2026-04-06[ T]\d{2}:\d{2}")
+            self.assertNotIn("2026-04-06 BST", out)
+            self.assertNotIn("2026-04-06 GMT", out)
+            self.assertNotIn("2026-04-05", out)
+            # And the year it was selected into is the one the date names.
+            self.assertIn("tax year 2026-27", out)
 
     def test_another_client_is_never_in_the_report(self):
         with TempReport() as env:

@@ -25,7 +25,8 @@ from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
-from worker.logging_setup import LOG_FORMAT, attach_log_handler
+from worker.logging_setup import LOG_FORMAT, attach_log_handler, console_handler
+from worker import london_time
 from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_note
 from worker.attached import (
     AttachedMessageError,
@@ -47,7 +48,11 @@ _LOG_FORMAT = LOG_FORMAT  # one definition, in worker/logging_setup.py
 logging.basicConfig(
     level=logging.INFO,
     format=_LOG_FORMAT,
-    handlers=[logging.StreamHandler(sys.stdout)],
+    # Store UTC, show London, Paul's decision of 2026-09-11. The console is
+    # read by a person and by nothing else, so it converts, and it takes the
+    # same formatter as run.log rather than a second one that would differ
+    # from it by an hour for seven months of the year.
+    handlers=[console_handler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
@@ -1091,15 +1096,24 @@ def acquire_lock() -> bool:
             else:
                 holder_started_at = _process_started_at(existing_pid)
                 if _lock_describes_process(existing_started_at, holder_started_at):
+                    # Store UTC, show London, 2026-09-11. The lock file keeps
+                    # UTC, because `_lock_describes_process()` compares it against
+                    # the process creation time; only what is said out loud here
+                    # converts, and the log line's own timestamp is in the same
+                    # zone, so the two cannot be read as an hour apart.
+                    started = (london_time.stamp(existing_started_at)
+                               or "a time the lock did not record")
                     logger.error(
                         f"Another pipeline process is already running: pid {existing_pid}, "
-                        f"started at {existing_started_at or 'a time the lock did not record'}"
+                        f"started at {started}"
                     )
                     return False
                 stale_reason = (
                     f"pid {existing_pid} is alive but was created at "
-                    f"{holder_started_at.isoformat()}, so it is not the process this lock "
-                    f"describes ({existing_started_at}); the pid has been reused"
+                    f"{london_time.stamp(holder_started_at)}, so it is not the "
+                    f"process this lock describes "
+                    f"({london_time.stamp(existing_started_at)}); "
+                    "the pid has been reused"
                 )
 
         logger.warning(f"Stale pipeline lock detected, removing: {stale_reason}")

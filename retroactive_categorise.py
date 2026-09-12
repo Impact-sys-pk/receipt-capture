@@ -13,10 +13,17 @@ from worker.database.schema import init_db
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
 from worker.categorisation.fallback import resolve_against_chart
+from worker.logging_setup import LOG_FORMAT, console_handler
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+    # `LOG_FORMAT` rather than a second copy of the same string, and a
+    # handler that already carries the London formatter: store UTC, show
+    # London, Paul's decision of 2026-09-11. Without the handler this
+    # script's console lines would be an hour out from run.log's for seven
+    # months of the year, and would not say which zone they were in.
+    format=LOG_FORMAT,
+    handlers=[console_handler()],
 )
 logger = logging.getLogger(__name__)
 

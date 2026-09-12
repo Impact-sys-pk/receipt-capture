@@ -39,26 +39,40 @@ item written before the key existed.
 
 `publish.category_is_unconfirmed()` is the whole trigger, and it takes the
 categorisation object rather than a boolean so no call site can pass the wrong
-answer. **Narrowing the hold is one line in that function**, which matters
-because which layers should hold is a live question: see the report.
+answer.
 
-## What the engine actually writes, measured rather than read
+## It reads `match_source`, and it did not always
 
-`PerLayerTest` below drives the real engine for each layer. The mapping is
-**not** "layer 5 only":
+**Amendment 333, Paul's decision of 2026-09-12, which amends his own of
+2026-09-11.** ~~The hold reads `categorisations.needs_review`.~~ **Amendment
+330's first point is superseded.** `category_unconfirmed` is true where **a
+machine produced a category** and nobody has confirmed it, and nothing else.
 
-| Layer | `match_source` | `needs_review` |
-|---|---|---|
-| 0 rule | `rule` | False |
-| 1 client exact | `client` | False |
-| 2 firm exact | `firm` | False |
-| 3 fuzzy client | `fuzzy_client` | **True** |
-| 4 fuzzy firm | `fuzzy_firm` | **True** |
-| 5 AI | `ai` | **True** |
-| no match | `unmatched` | **True** |
+**What decided it was that `needs_review` is true for three more things.**
+`PerLayerTest` below drove every layer through the real engine and reported it,
+and amendment 330 had been taken without that being read:
 
-`resolve_against_chart()` forces it True in two more cases, an unreadable chart
-and an unusable code.
+| Layer | `match_source` | `needs_review` | Holds now |
+|---|---|---|---|
+| 0 rule | `rule` | False | no |
+| 1 client exact | `client` | False | no |
+| 2 firm exact | `firm` | False | no |
+| 3 fuzzy client | `fuzzy_client` | True | **yes** |
+| 4 fuzzy firm | `fuzzy_firm` | True | **yes** |
+| 5 AI | `ai` | True | **yes** |
+| no match | `unmatched` | True | **no** |
+
+**An unmatched receipt is not a guess.** It carries no category at all, the empty
+field says so on screen, and it is already in the uncategorised count. Holding it
+would also stop it draining into the books, which moves where nearly all the work
+happens as a side effect of a decision aimed at the classifier.
+
+**And `resolve_against_chart()` no longer holds anything.** It forces
+`needs_review` True on an unreadable bundle and on an unusable code, and it
+leaves `match_source` alone, so a trigger reading `match_source` does not fire
+on a hand-taught mapping when the chart is missing. That was flag 2 of
+`2026-09-11_REPORT_claude_code_category_hold.md` and amendment 333 disposes of
+it. `TheReadableChartTest` below holds the inversion.
 """
 
 import ast
@@ -147,6 +161,17 @@ def raw_item_text(receipt_id):
 def drive(test_case, outcome, client_id=CLIENT):
     with_email_client(test_case, client_id)
     Routes(RecordingExtractor(OUTCOMES[outcome])).email_attachment()
+
+
+def production_files():
+    r"""`app.py`, the root scripts and the `worker\` tree.
+
+    Not `docs\specs\categorisation_engine.py`, which is the v0.1 prototype and
+    which nothing imports. Counting it as production was my own error on
+    2026-09-11 and it inflated an enumeration by six.
+    """
+    root = source_guards.REPO_ROOT
+    return sorted(root.glob("*.py")) + sorted(root.glob("worker/**/*.py"))
 
 
 def categorise(repo, supplier, ai=False):
@@ -242,26 +267,201 @@ class PerLayerTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_the_trigger_agrees_with_the_column_on_every_layer(self):
-        """`category_is_unconfirmed()` is `needs_review` and nothing else today.
-
-        Stated as its own test so that narrowing the trigger, which the report
-        offers, fails here rather than silently somewhere downstream.
+    def test_the_trigger_holds_exactly_the_three_machine_answers(self):
+        """Amendment 333. Every layer, through the real engine, against the
+        trigger, with the expected answer written per layer rather than derived
+        from the thing being tested.
         """
+        expected = {
+            "rule": False,
+            "client": False,
+            "firm": False,
+            "fuzzy_client": True,
+            "fuzzy_firm": True,
+            "ai": True,
+            "unmatched": False,
+        }
+        seen = {}
         with TempEnvironment():
             repo = Repository()
             try:
                 repo.upsert_firm_vendor(TRADE, "shell", "7400", "Fuel", NOW,
                                         vendor_name="Shell")
-                for supplier, ai in (("Shell", False), ("Shel", False),
-                                     ("Unseen Ltd", False), ("Unseen Ltd", True)):
+                repo.upsert_client_vendor(CLIENT, "apcoa parking", "7300",
+                                          "Parking", NOW,
+                                          vendor_name="Apcoa Parking")
+                repo.create_client_rule("rule-1", CLIENT, "always fuel", 90,
+                                        None, "contains", "detail", "esso",
+                                        "7400", "Fuel")
+                cases = (("Esso Garage", False), ("Apcoa Parking", False),
+                         ("Shell", False), ("Apcoa Parkin", False),
+                         ("Shel", False), ("Unseen Ltd", True),
+                         ("Unseen Ltd", False))
+                for supplier, ai in cases:
                     result = categorise(repo, supplier, ai=ai)
-                    with self.subTest(source=result.match_source):
-                        self.assertEqual(
-                            publish.category_is_unconfirmed(result),
-                            bool(result.needs_review))
+                    seen[result.match_source] = result
             finally:
                 repo.close()
+
+        self.assertEqual(
+            set(seen), set(expected),
+            "the seven cases above no longer produce the seven match_source "
+            f"values between them; produced {sorted(seen)}")
+        for source, result in sorted(seen.items()):
+            with self.subTest(source=source):
+                self.assertIs(publish.category_is_unconfirmed(result),
+                              expected[source])
+
+    def test_the_trigger_no_longer_tracks_the_needs_review_column(self):
+        """The two disagree on `unmatched`, and that disagreement IS amendment
+        333. A test asserting they agree would pass again if the trigger were
+        reverted, so this one asserts they differ where the decision says.
+        """
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                result = categorise(repo, "Unseen Ltd")
+            finally:
+                repo.close()
+        self.assertEqual(result.match_source, "unmatched")
+        self.assertTrue(result.needs_review,
+                        "the column is unchanged: amendment 333 moves the "
+                        "trigger, not the column")
+        self.assertIs(publish.category_is_unconfirmed(result), False,
+                      "an unmatched receipt is not a guess and must not hold")
+
+
+# ---------------------------------------------------------------------------
+# The vocabulary the trigger partitions
+# ---------------------------------------------------------------------------
+
+class MatchSourceSetTest(unittest.TestCase):
+    r"""Every `match_source` value, enumerated from the engine's syntax tree.
+
+    **Amendment 333 asks for this by name**, so that a value added to the engine
+    later fails a test rather than falling silently into one side of the
+    trigger. A new value in neither set below is neither held nor confirmed by
+    anyone's decision; it simply would not hold, and that quiet default is what
+    this guard exists to prevent.
+
+    **From the tree and not by grep.** This project keeps superseded wording
+    beside every correction, so a text search for `match_source` returns the
+    prose about it too, and `worker\categorisation\fallback.py`'s docstring
+    discusses the field at length precisely because it does not write it.
+
+    **The partition lives here rather than in `worker\publish.py`**, which
+    states only the holding half. That follows this project's own convention:
+    `ClientFolderWritersTest.ALLOWED` and `TheSweepsTest`'s expected set are
+    both held in a test with the reasoning beside them, because the claim being
+    made is "somebody considered every member", which is a statement about a
+    decision rather than about the module's behaviour.
+    """
+
+    #: A machine chose which account this is, and nobody has confirmed it.
+    #: Amendment 333. Written out independently of
+    #: `publish.MACHINE_MATCH_SOURCES`, so a change to that constant fails here
+    #: rather than agreeing with itself.
+    HOLDS = {"fuzzy_client", "fuzzy_firm", "ai"}
+
+    #: A person's answer, or no answer at all.
+    #:
+    #: `rule` is a rule somebody wrote. `client` and `firm` are stored mappings
+    #: somebody taught. **`unmatched` is the one worth explaining**: it carries
+    #: no category, so there is no guess to confirm, the empty field already
+    #: says so on screen, and holding it would stop it draining into the books
+    #: at all. Whether uncategorised receipts should be held at the door is a
+    #: separate decision and it has not been taken.
+    DOES_NOT_HOLD = {"rule", "client", "firm", "unmatched"}
+
+    @staticmethod
+    def engine_match_sources():
+        """Every string literal the engine assigns to `match_source`."""
+        tree = source_guards.tree_of("worker", "categorisation", "engine.py")
+        found = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if (kw.arg == "match_source"
+                            and isinstance(kw.value, ast.Constant)
+                            and isinstance(kw.value.value, str)):
+                        found.add(kw.value.value)
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if (isinstance(target, ast.Attribute)
+                            and target.attr == "match_source"
+                            and isinstance(node.value, ast.Constant)
+                            and isinstance(node.value.value, str)):
+                        found.add(node.value.value)
+        return found
+
+    def test_the_two_sets_partition_the_engines_whole_vocabulary(self):
+        found = self.engine_match_sources()
+        decided = self.HOLDS | self.DOES_NOT_HOLD
+        self.assertEqual(
+            found, decided,
+            "the engine's match_source vocabulary and the decided sets "
+            "disagree.\n"
+            f"  written by the engine ({len(found)}): {sorted(found)}\n"
+            f"  decided here ({len(decided)}): {sorted(decided)}\n"
+            f"  in the engine and undecided: {sorted(found - decided)}\n"
+            f"  decided and no longer written: {sorted(decided - found)}\n"
+            "A new value has to go in one set or the other deliberately. Left "
+            "alone it would simply not hold, which is a decision nobody took.")
+
+    def test_the_two_sets_do_not_overlap(self):
+        self.assertEqual(self.HOLDS & self.DOES_NOT_HOLD, set())
+
+    def test_publish_holds_exactly_the_machine_set(self):
+        r"""`worker\publish.py`'s constant against this file's own copy.
+
+        Two independent statements of one set. A check that read the constant
+        and compared it with itself could not fail, which is the tell
+        `CLAUDE.md` names.
+        """
+        self.assertEqual(set(publish.MACHINE_MATCH_SOURCES), self.HOLDS)
+
+    def test_the_enumeration_is_not_silently_empty(self):
+        """A sweep matching nothing would pass the partition test if both sets
+        were emptied to match. `CLAUDE.md`: a check that cannot fail is not a
+        check."""
+        found = self.engine_match_sources()
+        self.assertEqual(len(found), 7, sorted(found))
+        for known in ("rule", "client", "firm", "fuzzy_client", "fuzzy_firm",
+                      "ai", "unmatched"):
+            with self.subTest(value=known):
+                self.assertIn(known, found)
+
+    def test_nothing_outside_the_engine_writes_a_match_source_literal(self):
+        r"""The vocabulary is the engine's alone, which is what makes reading
+        one file enough.
+
+        `resolve_against_chart()` says in its docstring that it leaves
+        `match_source` alone in every case, including `unusable`. This is that
+        claim tested rather than quoted. The five writes elsewhere all pass
+        `categorisation.match_source` straight into `save_categorisation()`.
+        """
+        strays = []
+        for path in production_files():
+            if path.parts[-3:] == ("worker", "categorisation", "engine.py"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    for kw in node.keywords:
+                        if (kw.arg == "match_source"
+                                and isinstance(kw.value, ast.Constant)):
+                            strays.append(
+                                f"{path.name}:{node.lineno} "
+                                f"match_source={kw.value.value!r}")
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (isinstance(target, ast.Attribute)
+                                and target.attr == "match_source"
+                                and isinstance(node.value, ast.Constant)):
+                            strays.append(
+                                f"{path.name}:{node.lineno} "
+                                f"{ast.unparse(target)} = {node.value.value!r}")
+        self.assertEqual(strays, [], "\n".join(strays))
 
 
 # ---------------------------------------------------------------------------
@@ -271,15 +471,45 @@ class PerLayerTest(unittest.TestCase):
 class TheKeyTest(unittest.TestCase):
 
     def test_a_guessed_category_publishes_the_key_true(self):
-        """No mappings, so the categorisation is `unmatched` and unconfirmed."""
+        """Layer 3. A near-miss mapping, so the machine chose which one it meant.
+
+        **`apcoa parkin` and not `apcoa parking`.** The fixture's supplier keys
+        on `apcoa parking`, so an exact seed would answer at layer 1 and this
+        test would assert the opposite of what it means to. The near miss scores
+        0.96, which is over the 0.70 threshold, measured rather than assumed.
+        """
         with TempEnvironment():
+            repo = Repository()
+            try:
+                repo.upsert_client_vendor(CLIENT, "apcoa parkin", "7300",
+                                          "Parking", NOW,
+                                          vendor_name="Apcoa Parkin")
+            finally:
+                repo.close()
             drive(self, "ok")
             receipt, = receipts()
             self.assertEqual(receipt["status"], "ok")
             row, = categorisations()
-            self.assertEqual(row["needs_review"], 1)
+            self.assertEqual(row["match_source"], "fuzzy_client")
             item = item_for(receipt["receipt_id"])
             self.assertIs(item[publish.CATEGORY_UNCONFIRMED_KEY], True)
+
+    def test_an_unmatched_receipt_publishes_the_key_false(self):
+        """Amendment 333, and the row it turns on. No mappings at all.
+
+        The column still says the categorisation needs review; the item says the
+        receipt must not be held for it. An unmatched receipt carries no
+        category, so there is no guess to confirm, and holding it would stop it
+        draining into the books at all.
+        """
+        with TempEnvironment():
+            drive(self, "ok")
+            receipt, = receipts()
+            row, = categorisations()
+            self.assertEqual(row["match_source"], "unmatched")
+            self.assertEqual(row["needs_review"], 1, "the column is unchanged")
+            item = item_for(receipt["receipt_id"])
+            self.assertIs(item[publish.CATEGORY_UNCONFIRMED_KEY], False)
 
     def test_a_category_from_an_exact_match_publishes_the_key_false(self):
         """Layer 1. A stored mapping is a person's earlier answer, so nothing
@@ -347,8 +577,19 @@ class TheKeyTest(unittest.TestCase):
         without coercion would publish as a number and a reader testing
         `=== true` would never hold anything. The reader has to be able to test
         identity, because that is what gives the blank case for free.
+
+        Seeded to a fuzzy match so the value under test is `true`: since
+        amendment 333 an unmatched receipt publishes `false`, and asserting the
+        spelling of `false` would not catch a `0` published as the truthy case.
         """
         with TempEnvironment():
+            repo = Repository()
+            try:
+                repo.upsert_client_vendor(CLIENT, "apcoa parkin", "7300",
+                                          "Parking", NOW,
+                                          vendor_name="Apcoa Parkin")
+            finally:
+                repo.close()
             drive(self, "ok")
             receipt, = receipts()
             text = raw_item_text(receipt["receipt_id"])
@@ -359,30 +600,32 @@ class TheKeyTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# The chart check can force the hold on, whatever the layer
+# The chart check no longer holds anything
 # ---------------------------------------------------------------------------
 
-class TheUnreadableChartTest(unittest.TestCase):
-    r"""An unreadable chart holds every receipt, layer 1 included.
+class TheReadableChartTest(unittest.TestCase):
+    r"""An unreadable chart holds nothing, and that is amendment 333's point 3.
 
-    **Not a defect and not introduced here.** `resolve_against_chart()` has
-    forced `needs_review` True on an unreadable chart since the chart check was
-    built, and its own comment gives the reason: an unchecked code from a layer 1
-    exact match would otherwise carry confidence `high` straight to the books.
+    ~~`TheUnreadableChartTest`: an unreadable chart holds every receipt, layer 1
+    included.~~ **Inverted 2026-09-12 by amendment 333, deliberately and not by
+    accident.** The old class asserted the behaviour that flag 2 of
+    `2026-09-11_REPORT_claude_code_category_hold.md` reported: under amendment
+    330 a missing or mid-sync chart bundle held every receipt in the practice,
+    because `resolve_against_chart()` forces `needs_review` True on an
+    unreadable bundle whatever the layer.
 
-    **What changes today is the consequence.** While nothing read the column,
-    forcing it cost nothing. Step 10l makes it decide whether a receipt reaches
-    the books, so a practice whose chart bundle is missing, unpublished or
-    mid-sync now holds every receipt it captures. `fallback.py` weighed exactly
-    this when it chose not to strip the code: "stripping every code on an
-    unpublished bundle would put every receipt in the practice into Review at
-    once". Forcing `needs_review` now does that by another route.
+    **`resolve_against_chart()` is unchanged and still forces the column.** What
+    changed is what the trigger reads. That function leaves `match_source`
+    alone, in every one of its five outcomes and by its own docstring, so a
+    trigger reading `match_source` cannot fire on a hand-taught layer 1 mapping
+    just because the chart could not be read. **The flag is disposed of by the
+    decision rather than by a second change.**
 
-    Held as a test so the behaviour is recorded and the flag cannot quietly
-    lapse. It is reported, not repaired.
+    Both halves are kept: the same receipt with a readable bundle, and with
+    none. Without the pair, the first would prove only that something was False.
     """
 
-    def test_an_exact_match_with_no_chart_holds_anyway(self):
+    def test_an_exact_match_with_no_chart_does_not_hold(self):
         with TempEnvironment():
             repo = Repository()
             try:
@@ -397,14 +640,17 @@ class TheUnreadableChartTest(unittest.TestCase):
             self.assertEqual(row["match_source"], "client",
                              "the layer is still recorded as the one that answered")
             self.assertEqual(row["needs_review"], 1,
-                             "an unreadable chart forces the hold on")
+                             "the chart forcing is unchanged: it still sets the "
+                             "column, and the trigger no longer reads it")
             self.assertIs(
                 item_for(receipt["receipt_id"])[publish.CATEGORY_UNCONFIRMED_KEY],
-                True)
+                False,
+                "a hand-taught mapping must not be held because the chart is "
+                "missing")
 
-    def test_the_same_receipt_does_not_hold_when_the_chart_reads(self):
-        """The control. Without it the test above proves only that something
-        was True, not that the chart is what made it True."""
+    def test_the_same_receipt_does_not_hold_when_the_chart_reads_either(self):
+        """The control. The two now agree, which is the whole change: before
+        amendment 333 they differed and the bundle decided."""
         with TempEnvironment(), TempChartBundle(accounts=(("7300", "Parking"),)):
             repo = Repository()
             try:
@@ -420,6 +666,33 @@ class TheUnreadableChartTest(unittest.TestCase):
             self.assertIs(
                 item_for(receipt["receipt_id"])[publish.CATEGORY_UNCONFIRMED_KEY],
                 False)
+
+    def test_a_fuzzy_match_holds_whether_the_chart_reads_or_not(self):
+        """And the other side of it: the bundle decides nothing either way now."""
+        for label, bundle in (("no bundle", None),
+                              ("readable bundle",
+                               TempChartBundle(accounts=(("7300", "Parking"),)))):
+            with self.subTest(chart=label):
+                with TempEnvironment():
+                    repo = Repository()
+                    try:
+                        repo.upsert_client_vendor(
+                            CLIENT, "apcoa parkin", "7300", "Parking", NOW,
+                            vendor_name="Apcoa Parkin")
+                    finally:
+                        repo.close()
+                    if bundle is None:
+                        drive(self, "ok")
+                    else:
+                        with bundle:
+                            drive(self, "ok")
+                    row, = categorisations()
+                    receipt, = receipts()
+                    self.assertEqual(row["match_source"], "fuzzy_client")
+                    self.assertIs(
+                        item_for(receipt["receipt_id"])[
+                            publish.CATEGORY_UNCONFIRMED_KEY],
+                        True)
 
 
 # ---------------------------------------------------------------------------
@@ -521,12 +794,25 @@ class ValidationDidNotMoveTest(unittest.TestCase):
     and amendment 330's first point."""
 
     def test_a_held_category_leaves_the_receipt_status_ok(self):
+        """Seeded to a fuzzy match so the receipt really is held. It used to
+        drive an unmatched one and call that held, which stopped being true at
+        amendment 333."""
         with TempEnvironment():
+            repo = Repository()
+            try:
+                repo.upsert_client_vendor(CLIENT, "apcoa parkin", "7300",
+                                          "Parking", NOW,
+                                          vendor_name="Apcoa Parkin")
+            finally:
+                repo.close()
             drive(self, "ok")
             receipt, = receipts()
             extraction, = extractions()
             row, = categorisations()
-            self.assertEqual(row["needs_review"], 1, "the category is held")
+            self.assertEqual(row["match_source"], "fuzzy_client")
+            self.assertIs(
+                item_for(receipt["receipt_id"])[publish.CATEGORY_UNCONFIRMED_KEY],
+                True, "the category is held")
             self.assertEqual(receipt["status"], "ok")
             self.assertEqual(extraction["validation_status"], "ok")
 

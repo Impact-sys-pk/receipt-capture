@@ -120,9 +120,13 @@ DUPLICATE_OF_KEY = "duplicate_of"
 #: item written before this key existed". Both read as not held, so an absent
 #: key is safe either way, and a stated `false` is a positive answer.
 #:
-#: **The value is a JSON boolean and that matters.** The database column is 0 or
-#: 1, and `1 === true` is false in JavaScript, so a reader testing identity
-#: would never hold anything. `category_is_unconfirmed()` below coerces.
+#: **The value is a JSON boolean and that matters.** `1 === true` is false in
+#: JavaScript, so a reader testing identity would never hold an item carrying a
+#: number. ~~The database column is 0 or 1 ... `category_is_unconfirmed()` below
+#: coerces.~~ **Corrected 2026-09-12 with amendment 333**, which stopped that
+#: function reading the column at all: it now tests membership of a frozenset,
+#: which already yields a `bool`, so there is nothing left to coerce and the
+#: sentence described code that no longer exists.
 CATEGORY_UNCONFIRMED_KEY = "category_unconfirmed"
 
 #: Every key a published item carries that the sidecar does not, in one place.
@@ -255,12 +259,52 @@ def write_item(directory: Path, receipt_id: str, item: dict) -> Path:
     return final
 
 
+#: The `match_source` values where a MACHINE chose which account this is.
+#: **Amendment 333, Paul's decision of 2026-09-12, which amends his own of
+#: 2026-09-11.** These three hold; `rule`, `client`, `firm` and `unmatched` do
+#: not.
+#:
+#: **`unmatched` is the one worth explaining, because it is not obvious and it
+#: is what the amendment turns on.** An unmatched receipt carries no category at
+#: all, so there is no guess for anybody to confirm; the empty field says so on
+#: screen and it is already in the uncategorised count. Holding it would also do
+#: more than add a pill: it would stop the receipt draining into the books,
+#: which moves where nearly all the work happens as a side effect of a decision
+#: aimed at the classifier. Whether uncategorised receipts should be held at the
+#: door is a separate decision and it has not been taken.
+#:
+#: **The other half of the partition is stated in
+#: `tests/test_category_hold.py`**, which enumerates the engine's whole
+#: vocabulary from its syntax tree and asserts these two sets cover it exactly.
+#: A value added to the engine later therefore fails a test rather than falling
+#: silently into the not-holding side.
+MACHINE_MATCH_SOURCES = frozenset({"fuzzy_client", "fuzzy_firm", "ai"})
+
+
 def category_is_unconfirmed(categorisation) -> bool:
     """Is this categorisation a machine's answer nobody has confirmed?
 
     **The whole trigger for step 10l's hold, in one expression, on purpose.**
-    Amendment 330 decided the hold lives in `categorisations.needs_review`, so
-    that is what this reads, and narrowing it is a change to this one line.
+
+    **It reads `match_source`. Amendment 333.** ~~Amendment 330 decided the hold
+    lives in `categorisations.needs_review`, so that is what this reads.~~
+    **Amendment 330's first point is superseded** and the column is untouched:
+    it keeps its meaning and every one of its writers, and the hold simply stops
+    reading it.
+
+    **Why the column was the wrong reader, and it took driving the engine to
+    see it.** `needs_review` is True for layers 3, 4 and 5, for all three
+    `unmatched` sites, **and** at two points in `resolve_against_chart()` which
+    force it whatever the layer. So reading it held every unmatched receipt, and
+    held every receipt of any layer whenever the client's chart could not be
+    read: 25 of 26 rows on the live database.
+    `2026-09-11_REPORT_claude_code_category_hold.md` sections 1.3 and 2.
+
+    **`resolve_against_chart()` leaves `match_source` alone in all five of its
+    outcomes**, by its own docstring and asserted in
+    `tests/test_category_hold.py`. That is what disposes of that report's flag 2
+    without a second change: a missing or mid-sync chart bundle no longer holds
+    a hand-taught mapping.
 
     **It takes the categorisation rather than a boolean** so no call site can
     pass the wrong answer. `extra_for()`'s two callers each have the object in
@@ -271,22 +315,13 @@ def category_is_unconfirmed(categorisation) -> bool:
     category to be unconfirmed about. It returns False, and such an item is held
     by its `validation_status` instead, which is a different question.
 
-    **What `needs_review` covers, measured in `tests/test_category_hold.py`
-    rather than read off the engine**: it is True for layers 3, 4 and 5, for no
-    match at all, and for the two chart outcomes `resolve_against_chart()`
-    forces it on. It is False for layers 0, 1 and 2, which are a rule a person
-    wrote and two stored mappings a person taught. **So the hold is wider than
-    "a layer 5 guess"**, which is what amendment 237 originally described and
-    what the brief's section 6 expected. That divergence is reported rather than
-    resolved here: it is Paul's decision, and it is this function's one line.
-
-    `bool()` rather than the value itself: the dataclass field is a Python bool
-    but a caller reading the column back out of the database has 0 or 1, and
-    `1 === true` is false in JavaScript.
+    **Returns a real `bool` and that is load-bearing**, not tidiness: `in` on a
+    frozenset already gives one, and the reader on the other side tests
+    `=== true`, where `1 === true` is false in JavaScript.
     """
     if categorisation is None:
         return False
-    return bool(getattr(categorisation, "needs_review", False))
+    return getattr(categorisation, "match_source", None) in MACHINE_MATCH_SOURCES
 
 
 def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:

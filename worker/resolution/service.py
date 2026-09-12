@@ -799,6 +799,113 @@ def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_ke
     )
 
 
+#: The `match_source` layer 5 writes, and the only one the confirm case can
+#: arise on. Amendment 238: "The confirm case exists only on a layer 5 answer. A
+#: layer 1 or layer 2 match returns a stored code and there is no suggestion out
+#: of the 66 to agree with, and layer 2 already holds any mapping it would
+#: learn."
+#:
+#: **Deliberately not `publish.MACHINE_MATCH_SOURCES`**, which is step 10l's set
+#: and holds the two fuzzy layers as well. A fuzzy match returns a STORED
+#: mapping's code, so there is nothing for the operator to confirm and no
+#: receipt account behind it. Step 10l's set answers "did a machine choose
+#: this"; this answers "did the classifier propose an account out of the
+#: shipped list", and they are different questions that happen to overlap.
+CLASSIFIER_MATCH_SOURCE = "ai"
+
+#: The two `chart_outcome` values where the chart check actually resolved the
+#: classifier's suggestion to an account.
+#:
+#: **`unreadable_chart` is excluded and that is a narrowing, stated rather than
+#: assumed.** Amendment 238's rule compares the operator's code with "the code
+#: the chart check resolved the classifier's suggestion to". On an unreadable
+#: chart that check did not run: `resolve_against_chart()` leaves the code
+#: standing unchecked and forces `needs_review`. So the rule's own input does
+#: not exist, and writing a firm row on a comparison against an unchecked code
+#: is precisely the failure amendment 238 exists to prevent, in its words "a
+#: firm-wide mapping learned from a code whose meaning was never established,
+#: applied confidently by layer 2 to every client of that trade".
+#:
+#: `_resolve_category()` already refuses to teach the CLIENT table on an
+#: unreadable chart, for the same reason and in the same words. This is that
+#: rule held at the wider-reaching table.
+#:
+#: `unusable` is excluded too, and there it makes no difference: that branch
+#: sets `suggested_code` to None, so the comparison below could never be equal.
+CHART_CHECK_RESOLVED = ("in_chart", "substituted")
+
+
+def _learn_firm_mapping_if_confirmed(repo, receipt, categorisation, chosen_code,
+                                     vendor_key, vendor_name):
+    """Teach the firm pool where the operator's code confirms the classifier.
+
+    **Step 10m, amendment 238, and the rule is Paul's.** The operator's chosen
+    code is compared with the code the chart check resolved the classifier's
+    suggestion to.
+
+    - **Equal**: the receipt account is known, because it is the account out of
+      the shipped list that the classifier named, so the firm table is written
+      with THAT account and not with the operator's code.
+    - **Different**: the receipt account is not knowable. Several master codes
+      collapse into one under the chart fallback and the operator's pick cannot
+      be run backwards, so nothing is written here. The caller has already
+      written the client table, which is scoped to one client and is safe.
+
+    **The tick is the caller's to check**, per 11.3, because the caller already
+    checks it before writing the client table and two places reading one flag
+    is how the two routes would drift apart.
+
+    Returns `(code, name)` if a row was written, else None, so the caller can
+    log what happened rather than guess.
+
+    ## Why it is one helper called from two places
+
+    **Paul's decision, 2026-09-12.** There are two learning sites,
+    `resolve_receipt()` and `_apply_filed_note()`, and they do not behave the
+    same way: their guards differ, one requires the operator's code to be
+    chart-confirmed and the other does not. A rule live on one route and absent
+    from the other is the half-built change this project has paid for before, so
+    the decision is written once and both routes call it.
+
+    **It supersedes amendment 231's point two in this one case, and only this
+    one.** That amendment says a Desktop correction writes the client table
+    only, and its stated reason is that the receipt account cannot be recovered
+    from an operator's chart code, `7310`, `7391` and `7392` all resolving into
+    `7310`. **That reason is amendment 238's "Different" half.** 238 carves out
+    the single case where the account IS known, because the classifier named it.
+    Everything else amendment 231 decided stands.
+    """
+    if categorisation.match_source != CLASSIFIER_MATCH_SOURCE:
+        return None
+    if categorisation.chart_outcome not in CHART_CHECK_RESOLVED:
+        return None
+
+    resolved = (categorisation.suggested_code or "").strip()
+    if not resolved or (chosen_code or "").strip() != resolved:
+        return None
+
+    # The account the CLASSIFIER named, which is the one out of the shipped
+    # receipt-account list. `original_code` is set only where a substitution
+    # moved `suggested_code` off it, so on `in_chart` the suggestion is itself
+    # what layer 5 said. Writing `suggested_code` unconditionally would teach
+    # the shared pool this client's fallback account instead.
+    code = categorisation.original_code or categorisation.suggested_code
+    name = categorisation.original_name or categorisation.suggested_name
+    if not code:
+        return None
+
+    repo.upsert_firm_vendor(
+        business_type=categorisation.business_type,
+        vendor_key=vendor_key,
+        nominal_code=code,
+        account_name=name,
+        last_updated=_now(),
+        vendor_name=vendor_name,
+        firm_id=receipt.get("firm_id"),
+    )
+    return code, name
+
+
 def _override(value: Optional[str]) -> Optional[str]:
     """Treat an empty or whitespace-only GL field as no override at all."""
     if value is None:
@@ -1271,6 +1378,23 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                     last_updated=_now(),
                     vendor_name=merged["supplier_name"],
                 )
+                # And the firm pool, ONLY where this code confirms what the
+                # classifier proposed. Step 10m, amendment 238. The helper
+                # holds the rule; both learning routes call it so neither can
+                # drift from the other. Paul's decision, 2026-09-12.
+                taught = _learn_firm_mapping_if_confirmed(
+                    repo, receipt, categorisation,
+                    chosen_code=effective_code,
+                    vendor_key=vendor_key,
+                    vendor_name=merged["supplier_name"],
+                )
+                if taught:
+                    logger.info(
+                        f"receipt {receipt_id}: the operator's {effective_code} "
+                        f"confirms the classifier, so {vendor_key} now maps to "
+                        f"{taught[0]} {taught[1]} for every "
+                        f"{categorisation.business_type} client of this firm"
+                    )
             else:
                 logger.warning(
                     f"remember_gl_for_supplier requested for {receipt_id} but the engine "
@@ -2018,13 +2142,27 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         # vendor. Only on `remember_gl_for_supplier`, and only against a code the
         # client's chart confirmed, per _CategoryDecision.
         #
-        # **`upsert_firm_vendor()` is not called here and must not be.** Paul's
-        # decision, 2026-09-05, amendment 231: a Desktop correction writes the
-        # client table only. The only code Desktop can offer is one from the
-        # client's own adopted chart, and the client table is scoped to that
-        # client, so it can never reach another. The firm pool is shared across a
-        # business_type and needs the receipt account rather than this one, which
-        # is a separate decision: item 166, deferred.
+        # ~~**`upsert_firm_vendor()` is not called here and must not be.**~~
+        # **NARROWED 2026-09-12 by step 10m, amendment 238, on Paul's decision.
+        # It IS called here now, through `_learn_firm_mapping_if_confirmed()`,
+        # and in exactly one case.** The superseded wording is kept above rather
+        # than deleted, because the reason it gave is still the reason the
+        # ordinary case writes the client table alone.
+        #
+        # Amendment 231, 2026-09-05: a Desktop correction writes the client
+        # table only. The only code Desktop can offer is one from the client's
+        # own adopted chart, and the client table is scoped to that client, so
+        # it can never reach another. The firm pool is shared across a
+        # business_type and needs the receipt account rather than this one,
+        # which is a separate decision: item 166, deferred.
+        #
+        # **Item 166 is the thing amendment 238 closed, so 238 is the deferred
+        # decision arriving rather than a reversal of 231.** And 231's stated
+        # reason is 238's "Different" half word for word: the receipt account
+        # cannot be recovered from an operator's chart code, `7310`, `7391` and
+        # `7392` all resolving into `7310`. **238 carves out the single case
+        # where the account IS known, because the classifier named it.** The
+        # helper holds that rule and both learning routes call it.
         if note.remember_gl_for_supplier and code and category.chart_confirmed:
             # `vendor_key` and not `mapping_id`. What this writes is the
             # normalised merchant key that layer 1 looks up; `mapping_id` is the
@@ -2054,6 +2192,24 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                     code=code, account_name=category_name,
                     note_resolved_at=note.resolved_at,
                 )
+                # And the firm pool, ONLY where this code confirms what the
+                # classifier proposed. Step 10m, amendment 238, which is the
+                # decision amendment 231 deferred as item 166. See the helper
+                # for why that supersedes 231's point two in this one case and
+                # in no other.
+                taught = _learn_firm_mapping_if_confirmed(
+                    repo, receipt, categorisation,
+                    chosen_code=code,
+                    vendor_key=vendor_key,
+                    vendor_name=merged["supplier_name"],
+                )
+                if taught:
+                    logger.info(
+                        f"receipt {receipt_id}: the operator's {code} confirms "
+                        f"the classifier, so {vendor_key} now maps to "
+                        f"{taught[0]} {taught[1]} for every "
+                        f"{categorisation.business_type} client of this firm"
+                    )
                 logger.info(
                     f"learned {vendor_key} -> {code} {category_name} for client "
                     f"{receipt['client_id']} from the Desktop note for {receipt_id}"

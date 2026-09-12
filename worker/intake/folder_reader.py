@@ -10,8 +10,15 @@ from worker.storage.store import is_supported, compute_hash
 logger = logging.getLogger(__name__)
 
 SIDE_CAR_EXT = ".json"
-INTAKE_PATTERN = "rcpt_"
-STATEMENT_PREFIX = "stmt_"
+
+# `INTAKE_PATTERN = "rcpt_"` and `STATEMENT_PREFIX = "stmt_"` were here and
+# are DELETED, 2026-09-12, item 116 of
+# `2026-08-20_LIST_outstanding_items_and_decisions.md`. Both are left over
+# from a filename-prefix design that amendment 112 of
+# `2026-07-25_CONSOLE_DESIGN.md` replaced: `scan_inbox()` tells a statement
+# from a receipt by the SIDECAR'S `type` key, which is what that amendment
+# decided. Neither name was imported, read or passed anywhere, enumerated
+# from the syntax tree before the deletion.
 
 # receipts.source has four values and no others. Sub-step 10d.40. `capture` was a
 # fifth and was hardcoded here; it is retired. Each writer declares its own word:
@@ -39,7 +46,13 @@ class IntakeRecord:
         original_name: str,
         is_statement: bool,
         statement_metadata: dict[str, Any] | None,
-        internal_path: Path | None = None,
+        # `internal_path: Path | None = None` was here and is DELETED,
+        # 2026-09-12, item 116. Nothing constructed an IntakeRecord with
+        # it and nothing ever read `record.internal_path`: its only two
+        # uses were this parameter and the assignment below. It is the
+        # third leftover of the filename-prefix design. Removing a keyword
+        # parameter with a default is source-compatible with every
+        # construction site, and none passed it.
     ):
         self.source = source
         self.client_id = client_id
@@ -52,7 +65,6 @@ class IntakeRecord:
         self.original_name = original_name
         self.is_statement = is_statement
         self.statement_metadata = statement_metadata or {}
-        self.internal_path = internal_path
 
 
 def _load_sidecar(sidecar_path: Path) -> dict[str, Any] | None:

@@ -310,14 +310,14 @@ class StorageStillWritesUtcTest(unittest.TestCase):
             repo.close()
         self.assertStoredUtc(row[0], "receipts.created_at")
 
-    def test_the_review_sidecar_keeps_utc(self):
-        from worker import filing
-        target = self.root / "review"
-        target.mkdir()
-        path = filing.write_review_file(
-            target, "receipt.pdf", "r-1", "needs_review", ["a reason"], {})
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        self.assertStoredUtc(payload["timestamp"], "the review sidecar")
+    # `test_the_review_sidecar_keeps_utc` was here and is DELETED with the
+    # function it tested, 2026-09-12, item 114. It called
+    # `filing.write_review_file()`, which was a second review-sidecar writer
+    # whose output nothing could read back, and it asserted nothing about any
+    # live path. **The live writer is `file_review()`**, whose `reviewed_at` is
+    # still held to UTC by
+    # `tests/test_london_time.py::StorageIsStillUtcTest`, which asserts every
+    # `datetime.now()` in the production tree passes `timezone.utc`.
 
 
 class ProcessLogTest(unittest.TestCase):

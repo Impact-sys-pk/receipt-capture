@@ -359,19 +359,21 @@ def _scan_other_clients_for_receipt(searched_dir: Path, receipt_id: str) -> Path
     return None
 
 
-def write_review_file(review_dir: Path, original_filename: str, receipt_id: str, status: str, reasons: list[str], extracted_values: dict[str, Any]) -> Path:
-    review_dir.mkdir(parents=True, exist_ok=True)
-    base_name = f"{Path(original_filename).stem}.review"
-    path = review_dir / f"{base_name}.json"
-    payload = {
-        "receipt_id": receipt_id,
-        "status": status,
-        "reasons": reasons,
-        "extracted_values": extracted_values,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    _write_json(path, payload)
-    return path
+# `write_review_file()` was here and is DELETED, 2026-09-12, item 114 of
+# `2026-08-20_LIST_outstanding_items_and_decisions.md`.
+#
+# **It was a second writer whose output could not be worked.** `file_review()`
+# above is the live writer and names its sidecar
+# `dest_file.suffix + REVIEW_SIDECAR_SUFFIX`, giving `image0.jpeg.review.json`,
+# which is the shape `_find_review_sidecar()`, `_delete_review_pair()` and the
+# scan in `remove_review_pair()` read back. This one named its own output
+# `{stem}.review` plus `.json`, giving `image0.review.json`. **Nothing read that
+# second shape**, so anything it wrote could never be found, paired or removed.
+#
+# Its only caller anywhere was a test asserting the timestamp it wrote was UTC,
+# and that test went with it. Enumerated from the syntax tree over the 148
+# Python files outside `.history\`, `.git\`, `__pycache__\`, `archive\` and
+# `.venv\` before the deletion.
 
 
 def make_enriched_sidecar(

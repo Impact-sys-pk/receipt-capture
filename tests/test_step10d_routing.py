@@ -178,7 +178,7 @@ class ResolvedClientStillFilesTest(unittest.TestCase):
             self.assertEqual(payload["source"], "desktop")
             self.assertEqual(
                 sorted(config.CLIENTS_ROOT.rglob("*.json")), [],
-                "a data file landed under Clients\, and 18.2b says image only")
+                r"a data file landed under Clients\, and 18.2b says image only")
 
     def test_the_arrival_timestamp_is_written_as_iso_utc(self):
         # 10d.27 at the call site, not in the helper. This path used to pass

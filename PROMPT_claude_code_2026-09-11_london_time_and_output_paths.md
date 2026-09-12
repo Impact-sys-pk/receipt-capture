@@ -104,6 +104,20 @@ bear on that.
 
 ---
 
+## 5a. And one character, carried here so it stops being flagged
+
+**`tests\test_sidecar_category_keys.py` has `Clients\{name}\...` in a NON-RAW docstring**, so `\{`
+is an invalid escape sequence and Python 3.14 warns on every compile. **Make that docstring raw**,
+`r"""`.
+
+**It is here because it has now been flagged twice**, as flag 5 of
+`2026-09-11_REPORT_claude_code_category_hold.md` and flag 2 of
+`2026-09-12_REPORT_claude_code_category_hold_trigger.md`, and a flag raised twice and not fixed is a
+flag that will be raised a third time. **Paul's decision: do it.** Nothing about the test's behaviour
+changes; check the warning is gone rather than assuming it.
+
+---
+
 ## 6. What must not change
 
 - **No stored value moves.** Nothing is rewritten, no migration, no backfill.

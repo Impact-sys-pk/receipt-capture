@@ -256,22 +256,34 @@ class ACorrectionDoesNotTouchTheFirmTableTest(LayerTwoTestCase):
         self.assertEqual(firm[0]["nominal_code"], before["nominal_code"])
 
 
-class TheFirmTableHasNoProductionWriterTest(unittest.TestCase):
-    r"""The premise step 10m rests on, enumerated rather than believed.
+class TheFirmTableWritersTest(unittest.TestCase):
+    r"""Which functions can write `categorisations_firm_vendors`, enumerated.
 
-    `upsert_firm_vendor()` and `increment_firm_vendor_count()` are the only two
-    functions in the production tree that write `categorisations_firm_vendors`,
-    and on 2026-09-12 neither had a single caller anywhere in production.
+    ~~`TheFirmTableHasNoProductionWriterTest`~~ ~~`upsert_firm_vendor()` and
+    `increment_firm_vendor_count()` are the only two functions in the production
+    tree that write it, and on 2026-09-12 neither had a single caller.~~
+    **Renamed and narrowed 2026-09-12.** The old name said the table had no
+    production writer, and part B of step 10m gave it one the same day, so the
+    class asserted something false about itself the moment it was committed. It
+    said it expected to change when part B landed and it did not change; this is
+    that, a day late and disclosed rather than quietly corrected.
 
-    **This test is expected to change when part B lands**, and that is the
-    point: it names the moment the firm table stops being unreachable, so the
-    change cannot happen silently.
+    **`increment_firm_vendor_count()` is DELETED**, amendment 344 point one, so
+    there is one writer rather than two. Its caller assertion went with it: a
+    function that does not exist cannot be called, and
+    `test_the_writer_is_the_only_one` covers a replacement appearing under any
+    name.
+
+    **`upsert_firm_vendor()` is now called**, once, from
+    `_learn_firm_mapping_if_confirmed()`. That is asserted in
+    `tests/test_firm_vendor_writer.py::OneCallerTest`, which is where the rule
+    lives, rather than here.
     """
 
     import ast as _ast
     from pathlib import Path as _Path
 
-    WRITERS = ("upsert_firm_vendor", "increment_firm_vendor_count")
+    WRITERS = ("upsert_firm_vendor",)
 
     def production_files(self):
         import source_guards
@@ -296,12 +308,24 @@ class TheFirmTableHasNoProductionWriterTest(unittest.TestCase):
                     found.append(f"{path.name}:{node.lineno}")
         return sorted(found)
 
-    def test_increment_firm_vendor_count_has_no_caller(self):
-        """It bumps `times_seen` on a row that already exists, so it can never
-        create one. It has been uncalled since it was written."""
-        self.assertEqual(self.callers_of("increment_firm_vendor_count"), [])
+    def test_the_deleted_function_has_not_come_back(self):
+        """`increment_firm_vendor_count()` is gone, amendment 344 point one.
 
-    def test_the_writers_are_the_only_two(self):
+        Asserted as absent from the repository class rather than as uncalled,
+        because uncalled is what it was for months before somebody would have
+        renamed it into life. Amendment 234's reasoning: a dead function that
+        touches the firm pool is one rename away from becoming a silent firm
+        write.
+        """
+        import source_guards
+        tree = source_guards.tree_of("worker", "database", "repository.py")
+        self.assertFalse(
+            source_guards.defines(tree, "increment_firm_vendor_count"),
+            "it was deleted on 2026-09-12 and is back. It can only bump "
+            "times_seen on a row that already exists, so it cannot create one, "
+            "and the firm pool reaches every client of a trade")
+
+    def test_the_writer_is_the_only_one(self):
         """Read off the source: no third function writes this table.
 
         Asserted as a SET rather than by checking the two known ones, because a
@@ -349,7 +373,9 @@ class TheFirmTableHasNoProductionWriterTest(unittest.TestCase):
         self.assertEqual(
             writers, set(self.WRITERS),
             "the set of functions writing categorisations_firm_vendors has "
-            f"changed. Found: {sorted(writers)}")
+            f"changed. Found: {sorted(writers)}. Every write of that table must "
+            "go through amendment 238's rule, and a second writer is how it "
+            "would stop doing so")
 
 
 if __name__ == "__main__":

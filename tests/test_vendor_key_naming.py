@@ -129,7 +129,26 @@ class LearnFromCorrectionIsGone(unittest.TestCase):
         self.assertFalse(hasattr(CategorisationEngine, "learn_from_correction"))
 
     def test_nothing_in_the_repository_calls_it(self):
-        callers = []
+        r"""Nothing defines it and nothing calls it, read off the syntax tree.
+
+        **Changed 2026-09-12 from a text search to a tree walk, and the reason
+        is `CLAUDE.md`'s own rule of 2026-09-08**: a source guard parses the
+        tree rather than string-matching, because this project keeps superseded
+        wording beside every correction, so the old name is always a few lines
+        from the code. That rule also records three guards that failed on their
+        own prose and were each patched by rewording the prose, **which is the
+        wrong way round**.
+
+        ~~`if "learn_from_correction" in path.read_text()`~~ That failed the
+        moment `worker\database\repository.py` gained a tombstone comment for
+        `increment_firm_vendor_count()`, amendment 344 point one, because the
+        comment names `learn_from_correction()` as that function's last caller.
+        **The comment is correct and is exactly the prose this project keeps.**
+
+        A definition and a call are what "is back" means. A mention in a comment
+        is the opposite: it is the record that it went.
+        """
+        offenders = []
         for path in sorted(REPO_ROOT.rglob("*.py")):
             parts = set(path.parts)
             # docs\specs\ is excluded on purpose. It holds the frozen v0.1
@@ -140,9 +159,26 @@ class LearnFromCorrectionIsGone(unittest.TestCase):
                 continue
             if path == Path(__file__):
                 continue
-            if "learn_from_correction" in path.read_text(encoding="utf-8"):
-                callers.append(path.relative_to(REPO_ROOT).as_posix())
-        self.assertEqual(callers, [], f"learn_from_correction is back in: {callers}")
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"),
+                                 filename=str(path))
+            except SyntaxError:
+                continue
+            where = path.relative_to(REPO_ROOT).as_posix()
+            for node in ast.walk(tree):
+                if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.name == "learn_from_correction"):
+                    offenders.append(f"{where}:{node.lineno} defines it")
+                if isinstance(node, ast.Call):
+                    func = node.func
+                    called = (func.attr if isinstance(func, ast.Attribute)
+                              else func.id if isinstance(func, ast.Name)
+                              else None)
+                    if called == "learn_from_correction":
+                        offenders.append(f"{where}:{node.lineno} calls it")
+        self.assertEqual(
+            sorted(offenders), [],
+            f"learn_from_correction is back: {sorted(offenders)}")
 
 
 class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):

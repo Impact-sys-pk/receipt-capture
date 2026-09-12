@@ -622,22 +622,18 @@ class Repository:
         ).fetchall()
         return [row["vendor_key"] for row in rows]
 
-    def increment_firm_vendor_count(self, business_type: str, vendor_key: str):
-        """Increment times_seen for the most-seen firm vendor variant."""
-        # Find the most-seen variant and increment it
-        row = self._conn.execute("""
-            SELECT mapping_id FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_key = ?
-            ORDER BY times_seen DESC, last_updated DESC
-            LIMIT 1
-        """, (business_type, vendor_key)).fetchone()
-
-        if row:
-            self._conn.execute(
-                "UPDATE categorisations_firm_vendors SET times_seen = times_seen + 1 WHERE mapping_id = ?",
-                (row["mapping_id"],)
-            )
-            self._conn.commit()
+    # `increment_firm_vendor_count()` was here and is DELETED, 2026-09-12,
+    # amendment 344 point one, on Paul's decision. Nought callers anywhere, in
+    # production or in tests, enumerated from the syntax tree before the
+    # deletion. It could only bump `times_seen` on a row that already existed,
+    # so it could never create one, and its last caller was
+    # `learn_from_correction()`, deleted at amendment 234.
+    #
+    # **Amendment 234's reasoning applies word for word.** A dead function that
+    # touches the firm pool is one rename away from becoming a silent firm
+    # write, and the firm pool is the table that reaches every client of a
+    # trade. `tests/test_layer_two_row.py` asserts the set of functions writing
+    # that table, so a replacement appearing goes red rather than unnoticed.
 
     def save_categorisation(self, categorisation_id: str, receipt_id: str,
                            extraction_id: str, client_id: str, trade: str,

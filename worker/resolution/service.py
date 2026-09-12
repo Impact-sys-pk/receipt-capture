@@ -799,6 +799,20 @@ def _record_vendor_learned(repo, receipt_id, extraction_id, client_id, vendor_ke
     )
 
 
+#: The status a receipt carries when the semantic duplicate check found an
+#: earlier receipt with the same supplier, date and gross.
+#: `worker\extraction_pipeline.py` writes it and this module watches for it in
+#: two places: `preserve_status`, which stops a failed re-validation overwriting
+#: it, and the warning in `resolve_receipt()` that says when a correction has
+#: cleared it.
+#:
+#: **One constant rather than two literals in one function.** They have to agree
+#: and nothing would make them, which is the drift this project's own trap list
+#: objects to. `tests/test_service_corrections.py` reads the value back off
+#: `extraction_pipeline.py`'s own source, so a rename there goes red rather than
+#: leaving this module watching for a status nothing writes.
+POSSIBLE_DUPLICATE_STATUS = "possible_duplicate"
+
 #: The `match_source` layer 5 writes, and the only one the confirm case can
 #: arise on. Amendment 238: "The confirm case exists only on a layer 5 answer. A
 #: layer 1 or layer 2 match returns a stored code and there is no suggestion out
@@ -1132,7 +1146,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             # overwrite it. Overwriting would also hand a receipt a human has
             # already examined back to the pipeline: possible_duplicate is not
             # auto-retry eligible and needs_review is.
-            preserve_status = receipt.get("status") == "possible_duplicate"
+            preserve_status = receipt.get("status") == POSSIBLE_DUPLICATE_STATUS
             repo.save_extraction(
                 extraction_id=attempt_id,
                 receipt_id=receipt_id,
@@ -1340,6 +1354,52 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 validation_status="ok",
                 filed_path=receipt.get("filed_path"),
             )
+        # **A correction must not clear a `possible_duplicate` finding
+        # silently.** Amendment 343, Paul's decision of 2026-09-12, and it is a
+        # control against a double-claimed expense rather than a tidiness rule.
+        #
+        # The write below is unconditional, so a receipt flagged
+        # `possible_duplicate` becomes `ok` here and drains into the books. The
+        # guard against that is `preserve_status` above, and it sits inside
+        # `if validation.status != "ok":`, which a corrected receipt with sound
+        # figures never reaches; `decided_by_operator` forces validation to `ok`
+        # before that branch, so it skips it outright.
+        #
+        # **The guard is deliberately NOT moved here, and that was the first
+        # thing to try.** Hoisting it would leave a corrected receipt at
+        # `possible_duplicate` for ever, because nothing else clears that
+        # status. It would strand receipts rather than fix anything.
+        #
+        # **What is actually wrong is that the flag is cleared by an unrelated
+        # act.** The operator corrects a supplier name or a VAT figure. Nothing
+        # asks them about the duplicate and they may never have known there was
+        # one. Amendment 309's `decided_by_operator` philosophy is that a person
+        # filed it so the database agrees with them, and that holds only where
+        # the person was told what they were deciding.
+        #
+        # So the pipeline says it out loud. **The precedent is the `despite`
+        # warning a few lines above**, and its reason is the same one: Paul
+        # reads `run.log`, and a receipt that silently turns green is worse than
+        # the fault being fixed. WARNING rather than INFO for the same reason.
+        #
+        # `receipt` is the row read at step 1, so this is the status the receipt
+        # actually had on the way in rather than the one it is about to get.
+        #
+        # **The link survives the status change**: `update_receipt_status()`
+        # writes the status column only, so the row reads `ok` while still
+        # carrying `duplicate_of`. That is what makes the other receipt
+        # nameable here, and it is the other half of amendment 343's finding.
+        if receipt.get("status") == POSSIBLE_DUPLICATE_STATUS:
+            logger.warning(
+                "receipt %s was %s and a correction in %s has cleared it to ok, "
+                "so it will now drain into the books. It looked like a "
+                "duplicate of receipt %s. Nothing asked the operator about the "
+                "duplicate and they may never have known there was one, so "
+                "check the two are genuinely different documents before the "
+                "expense is claimed twice",
+                receipt_id, POSSIBLE_DUPLICATE_STATUS, source,
+                receipt.get("duplicate_of") or "(none recorded)")
+
         repo.update_receipt_status(receipt_id, "ok")
 
         # 12. The Review pair is stale now. Already gone is not an error.
@@ -1351,7 +1411,53 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         #     against a misread supplier name would poison the mapping table, and
         #     the exact-match layer would then apply the wrong code confidently to
         #     every future receipt from that vendor.
-        if corrections.remember_gl_for_supplier and effective_code:
+        #
+        #     **AND ONLY AGAINST A CODE THE CLIENT'S CHART HOLDS. Added
+        #     2026-09-12, amendment 344 point three, on Paul's decision.** This
+        #     route required only that a code existed;
+        #     `_apply_filed_note()` has always required
+        #     `_CategoryDecision.chart_confirmed`. Two routes teaching one table
+        #     on two rules is the half-built shape this project has paid for
+        #     before, and the weaker of the two was here.
+        #
+        #     **Why it matters on this route in particular.** On the command
+        #     line the code is TYPED, so a typo, an old code or another client's
+        #     code all taught happily. In Desktop it is picked from a dropdown
+        #     `catOptions()` builds from that client's adopted chart.
+        #
+        #     **And a mapping taught from a code the client does not hold can
+        #     never work as taught.** Layer 1 returns it with confidence `high`,
+        #     and `resolve_against_chart()` then substitutes or strips it on
+        #     every future receipt, silently. `_resolve_category()`'s docstring
+        #     already says exactly this about the unreadable case.
+        #
+        #     **An unreadable chart teaches nothing either**, and that falls out
+        #     rather than being special-cased: `get_chart_accounts_for_client()`
+        #     returns an empty mapping both when the chart is empty and when the
+        #     bundle is missing, so no code is in it. That matches
+        #     `_resolve_category()`, which refuses to learn there for the same
+        #     reason.
+        #
+        #     **What is given up is intended and small.** The receipt is still
+        #     corrected, still filed and still carries the operator's code; only
+        #     the mapping is not learned. The firm write below is unaffected
+        #     either way, because `_learn_firm_mapping_if_confirmed()` checks
+        #     the chart outcome itself.
+        chart_accounts = get_chart_accounts_for_client(receipt.get("client_id") or "")
+        code_is_in_the_chart = bool(effective_code) and effective_code in chart_accounts
+        if corrections.remember_gl_for_supplier and not code_is_in_the_chart:
+            # Said out loud rather than refused in silence. The Desktop route
+            # already says it, through the validation note `_resolve_category()`
+            # returns; this is the same thing on this route.
+            logger.warning(
+                "remember_gl_for_supplier was requested for receipt %s but %s "
+                "is not in client %s's chart of accounts, so no vendor mapping "
+                "was learned. The receipt is still corrected and still filed. "
+                "A mapping taught from a code the chart does not hold cannot "
+                "work: the chart check would strip it on every future receipt",
+                receipt_id, effective_code or "(no code)",
+                receipt.get("client_id"))
+        if corrections.remember_gl_for_supplier and code_is_in_the_chart:
             # A plain attribute read, matching _apply_filed_note(). Paul's
             # answer of 2026-09-06 to flag 3 of the vendor_key naming report.
             #

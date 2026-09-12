@@ -78,7 +78,14 @@ narrowing the trigger to amendment 333. **The Desktop half is not started.**
 4. **Seven `match_source` values and the engine owns all of them.** Enumerated independently by both
    sessions on 2026-09-12: nine keyword writes in `worker\categorisation\engine.py`, seven distinct
    literals, and five writes elsewhere that are all `categorisation.match_source` pass-throughs.
-   **No literal outside the engine**, which is what makes reading one file enough.
+   ~~**No literal outside the engine**~~ **NO LITERAL WRITE OUTSIDE THE ENGINE. Corrected
+   2026-09-12 by consultant session 24, which re-enumerated rather than taking this on trust.** Three
+   of the seven values ARE literals outside the engine, at `worker\publish.py:281` inside
+   `MACHINE_MATCH_SOURCES`, and that is the reader. **The engine also holds a tenth literal**, the
+   dataclass default `match_source: str = "unmatched"` at `worker\categorisation\engine.py:115`,
+   already one of the seven and changing nothing. **Both are recorded because the struck wording sends
+   a session that checks it to three literals outside the engine and tells it the claim is wrong.**
+   What makes reading one file enough is that nothing outside the engine WRITES one.
 
 ---
 
@@ -192,7 +199,8 @@ a file. Claude Code's finding, now a rule, and it applied it unprompted on both 
 `IntelliBooks-Desktop-v3.html.bak-before-vat-tolerance-comment`, proved byte-exact before anything was
 written.
 
-**`CLAUDE.md` went from 1,077 lines to 943.** Amendments **331, 332 and 333**. Change log item **88**.
+**`CLAUDE.md` went from 1,077 lines to ~~943~~ 945.** **Corrected 2026-09-12 by consultant session
+24 from `wc -l` on Paul's machine. The 1,077 is not re-measurable here and is left as written.** Amendments **331, 332 and 333**. Change log item **88**.
 
 **Claude Code's commits on `feat/console-phase0`**: `e02fe8f` and `f77cd39` for 10n, `b439b92` for
 10l's pipeline half, `e27aecc` for the trigger, plus their report commits. **The consultant session's

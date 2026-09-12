@@ -18,9 +18,30 @@ neither a populated .env nor a published bundle to be tested. The caller passes
 
 No `ExtractionResult`, no provider client, and no logging of document content.
 
-The broad `try/except Exception: pass` blocks are kept exactly as they were and
+~~The broad `try/except Exception: pass` blocks are kept exactly as they were and
 are load-bearing: a numeric coercion failure must leave the values untouched
-rather than fail the extraction.
+rather than fail the extraction.~~
+
+**Corrected 2026-09-12, item 118. There is no `except Exception: pass` anywhere
+in this file and there never was one to keep.** The superseded wording is struck
+rather than deleted because it is what a reader was being told.
+
+The broad `except Exception` handlers ARE kept deliberately, and that half was
+right: a coercion or a parse failure must leave the values untouched rather than
+fail the extraction, because the document is evidence and a figure that could not
+be read is not a figure that is wrong.
+
+**None of them is silent.** Enumerated from the syntax tree on 2026-09-12: six
+handlers, all catching `Exception`, and no `pass` among them.
+
+- **The three in `parse_ambiguous_date()` RETURN**, so the caller gets None and
+  decides. That function's whole contract is that it answers or it does not.
+- **The three in `establish_gross_from_vat()` and `resolve_invoice_date()` LOG**,
+  at warning, each with `exc_info=True`, so the traceback reaches the log rather
+  than the extraction.
+
+The inline comment two lines below one of them already reads "Logged rather than
+swallowed" and is correct.
 """
 
 import logging

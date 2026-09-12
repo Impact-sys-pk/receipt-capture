@@ -2027,7 +2027,18 @@ def process_once():
     finally:
         # processed_today means today, not this run. stats["receipts_created"]
         # counts what this five-minute poll happened to create, which is not
-        # what the field is called or what IntelliBooks shows.
+        # what the field is called. ~~or what IntelliBooks shows~~ **Struck
+        # 2026-09-12 by amendment 345: IntelliBooks shows nothing from this
+        # field.** `processed_today` appears nought times in
+        # `IntelliBooks-Desktop-v3.html`, counted by reading that file on
+        # 2026-09-12; `renderPipeStatus()` reads `last_run`, `last_error` and
+        # `practice_root` and nothing else. **The intended reader is the
+        # console's intake panel at 8.6, which is not built**, which is why the
+        # field is corrected rather than deleted and why now was the cheapest
+        # moment: no reader has to be migrated.
+        #
+        # **And from 2026-09-12 the figure counts what the pipeline READ**, on
+        # the LONDON day. See `Repository.PROCESSED_STATUSES`.
         processed_today = repo.count_processed_today() if repo is not None else 0
         review_count = _count_review_items(repo)
         last_error = None if errors is None else str(errors)

@@ -1,11 +1,80 @@
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Optional
 
 import config
+from worker import london_time
 from worker.line_items import to_json as line_items_to_json
 from .schema import init_db
+
+
+#: The `receipts` statuses that mean the pipeline actually read the document.
+#:
+#: **Amendment 345, Paul's decision of 2026-09-12.** `count_processed_today()`
+#: counted every row created today with no status filter, so it counted
+#: documents handed over from the books and never processed, and ones still
+#: waiting to be read.
+#:
+#: **What is NOT here, and both are deliberate.** `pending` is what
+#: `save_receipt()` writes before anything has read the document.
+#: `config.BANK_ATTACHMENT_STATUS` is a document IntelliBooks attached to a bank
+#: line and handed over to be archived: **never extracted, never validated,
+#: never published**, per sub-step 10f.38, so it was never read by anything.
+#:
+#: **`discarded` IS here, and that is a decision rather than an oversight.** The
+#: receipt was read before a person discarded it, and the pipeline's work on it
+#: is not unmade by a later judgement about the document. A count that fell
+#: retroactively as the day went on would also be a worse figure for the
+#: console's intake panel than one that does not.
+#:
+#: **`failed` and `retry_exhausted` are here too.** The pipeline read the
+#: document and could not get data off it, which is work done; hiding it would
+#: make a bad day look like a quiet one.
+#:
+#: `tests/test_attached_document_reach.py` asserts this set against the statuses
+#: the database can hold, enumerated from the syntax tree, so a ninth status is
+#: a decision rather than an accident.
+PROCESSED_STATUSES = (
+    "ok",
+    "needs_review",
+    "possible_duplicate",
+    "failed",
+    "retry_exhausted",
+    "discarded",
+)
+
+
+def london_day_bounds(now=None):
+    """(start, end) of today in London, as ISO 8601 UTC strings.
+
+    **The LONDON day, and that is a decision. Amendment 345, and it is reported
+    rather than taken quietly.** `pipeline-status.json` keeps UTC for `last_run`,
+    which is a TIMESTAMP. This is not one: it is a count whose whole meaning is
+    the word "today", and "today" is a word about the reader's calendar. The
+    London work of 2026-09-11 settled that what a person reads is in their own
+    clock, and `capture_report.py`'s date range already selects on the London
+    day, so a count on the UTC day would disagree with the capture report about
+    the same day.
+
+    **Returned as instants rather than as a date, because a London day is 23, 24
+    or 25 hours long.** `DATE(created_at) = DATE('now','utc')` cannot express
+    that and neither can comparing the first ten characters of a stored
+    timestamp. The bounds are compared as text against `created_at`, which is
+    ISO 8601 UTC for every writer, so the comparison is exact: that is what
+    storing one zone buys, and `schema.py` says so on the column.
+    """
+    moment = london_time.to_london(now) if now is not None else london_time.now()
+    midnight = moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    # **Not `midnight + timedelta(days=1)`.** Adding a day to an aware datetime
+    # adds 24 hours, and the day the clocks go back is 25 hours long, so that
+    # would land at 23:00 and cut an hour off the count once a year. Tomorrow's
+    # midnight is built from tomorrow's DATE, which makes both ends real local
+    # midnights whatever the day is worth in hours.
+    tomorrow = midnight.date() + timedelta(days=1)
+    end = datetime.combine(tomorrow, dt_time(0, 0), tzinfo=midnight.tzinfo)
+    return (midnight.astimezone(timezone.utc).isoformat(),
+            end.astimezone(timezone.utc).isoformat())
 
 
 class Repository:
@@ -496,12 +565,34 @@ class Repository:
         return row[0] if row else 0
 
     def count_processed_today(self) -> int:
-        row = self._conn.execute("""
+        """How many documents the pipeline READ today, London time.
+
+        **Amendment 345, Paul's decision of 2026-09-12.** It counted every
+        `receipts` row created today with no status filter, so it counted
+        documents handed over from the books and never processed, discarded
+        ones, and ones still waiting to be read. See `PROCESSED_STATUSES` for
+        which statuses count and why, including the two decisions taken here
+        rather than quietly: `discarded` counts and the day is the London day.
+
+        **`statements` are still counted and are not filtered.** A platform
+        statement IS something the pipeline read, `filed` is the only status
+        `save_statement()` gives one, and nothing here narrows them.
+
+        **Written as an instant range rather than with `DATE()`**, because a
+        London day is 23, 24 or 25 hours and `DATE(created_at) = DATE('now')`
+        cannot say that.
+        """
+        start, end = london_day_bounds()
+        placeholders = ", ".join("?" for _ in PROCESSED_STATUSES)
+        row = self._conn.execute(f"""
             SELECT
-                (SELECT COUNT(*) FROM receipts WHERE DATE(created_at) = DATE('now','utc'))
-                + (SELECT COUNT(*) FROM statements WHERE DATE(created_at) = DATE('now','utc'))
+                (SELECT COUNT(*) FROM receipts
+                  WHERE created_at >= ? AND created_at < ?
+                    AND status IN ({placeholders}))
+                + (SELECT COUNT(*) FROM statements
+                    WHERE created_at >= ? AND created_at < ?)
                 AS total
-        """).fetchone()
+        """, (start, end, *PROCESSED_STATUSES, start, end)).fetchone()
         return row[0] if row else 0
 
     def backup_db(self, destination_path):

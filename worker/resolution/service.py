@@ -1866,6 +1866,29 @@ def _receipt_for_note(repo, note: ResolutionNote) -> Optional[Dict[str, Any]]:
         if name.lower().endswith(".review.json"):
             continue
         for receipt in repo.find_receipts_by_filename(name):
+            # **An attached document is not something a back-feed note can be
+            # about. Amendment 345, Paul's decision of 2026-09-12.** It came
+            # from the books rather than from capture and it has no review
+            # sidecar for a note to have come from, so it is not a candidate
+            # and never was.
+            #
+            # **The exclusion is here and not in the query**, deliberately.
+            # `find_receipts_by_filename()`'s docstring says it returns every
+            # match and that refusing an ambiguous one is the caller's problem
+            # rather than its own to guess at. A status filter in the query
+            # would make a general-purpose lookup carry this one caller's rule.
+            #
+            # **The ambiguity guard below is unchanged.** Two real candidates is
+            # still not a match. Where excluding an attached document leaves
+            # one, that is a match rather than a refusal, and that is right:
+            # removing something that was never a candidate does not resolve an
+            # ambiguity, it shows there was not one.
+            if receipt.get("status") == config.BANK_ATTACHMENT_STATUS:
+                logger.info(
+                    "receipt %s matches %s by filename and is a document "
+                    "attached to a bank line, so it is not a candidate for a "
+                    "back-feed note", receipt["receipt_id"], name)
+                continue
             candidates[receipt["receipt_id"]] = receipt
 
     if len(candidates) == 1:

@@ -67,61 +67,20 @@ def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
     return result if result else normalised
 
 
-def regenerate_codes(csv_path: str):
-    """Regenerate vendor_keys from vendor_names."""
-
-    # Read CSV
-    with open(csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-
-    print(f"Processing {len(rows)} rows...\n")
-
-    # Regenerate codes
-    updated_rows = []
-    code_map = {}  # Track which vendors map to same code
-
-    for row in rows:
-        vendor_name = row.get('vendor_name', '').strip()
-        if not vendor_name:
-            updated_rows.append(row)
-            continue
-
-        # Apply engine normalization
-        normalised = normalise_description(vendor_name)
-        new_code = extract_vendor_key(normalised, DEFAULT_ALIASES)
-
-        old_code = row.get('vendor_key') or row.get('vendor_code') or ''
-
-        if new_code != old_code:
-            print(f"{old_code:35} -> {new_code:20} | {vendor_name}")
-
-            # Track consolidations
-            if new_code not in code_map:
-                code_map[new_code] = []
-            code_map[new_code].append(old_code)
-
-        row['vendor_key'] = new_code
-        updated_rows.append(row)
-
-    # Write back
-    fieldnames = ['vendor_key', 'vendor_name', 'detail', 'nominal_code', 'account_name']
-    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(updated_rows)
-
-    print(f"\n--- Results ---")
-    print(f"Updated: {csv_path}")
-    print(f"Unique vendor_keys: {len(code_map)}")
-    print(f"Total rows: {len(updated_rows)}")
-
-    # Show consolidations
-    print(f"\nConsolidations (multiple old codes -> 1 new code):")
-    for new_code in sorted(code_map.keys()):
-        old_codes = code_map[new_code]
-        if len(old_codes) > 1:
-            print(f"  {new_code:20} <- {', '.join(sorted(set(old_codes)))}")
+# `regenerate_codes(csv_path)` was here and is DELETED, 2026-09-12, item 115
+# of `2026-08-20_LIST_outstanding_items_and_decisions.md`. No call site
+# anywhere: enumerated from the syntax tree over the 148 Python files
+# outside `.history/`, `.git/`, `__pycache__/`, `archive/` and `.venv/`
+# before the deletion, and nothing ran it either.
+#
+# **It was not identical to the block below, and the difference is the
+# reason to say so rather than call them the same.** The function wrote
+# back over `csv_path` IN PLACE. The `__main__` block reads `input_path`
+# and writes a separate `output_path`. **So deleting it removes the only
+# in-place variant**, which on a file of learned vendor mappings is the
+# variant worth losing: it had no caller, no runner and no backup step.
+#
+# The `__main__` block is unchanged.
 
 
 if __name__ == "__main__":

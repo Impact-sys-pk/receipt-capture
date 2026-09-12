@@ -40,20 +40,54 @@ somebody to change.
 
 | | Firm | Client | Total |
 |---|---|---|---|
-| **Exists today** | ~~13~~ **14** | ~~17~~ **16** | ~~30~~ **29** ~~**29**~~ **30** |
-| **Proposed, not built** | ~~5~~ ~~**4**~~ **3** | 3 | ~~8~~ ~~**7**~~ **6** |
-| **Total** | ~~18~~ **17** | ~~20~~ **19** | ~~38~~ **36** |
+| **Exists today** | ~~13~~ ~~14~~ ~~15~~ ~~17~~ **18** | ~~17~~ ~~16~~ **18** | ~~30~~ ~~**29**~~ ~~**29**~~ ~~**30**~~ ~~**31**~~ ~~**33**~~ ~~**35**~~ **36** |
+| **Proposed, not built** | ~~5~~ ~~**4**~~ ~~**3**~~ ~~**4**~~ ~~2~~ **1** | ~~3~~ ~~5~~ **3** | ~~8~~ ~~**7**~~ ~~**6**~~ ~~**9**~~ ~~**7**~~ ~~**5**~~ **4** |
+| **Total** | ~~18~~ ~~**17**~~ ~~**18**~~ **19** | ~~20~~ ~~**19**~~ **21** | ~~38~~ ~~**36**~~ ~~**39**~~ **40** |
 
 **Two rows struck, numbers not reused: F18 by amendment 138 and C11 by amendment 142.**
+
+**Added 2026-09-12 by amendment 349, Paul's decision on outstanding item 33: one firm
+setting, F19, and two client settings, C21 and C22.** Firm proposed goes 3 to 4, client
+proposed goes 3 to 5, and the totals move with them, the same way the 2026-09-09 move
+below is recorded.
+
+**Added 2026-09-12, later the same day: F20, the classifier switch, built into the Firm
+Settings screen this session.** Unlike F14's move, this is a new row rather than one
+changing section: nothing tracked the classifier switch in this file before today. Firm
+exists-today goes 14 to 15 and firm total goes 18 to 19, and the Total column moves with
+them. **Counted from this file's own rows in section 2, not carried from the line
+above.**
+
+**Moved 2026-09-12, the same session: F16 and F17 went from proposed to exists today.**
+Both were found already built and on screen while adding F20 to the same card: F16
+(client folder copy) built 2026-09-09, F17 (client top folder) built 2026-09-07 at
+sub-steps 10e.14 and 10e.15, amendment 266. Neither was a design decision made today,
+only a filing correction. Firm settings that exist go 15 to 17 and proposed go 4 to 2,
+and the Total column moves with them. The firm and overall totals do not move, because a
+row changing section is not a row being added. **Counted from this file's own rows in
+section 2, not carried from the line above.**
+
+**Added 2026-09-12, later the same session: C21 and C22 built, amendment 354, on Paul's
+instruction to build step 10q.** Client settings that exist go 16 to 18 and proposed go
+5 to 3, and the Total column moves with them. **F19, the firm half of the same step, is
+not built and stays proposed: it needs a firm-level IntelliBooks storage decision that
+has not been made. See section 2.3 and amendment 354.** **Counted from this file's own
+rows in section 3, not carried from the line above.**
+
+**Moved 2026-09-12, later still: F19 went from proposed to exists today, amendment 355.**
+Paul decided the store, `Intellibills\firms.json`, and F19 was built the same session.
+Firm settings that exist go 17 to 18 and proposed go 2 to 1, and the Total column moves
+with them. **Counted from this file's own rows in section 2, not carried from the line
+above.**
 
 **Moved 2026-09-09: F14 went from proposed to exists today**, built at piece 1 of stage 1 on 2026-09-08, amendment 281. Firm settings that exist go 13 to 14 and proposed go 4 to 3, and the totals move with them. **Counted from this file's own rows in section 2, not carried from the line above.** The 17 firm and 19 client totals do not move, because a row changing section is not a row being added.
 
 **Plus 11 system settings, S1 to S11, in section 4.** They are not firm or client
 settings and are not counted above.
 
-Rows are numbered `F1` to `F18` and `C1` to `C20`, and **F18 is struck**, so the
-sequences run to 18 and 20 while the live count is 17 and 20. **Numbers are not
-reused.** The set was enumerated from this file rather than counted by eye: 38 numbered
+Rows are numbered `F1` to ~~`F19`~~ **`F20`** and `C1` to `C22`, and **F18 is struck**, so the
+sequences run to ~~19~~ **20** and 22 while the live count is ~~18~~ **19** and 21. **Numbers are not
+reused.** The set was enumerated from this file rather than counted by eye: ~~41~~ **42** numbered
 rows, both sequences contiguous, no duplicates, one struck.
 
 ~~**Fifteen of the 30 that exist cannot be reached from any screen in either product.**
@@ -73,9 +107,13 @@ that a count is enumerated before it is asserted**, and re-deriving it means wal
 **Whoever needs the number runs that pass and prints it.** Finding one in section 7 lists
 the set by name and carries the same four errors.
 
-Of the ~~18~~ **17** firm settings, **all of them belong to Intellibills and none to
+~~Of the ~~18~~ **17** firm settings, **all of them belong to Intellibills and none to
 IntelliBooks.** That is the answer to what goes on the Firm Settings page, and it is
-lopsided: the **IntelliBooks Settings** heading on that page has nothing under it.
+lopsided: the **IntelliBooks Settings** heading on that page has nothing under it.~~
+**Corrected 2026-09-12 by amendment 355, which built F19: of the 19 firm settings, F1 to
+F17 and F19 and F20, all but one still belong to Intellibills. F19 is the exception,
+IntelliBooks' own, and the IntelliBooks Settings heading has a setting under it for the
+first time.**
 
 ---
 
@@ -101,27 +139,32 @@ the document and everything read from it, IntelliBooks owns the books.
 | F11 | **The upload key. GONE, and this row is kept because a session looking for it needs to find the answer rather than the question. Corrected 2026-09-07 by amendment 259.** Sub-steps 10d.5 to 10d.7 retired the shared `UPLOAD_KEY` with no fallback and it was deleted from Netlify on 2026-09-03. There is no key field on any screen and no setting behind it. ~~One shared secret in a URL for every client, not revocable for one.~~ Replaced per client by `capture_token`, amendment 105, which is row C18 | `IntelliBooks-Practice.json`, `settings.uploadKey`, at line 941. Must match Netlify `UPLOAD_KEY` | Two places, independently: IntelliBooks **Practice Settings** card, and the Netlify environment | Firm Settings, Intellibills Settings, until `capture_token` replaces it | No. One shared secret | **Half.** The matching half is a Netlify environment variable | setting |
 | F12 | **Where the capture app writes into OneDrive.** Its default is the old location. See section 7 | Netlify environment variable `RECEIPTS_ROOT`. Read at `netlify/functions/upload.js:22`, defaulting at `:56` to `IntelliBooks/Receipt Inbox` | Netlify's own web interface only | Firm Settings, Intellibills Settings | No | **Yes.** Netlify only | setting |
 | F13 | **Which OneDrive account the capture app writes into** | Netlify environment variable `ONEDRIVE_USER` | Netlify's own web interface only | Firm Settings, Intellibills Settings | **No, and it is a wall.** One OneDrive. Cloud constraint 40 | **Yes.** Netlify only | setting |
-| F14 | **The address of each publishing destination.** Which destination a client uses is a client fact, F14 is where that destination is reached. **BUILT 2026-09-08, moved up from section 2.2 on 2026-09-09 by amendment 282's companion edit. Its shape and its key are fixed by amendment 280:** an object keyed by destination, the internal destination's key `intellibooks`, and its value a folder name relative to the practice root rather than an absolute path | `Intellibills\firms.json`, the firm record's `publish_destinations`. The value is `{"intellibooks": "Incoming"}`, typed by Paul on 2026-09-08 and read back off the file. **No reader exists yet:** piece 3 of stage 1 of `2026-09-08_PLAN_publish_step.md` gives the pipeline the reader, sub-step 10f.2, and the sub-step stays OUTSTANDING until it lands. `config.load_firms()` copies the key with `dict(record)` and validates nothing | IntelliBooks, **Firm Settings** tab, **Intellibills Settings** card, `IntelliBooks publish folder`. Built 2026-09-08 at piece 1, amendment 281. It needed a hand edit of the file until then | Firm Settings, Intellibills Settings | **Yes.** One per destination, which is why the stored value is an object rather than a string | No | setting |
+| F14 | **The address of each Receipt publishing destination.** Which destination a client uses is a client fact, F14 is where that destination is reached. **BUILT 2026-09-08, moved up from section 2.2 on 2026-09-09 by amendment 282's companion edit. Its shape and its key are fixed by amendment 280:** an object keyed by destination, the internal destination's key `intellibooks`, and its value a folder name relative to the practice root rather than an absolute path | `Intellibills\firms.json`, the firm record's `publish_destinations`. The value is `{"intellibooks": "Incoming"}`, typed by Paul on 2026-09-08 and read back off the file. **No reader exists yet:** piece 3 of stage 1 of `2026-09-08_PLAN_publish_step.md` gives the pipeline the reader, sub-step 10f.2, and the sub-step stays OUTSTANDING until it lands. `config.load_firms()` copies the key with `dict(record)` and validates nothing | IntelliBooks, **Firm Settings** tab, **Intellibills Settings** card, `IntelliBooks publish folder`. Built 2026-09-08 at piece 1, amendment 281. It needed a hand edit of the file until then | Firm Settings, Intellibills Settings | **Yes.** One per destination, which is why the stored value is an object rather than a string | No | setting |
+| F16 | **When a copy is written into the firm's client folder:** on successful publish, at Post, or never. Standalone Intellibills can offer only the first. **BUILT, and MOVED from section 2.2 to here 2026-09-12: found already live on screen, filed as proposed long after it stopped being so, while building F20 in the same card.** | `Intellibills\firms.json`, the firm record's `client_copy_trigger`. The pipeline reads it and acts on it, sub-steps 10f.12 and 10f.37 | IntelliBooks, **Firm Settings** tab, **Intellibills Settings** card, `Client folder copy` dropdown. Built 2026-09-09, per `IntelliBooks-Desktop-v3.html`'s own count of the boxes on that card | Firm Settings, Intellibills Settings | No. One choice per firm | No | setting |
+| F17 | **The path to the top client folder. ONE field, an absolute path, and the folder name is its last segment.** Paul's decision 2026-09-07, amendment 261, replacing the two fields the design carried until then. **BUILT, and MOVED from section 2.2 to here 2026-09-12, the same reason as F16.** | `Intellibills\firms.json`, the firm record's `client_top_folder`. `config.CLIENTS_ROOT` is now this field, read off the firm record by `_client_top_folder()` with no default, built by Claude Code in `7b96a35`. The pipeline refuses to start when the field is missing, blank, relative, or when the file names no firm or more than one | IntelliBooks, **Firm Settings** tab, **Intellibills Settings** card, `Client top folder` field, plus the `Grant Client Folder` button. Built at sub-steps 10e.14 and 10e.15, amendment 266, 2026-09-07 | Firm Settings, Intellibills Settings | No. One per firm | No | setting |
+| F20 | **The classifier's on and off switch.** Whether layer 5, the AI suggestion, may run for this firm's receipts. Amendment 340, step 10p. **BUILT 2026-09-12, the Desktop half, this session; the pipeline half was BUILT 2026-09-12 by amendment 352.** No row was ever proposed for this in section 2.2: it went straight to built, the same day it was decided. | `Intellibills\firms.json`, the firm record's `classifier_enabled`, a JSON boolean. `config.CLASSIFIER_ENABLED` reads it at the pipeline's one engine construction site, `app.py:1343`. Absent is off; anything present that is not a JSON boolean is refused at pipeline startup. | IntelliBooks, **Firm Settings** tab, **Intellibills Settings** card, `AI classifier (layer 5)`. Built 2026-09-12. It needed a hand edit of the file until then | Firm Settings, Intellibills Settings | No. One choice per firm | No | setting |
 
 ### 2.2 Intellibills, proposed and not built
 
 | # | Setting | Source | Should appear | Multi? | External? | Kind |
 |---|---|---|---|---|---|---|
 | F15 | **The always-on CSV export switch.** A separate switch, not a second destination. **DEFERRED 2026-09-08 by amendment 280 and it is NOT cancelled.** Nothing in 18.3, in sub-step 10f.3, in this file or in `2026-09-08_PLAN_publish_step.md` says what the CSV holds, where it is written or when, and a switch the pipeline reads with no default and with nowhere to write is a field the reader cannot honour. **It is deferred alongside 10f.1 and for the same reason, and its customer is a standalone Intellibills firm, which does not exist yet.** It stays in the Decided and not built yet card on the Firm Settings page | Amendment 104, sub-step 10f.3 | Firm Settings, Intellibills Settings | No | No | setting |
-| F16 | **When a copy is written into the firm's client folder:** on successful publish, at Post, or never. Standalone Intellibills can offer only the first | Amendment 106, sub-step 10f.12 | Firm Settings, Intellibills Settings | No. One choice per firm | No | setting |
-| F17 | **The path to the top client folder. ONE field, an absolute path, and the folder name is its last segment. Paul's decision 2026-09-07, amendment 261, replacing the two fields the design carried until then: they were one fact stored twice, and the folder grant at sub-step 10e.15 is the check that catches a wrong path.** The key is `client_top_folder` on the firm record in `Intellibills\firms.json`. **It is a durable setting and not a local one**: the client folder is the firm's own filing structure per section 18.2, and a firm on the cloud version may still choose to file into a folder of their own. Today the folder name is the literal string `"Clients"`, hardcoded in ~~seven places~~ **eleven code sites, plus six on-screen messages and one comment carrying `Clients\` as text. Enumerated 2026-09-07 by amendment 256, which also brings the six messages inside sub-step 10e.14; they were scheduled nowhere** in `IntelliBooks-Desktop-v3.html` **only. Corrected 2026-09-07 by amendment 263: it is no longer hardcoded in the pipeline at all.** ~~and in `config.py`'s `CLIENTS_ROOT`~~ **`config.CLIENTS_ROOT` is now this field, read off the firm record by `_client_top_folder()` with no default, built by Claude Code in `7b96a35`. The pipeline refuses to start when the field is missing, blank, relative, or when the file names no firm or more than one.** ~~at `config.py:33`~~ **line numbers dropped 2026-09-07 by amendment 247** | Section 18.2b | Firm Settings, Intellibills Settings | No. One per firm | No | setting |
+| ~~F16~~ | ~~**When a copy is written into the firm's client folder:** on successful publish, at Post, or never. Standalone Intellibills can offer only the first~~ **MOVED to section 2.1, 2026-09-12: it is built, and was found still filed here as proposed.** | ~~Amendment 106, sub-step 10f.12~~ | ~~Firm Settings, Intellibills Settings~~ | n/a | n/a | n/a |
+| ~~F17~~ | ~~**The path to the top client folder...**~~ **MOVED to section 2.1, 2026-09-12, the same reason as F16.** | ~~Section 18.2b~~ | ~~Firm Settings, Intellibills Settings~~ | n/a | n/a | n/a |
 | ~~F18~~ | ~~**Whether entities sit at the same level as the contact or beneath it**~~ **Struck 2026-08-21 by amendment 138. It has no subject.** Amendment 135 deleted the contact layer from 18.2c, so there is nothing for entities to sit at the same level as. **18.2b's own per-firm settings row still lists it and is corrected in the same edit.** A client with several entities is not supported and is handled by hand | ~~Section 18.2b~~ | ~~Firm Settings~~ **Nowhere** | n/a | n/a | n/a |
 
 ### 2.3 IntelliBooks, firm level
 
 | # | Setting | Stored | Entered today | Should appear |
 |---|---|---|---|---|
-| none | Nothing. See section 6 | n/a | n/a | n/a |
+| F19 | **Accruals basis capitalisation threshold.** The pound figure below which an asset purchase is expensed rather than capitalised, for a client on the accruals basis. **Decided 2026-09-12 by amendment 349: default £50.** Each client's own threshold, C21, defaults to this figure unless the client record overrides it. **BUILT 2026-09-12 by amendment 355. Store decided by Paul: `Intellibills\firms.json`, the same file Intellibills Settings already uses, IntelliBooks being built as an enhanced Intellibills rather than a separate product with a store of its own.** Absent reads as the decided default, 50. A present value that is not a number of £0 or more is refused by `badCapitalisationThreshold()` rather than coerced | `Intellibills\firms.json`, the firm record's `capitalisation_threshold` | IntelliBooks, **Firm Settings** tab, **IntelliBooks Settings** card, `Capitalisation threshold (default)` field. Built 2026-09-12 | Firm Settings, IntelliBooks Settings |
 
-The practice root at F1 is the only firm-level thing the Desktop file stores, and it
+The practice root at F1 is the only OTHER firm-level thing the Desktop file stores, and it
 is Intellibills' setting under the boundary rule: it is where documents live, and
 Intellibills needs it whether or not the books exist. **Practice Backup** on the
-Clients tab is an action, not a setting.
+Clients tab is an action, not a setting. F19 was the first setting that belonged here in
+its own right: built 2026-09-12 on the Firm Settings page's IntelliBooks Settings card,
+sharing Intellibills' own file rather than a store of its own, amendment 355.
 
 ---
 
@@ -153,6 +196,8 @@ Clients tab is an action, not a setting.
 | C15 | **MTD quarter basis:** standard quarters or the calendar quarters election | `IntelliBooks-Practice.json` client `mtdBasis`, read at `:2287` | IntelliBooks client **Edit** window, the dropdown beside **MTD client** | Client Settings, IntelliBooks Settings | One per client | No | setting |
 | C16 | **The period lock date.** Transactions on or before it cannot be changed or deleted | `{CODE}-books.json` `lockDate`, written at `:1608` and cleared at `:1614` | IntelliBooks, **Client Data** tab, **This Client's Data** card, **Lock to date** | **Leave where it is.** See section 8 | One per client | No | setting |
 | C17 | **The currency.** Written as the literal `"GBP"` in four places and read nowhere. See section 7 | `{CODE}-books.json` `currency`, and on every transaction and receipt | Nowhere | Not on any page yet | One per client in principle, and one literal in practice | No | setting |
+| C21 | **Accruals basis capitalisation threshold, client override.** Defaults to the firm setting, F19, unless changed for this client. **BUILT 2026-09-12 by amendment 354, on Paul's instruction to build step 10q. MOVED here from section 3.3 the same day. CORRECTED 2026-09-12 by amendment 356, on Paul's instruction: the box shows the real firm figure for a client with no override, not blank with a placeholder word.** On this client's Accounting method, C22, being Cash Basis, the row reads as switched off rather than merely disabled: the caption and the £ sign turn a light grey and the box is emptied, because the threshold has no effect under cash basis. **CHANGED AGAIN 2026-09-12 by amendment 357, on Paul's instruction: the caption should be a very light grey and nothing in the box**, replacing a plain disabled-but-still-showing-a-number state. Saving is skipped for this field while Cash Basis, so the emptied box is never read as an edit and an existing override is not lost | `Intellibills\clients.json`, the client record's `capitalisation_threshold`. **`null` (or the field absent) means no override: the box shows the live firm default, F19, and keeps following it if F19 later changes.** A number equal to the current firm default is stored as `null`, not as a frozen copy of today's figure. Only a number that DIFFERS from the firm default is stored as a real override. **While Cash Basis, this field is not written at all on Save**, whatever it held before is left untouched | IntelliBooks, **Client Settings** tab, **Client Settings** card, `Capitalisation threshold` field. Built 2026-09-12, corrected the same day, greying behaviour changed again the same day | Client Settings, IntelliBooks Settings | One per client | No | setting |
+| C22 | **Accounting method.** Dropdown: Accruals Basis or Cash Basis. **BUILT 2026-09-12 by amendment 354. MOVED here from section 3.3 the same day.** Gates C21: when this is Cash Basis, C21's caption and £ sign grey out and its box is emptied on screen, per amendment 357, and its stored value is left alone, not cleared | `Intellibills\clients.json`, the client record's `accounting_method` | IntelliBooks, **Client Settings** tab, **Client Settings** card, `Accounting method` dropdown. Built 2026-09-12 | Client Settings, IntelliBooks Settings | One per client | No | setting |
 
 ### 3.3 Proposed and not built
 
@@ -160,7 +205,9 @@ Clients tab is an action, not a setting.
 |---|---|---|---|---|---|---|---|
 | C18 | **`capture_token`.** Random, per client, revocable, whose only job is the capture link. Replaces F11 and C8 | Intellibills | Amendment 105, sub-step 10d.5 | Client Settings, Intellibills Settings | **Yes, and that is the point.** One per client, revocable for one | It will sit on the phone as well, but the firm's copy is authoritative | setting |
 | C19 | **`client_folder_name`.** Names the one folder in the firm's filing structure. Prefilled from the name, editable, then fixed once a folder exists | Intellibills | Amendment 105, sub-step 10d.14 | Client Settings, Intellibills Settings | One per client | No | **identity.** It names a thing rather than expressing a preference, which is why it fixes once a folder exists |
-| C20 | **The publishing destination for this client.** One per client, held on the client record. Its address is F14 | Intellibills | Amendment 104, sub-step 10f.1 | Client Settings, Intellibills Settings | One per client | No | setting |
+| C20 | **The Receipt publishing destination for this client.** One per client, held on the client record. Its address is F14 | Intellibills | Amendment 104, sub-step 10f.1 | Client Settings, Intellibills Settings | One per client | No | setting |
+| ~~C21~~ | ~~**Accruals basis capitalisation threshold, client override.** Defaults to the firm setting, F19, unless changed for this client. Decided 2026-09-12 by amendment 349, Paul's decision on outstanding item 33. Greyed out on screen when this client's Accounting method, C22, is Cash Basis, because the threshold has no effect under cash basis~~ **MOVED to section 3.2, 2026-09-12: BUILT, amendment 354.** | ~~IntelliBooks~~ | ~~Amendment 349, outstanding item 33~~ | ~~Client Settings, IntelliBooks Settings~~ | n/a | n/a | n/a |
+| ~~C22~~ | ~~**Accounting method.** Dropdown: Accruals Basis or Cash Basis. Decided 2026-09-12 by amendment 349, Paul's decision on outstanding item 33. Gates C21: when this is Cash Basis, C21 is greyed out~~ **MOVED to section 3.2, 2026-09-12, the same reason as C21.** | ~~IntelliBooks~~ | ~~Amendment 349, outstanding item 33~~ | ~~Client Settings, IntelliBooks Settings~~ | n/a | n/a | n/a |
 
 ---
 
@@ -229,7 +276,7 @@ somebody has to remember to apply.
 
 ## 6. What goes on the Firm Settings page
 
-**Intellibills Settings:** F1 to F17, being thirteen that exist and four proposed. ~~F1 to F18, thirteen that exist and five proposed.~~ **F18 was struck 2026-08-21 by amendment 138.**
+**Intellibills Settings:** F1 to F17, being thirteen that exist and four proposed. ~~F1 to F18, thirteen that exist and five proposed.~~ **F18 was struck 2026-08-21 by amendment 138.** **F20 added 2026-09-12, built straight into this card the same day, step 10p. Not re-counted against the thirteen and four above: that count has not been re-audited today and F7 and F11 inside it are already a "not a setting" and a "gone" rather than plain live rows, so a correct new count needs its own enumeration rather than one more added to a figure taken on trust here. Flagged instead of recomputed.** **F16 and F17 moved from section 2.2 to section 2.1 the same day, found already built while adding F20 to this card: the same flag applies, not re-counted against the thirteen and four above.**
 
 **IntelliBooks Settings:** nothing. The heading is correct and belongs there, and it
 will fill up when the books grow a firm-level preference. It has none today.

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from worker import attached, london_time
+from worker import attached, line_items, london_time
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -1233,9 +1233,16 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             # was the only one of the five call sites on this path not passing
             # it, so a Halfords receipt resolved here could still be answered
             # "0081 Motor vehicles - cars - additions" with nothing in the
-            # prompt saying how much had been spent. No line_items: they are not
-            # stored, and this path has no extraction call in hand.
+            # prompt saying how much had been spent.
             gross_amount=merged["gross_amount"],
+            # ~~No line_items: they are not stored, and this path has no
+            # extraction call in hand.~~ **Struck 2026-09-12 by step 10p part
+            # one: they ARE stored.** Read off the row the pipeline wrote, not
+            # off `merged`, which carries the operator's corrections to the
+            # figures and has no lines in it. A correction to a supplier name
+            # does not change what the document listed.
+            line_items=line_items.from_json(
+                (repo.get_extraction_for_receipt(receipt_id) or {}).get("line_items")),
         )
         # The suggested code has to be one the client's chart holds, whichever
         # layer produced it. See resolve_against_chart() in
@@ -2243,8 +2250,12 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             supplier_name=merged["supplier_name"],
             client_id=receipt["client_id"],
             business_type=business_type,
-            # As at 4.3 step 8 above, and for the same reason. No line_items.
+            # As at 4.3 step 8 above, and for the same reason.
             gross_amount=merged["gross_amount"],
+            # ~~No line_items.~~ **Struck 2026-09-12 by step 10p part one**, and
+            # read off the stored row for the reason given at 4.3 step 8.
+            line_items=line_items.from_json(
+                (repo.get_extraction_for_receipt(receipt_id) or {}).get("line_items")),
         )
         # The suggested code has to be one the client's chart holds, whichever
         # layer produced it. Desktop's own category is applied below, into the

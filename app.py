@@ -26,7 +26,7 @@ from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler, console_handler
-from worker import london_time
+from worker import line_items, london_time
 from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_note
 from worker.attached import (
     AttachedMessageError,
@@ -687,9 +687,14 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 business_type=trade,
                 # extraction.get("gross_amount"), not the `gross` local above it:
                 # that one is coerced to 0.0 for the sidecar, and 0.0 would tell
-                # layer 5 the receipt was free. No line_items: this reads the
-                # extraction back out of the database and they are not stored.
+                # layer 5 the receipt was free.
                 gross_amount=extraction.get("gross_amount"),
+                # ~~No line_items: this reads the extraction back out of the
+                # database and they are not stored.~~ **Struck 2026-09-12 by
+                # step 10p part one: they ARE stored**, so this path now sends
+                # the classifier the same lines the first read saw. That
+                # asymmetry is the defect the step exists to fix.
+                line_items=line_items.from_json(extraction.get("line_items")),
             )
             # The suggested code has to be one the client's chart holds, whichever
             # layer produced it. Runs before the code reaches either the
@@ -1335,7 +1340,22 @@ def process_once():
 
         repo = Repository()
         extractor = get_extractor()
-        engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
+        engine = CategorisationEngine(
+            repo=repo,
+            # **Step 10p part three, amendment 340, Paul's decision of
+            # 2026-09-12.** ~~enable_ai_fallback=False~~ hard off until now.
+            #
+            # **This is the one construction site that is the live poll**, and
+            # the only one that reads the setting. The other five are named in
+            # the report: `resolve_receipt.py` and `retroactive_categorise.py`
+            # stay hard off, and the two probes choose for themselves because
+            # measuring layer 5 is what they are for.
+            #
+            # `config.CLASSIFIER_ENABLED` is read at import, so a value the
+            # pipeline cannot understand stops it at startup rather than being
+            # met one receipt at a time. Absent means off.
+            enable_ai_fallback=config.CLASSIFIER_ENABLED,
+        )
 
         # Sub-step 10f.38, and it runs before the back-feed deliberately. A
         # document attached to a bank line and then posted between two polls

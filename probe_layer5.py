@@ -34,6 +34,7 @@ import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.categorisation.chart import get_eligible_accounts_for_client
 from worker.database.repository import Repository
+from worker import line_items
 
 
 def latest_extractions():
@@ -50,7 +51,7 @@ def latest_extractions():
     rows = conn.execute(
         """
         SELECT r.receipt_id, r.client_id, r.status, r.filename,
-               e.supplier_name, e.gross_amount, e.extracted_at
+               e.supplier_name, e.gross_amount, e.extracted_at, e.line_items
         FROM receipts r
         LEFT JOIN extractions e ON e.receipt_id = r.receipt_id
         WHERE e.extracted_at = (
@@ -97,11 +98,19 @@ def main():
                 supplier_name=r["supplier_name"] or "",
                 client_id=r["client_id"],
                 business_type=trade,
-                # Read out of the database, so the amount is available and the
-                # item lines are not: nothing stores them. This probe therefore
-                # measures the amount's effect and cannot measure the item
-                # lines'. Seeing those needs a receipt through the live pipeline.
+                # Read out of the database, where the amount and, from
+                # 2026-09-12, the item lines both are.
+                #
+                # ~~the item lines are not: nothing stores them. This probe
+                # therefore measures the amount's effect and cannot measure the
+                # item lines'. Seeing those needs a receipt through the live
+                # pipeline.~~ **Struck by step 10p part one.** It can measure
+                # them now, for any receipt read after that date. **Rows written
+                # before it hold NULL and nothing is backfilled**, so on the 33
+                # receipts already in the database this probe still measures the
+                # amount alone.
                 gross_amount=r["gross_amount"],
+                line_items=line_items.from_json(r["line_items"]),
             )
             print(
                 f"  {label}  vendor_key={res.vendor_key!r}  "

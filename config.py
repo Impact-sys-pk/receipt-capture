@@ -552,6 +552,21 @@ CLIENT_COPY_NEVER = "never"
 CLIENT_COPY_TRIGGERS = (CLIENT_COPY_ON_PUBLISH, CLIENT_COPY_AT_POST,
                         CLIENT_COPY_NEVER)
 
+# The fourth key `IntelliBooks-Desktop-v3.html` and this module both have to
+# know, held for CLIENT_TOP_FOLDER_FIELD's reason. Step 10p part three,
+# amendment 340, Paul's decision of 2026-09-12.
+#
+# **Whether the classifier runs at all, per firm.** It is layer 5 of the
+# categorisation engine and it costs money per receipt, so it is off until a
+# person turns it on, and the person who turns it on is Paul on the Firm
+# Settings page.
+#
+# **An environment variable was the consultant session's first recommendation
+# and was refused.** One cannot be per firm, and the cloud version is one
+# service serving several firms, so `.env` would have to be undone the moment
+# that lands. Amendment 340.
+CLASSIFIER_ENABLED_FIELD = "classifier_enabled"
+
 # The one destination there is. The setting is an object keyed by destination
 # rather than a bare string, so a second consumer can be added later without
 # moving the first. Amendment 280 fixes the spelling of the key.
@@ -733,6 +748,51 @@ def _client_copy_trigger(firms: dict) -> str:
     return value
 
 
+def _classifier_enabled(firms) -> bool:
+    r"""Whether layer 5 runs for this firm. Step 10p part three, amendment 340.
+
+    **Absent means off, and that is the difference from F16.**
+    `_client_copy_trigger()` above refuses a firm record that does not carry its
+    field, because a trigger the pipeline does not understand would write a
+    document into a client folder and 18.2b says a copy is never withdrawn.
+    **The risk here runs the other way**: the failure to prevent is the
+    classifier coming ON for a firm that never asked for it, and that costs
+    money per receipt. So a record written before this key existed reads as off,
+    and no firm is switched on by an upgrade.
+
+    **A value that is present and is not a JSON boolean refuses.** Absent is a
+    decision nobody has taken yet; `"false"` in quotes is a decision somebody
+    took and wrote down wrongly, and it is TRUTHY in Python, so reading it
+    loosely would turn the classifier on for a firm whose record says the
+    opposite. That is the one outcome this setting exists to make impossible.
+
+    **No firm record at all reads as off rather than raising.** `load_firms()`
+    and the three readers above already refuse an empty or ambiguous registry
+    with better messages than this could give, and they run first. Reaching
+    here with no firm means those were satisfied and this is not the place to
+    say so again.
+    """
+    if not firms or len(firms) > 1:
+        return False
+    firm_id, firm = next(iter(firms.items()))
+    if CLASSIFIER_ENABLED_FIELD not in firm:
+        return False
+    value = firm.get(CLASSIFIER_ENABLED_FIELD)
+    if not isinstance(value, bool):
+        raise RuntimeError(
+            f"{CLASSIFIER_ENABLED_FIELD} on firm {firm_id} in {FIRMS_JSON} must "
+            f"be a JSON true or false, or absent. It read {value!r}, which is a "
+            f"{type(value).__name__}. Absent means off; a value that is present "
+            f"and is not a boolean is a setting somebody wrote down wrongly, and "
+            f"a string like 'false' is truthy in Python, so reading it loosely "
+            f"would turn the classifier on for a firm whose record says the "
+            f"opposite. It decides whether layer 5 runs, which calls OpenAI and "
+            f"costs money per receipt. Set it on the Firm Settings page in "
+            f"IntelliBooks Desktop, which writes {FIRMS_JSON}."
+        )
+    return value
+
+
 CLIENTS, CLIENTS_BY_ID = load_clients()
 FIRMS = load_firms()
 CLIENTS_ROOT = _client_top_folder(FIRMS)
@@ -753,6 +813,11 @@ INTELLIBOOKS_PUBLISH_DIR = INTELLIBOOKS_ROOT / _publish_destination(FIRMS)
 # sub-step 10f.12. Read here rather than at each use, so a bad value stops the
 # pipeline at import instead of being met one receipt at a time.
 CLIENT_COPY_TRIGGER = _client_copy_trigger(FIRMS)
+
+# Whether layer 5 runs, per firm. Step 10p part three. Read here rather than at
+# the construction site, so a bad value stops the pipeline at import instead of
+# being met one receipt at a time, which is CLIENT_COPY_TRIGGER's reason too.
+CLASSIFIER_ENABLED = _classifier_enabled(FIRMS)
 
 # Created at import, which means a casual `import config` makes these folders.
 # Only the new locations appear here: the old block created IntelliBooks\Backups\,

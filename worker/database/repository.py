@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import config
+from worker.line_items import to_json as line_items_to_json
 from .schema import init_db
 
 
@@ -418,7 +419,7 @@ class Repository:
         supplier_name, invoice_date, net_amount, vat_amount, gross_amount,
         currency, raw_response, validation_status, validation_notes,
         pipeline_version=None, receipt_ref_number=None, receipt_time=None,
-        update_status=True, details=None
+        update_status=True, details=None, line_items=None
     ):
         """Append an extraction row. Extractions are never modified in place.
 
@@ -437,17 +438,22 @@ class Repository:
         """
         now = datetime.now(timezone.utc).isoformat()
         notes_str = ", ".join(validation_notes) if validation_notes else None
+        # Step 10p part one. Serialised here rather than at the nine call sites,
+        # so one place decides the stored format and `worker\line_items.py`
+        # stays the only thing that knows it. None where there are no lines,
+        # never "[]": "no item lines" has one representation.
+        line_items_json = line_items_to_json(line_items)
         self._conn.execute("""
             INSERT INTO extractions
                 (extraction_id, receipt_id, engine, extracted_at, supplier_name, invoice_date,
                  net_amount, vat_amount, gross_amount, currency, raw_response,
                  validation_status, validation_notes, pipeline_version, receipt_ref_number, receipt_time,
-                 details)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 details, line_items)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (extraction_id, receipt_id, engine, now, supplier_name, invoice_date,
               net_amount, vat_amount, gross_amount, currency, raw_response,
               validation_status, notes_str, pipeline_version, receipt_ref_number, receipt_time,
-              details))
+              details, line_items_json))
         if update_status:
             self._conn.execute(
                 "UPDATE receipts SET status = ? WHERE receipt_id = ?",

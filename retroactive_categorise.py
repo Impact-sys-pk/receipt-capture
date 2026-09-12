@@ -14,6 +14,7 @@ from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
 from worker.categorisation.fallback import resolve_against_chart
 from worker.logging_setup import LOG_FORMAT, console_handler
+from worker import line_items
 
 logging.basicConfig(
     level=logging.INFO,
@@ -147,8 +148,14 @@ def main():
                     # `extraction` here is a dict from
                     # Repository.get_extraction_for_receipt(), which is
                     # SELECT * FROM extractions, so gross_amount is a column and
-                    # is in scope. line_items is not a column, so it stays None.
+                    # is in scope.
                     gross_amount=extraction.get("gross_amount"),
+                    # ~~line_items is not a column, so it stays None.~~
+                    # **Struck 2026-09-12 by step 10p part one: it IS a column.**
+                    # Every row written before that date holds NULL and reads as
+                    # no item lines, which is what this script mostly meets: it
+                    # re-runs history and nothing is backfilled.
+                    line_items=line_items.from_json(extraction.get("line_items")),
                 )
                 # The suggested code has to be one the client's chart holds,
                 # whichever layer produced it. See resolve_against_chart() in

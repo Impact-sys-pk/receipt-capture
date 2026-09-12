@@ -22,6 +22,7 @@ from unittest.mock import patch
 from worker.categorisation import engine as engine_module
 from worker.extraction.base import ExtractionResult
 from worker.extraction.openai_vision import _SYSTEM_PROMPT, _normalise_line_items
+from worker.line_items import MAX_LINE_ITEMS, LineItem
 
 
 class _FakeMessage:
@@ -40,17 +41,30 @@ class _FakeResponse:
 
 
 class _PromptRecorder:
-    """Stands in for OpenAI(), and keeps the prompt it was given.
+    """Stands in for OpenAI(), and keeps the prompt AND the parameters.
 
     It answers with a code that is in the pool the test supplies, so
     _ai_suggest() runs all the way to its return rather than stopping at the
     "not in COA" branch, which would let a test pass for the wrong reason.
+
+    **`parse()` names every parameter the real call passes rather than taking
+    `**kwargs`, and that is deliberate.** `CLAUDE.md`, 2026-09-08: a stub must
+    model what the real function does. A stub taking `**kwargs` would have
+    swallowed `temperature` and `seed` silently when step 10p part two added
+    them, and every test here would have stayed green while the two parameters
+    went unasserted. Instead the stub went red on the first run after they were
+    added, which is how it should behave.
+
+    `calls` keeps the whole keyword set, so a test can assert what was sent
+    rather than only what was in the prompt text.
     """
 
     prompts = []
+    calls = []
 
     def __init__(self, *args, **kwargs):
         _PromptRecorder.prompts = []
+        _PromptRecorder.calls = []
         self.beta = self
 
     @property
@@ -61,8 +75,12 @@ class _PromptRecorder:
     def completions(self):
         return self
 
-    def parse(self, *, model, messages, response_format):
+    def parse(self, *, model, messages, response_format, temperature, seed):
         _PromptRecorder.prompts.append(messages[0]["content"])
+        _PromptRecorder.calls.append({
+            "model": model, "response_format": response_format,
+            "temperature": temperature, "seed": seed,
+        })
         return _FakeResponse(engine_module.AiAccountSuggestion(code="7391", name="Car wash"))
 
 
@@ -102,12 +120,15 @@ class CategorisePassesTheContextOnTest(unittest.TestCase):
         self.assertIn(24.99, self._categorise(gross_amount=24.99))
 
     def test_the_line_items_reach_ai_suggest(self):
-        items = ["OIL FILTER 8.99", "WIPER BLADE 16.00"]
+        items = [LineItem("OIL FILTER", 8.99), LineItem("WIPER BLADE", 16.00)]
         self.assertIn(items, self._categorise(line_items=items))
 
     def test_both_default_to_none_when_the_caller_has_neither(self):
-        # A caller that reads an extraction back out of the database has no item
-        # lines, because nothing stores them. That must not be an error.
+        # ~~A caller that reads an extraction back out of the database has no
+        # item lines, because nothing stores them.~~ **Struck 2026-09-12 by step
+        # 10p: they are stored and every caller passes them.** What is still
+        # true, and is what this asserts, is that a receipt whose document had
+        # no itemised lines passes None and that must not be an error.
         passed = self._categorise()
         self.assertNotIn(24.99, passed)
         self.assertEqual([v for v in passed if isinstance(v, list)], [])
@@ -140,10 +161,33 @@ class TheyReachThePromptTest(unittest.TestCase):
                       self._prompt(gross_amount=0.0))
 
     def test_the_item_lines_are_in_the_prompt(self):
-        prompt = self._prompt(line_items=["OIL FILTER 8.99", "WIPER BLADE 16.00"])
+        """**The model sees what it always saw**, description then amount.
+
+        Step 10p part one changed where the lines come from and the shape they
+        are stored in. It deliberately did NOT change what the model is looking
+        at, because part two changes the same call in the same commit and two
+        changes to one call at once would leave neither measurable.
+        """
+        prompt = self._prompt(line_items=[LineItem("OIL FILTER", 8.99),
+                                          LineItem("WIPER BLADE", 16.00)])
         self.assertIn("Item lines on the receipt:", prompt)
         self.assertIn("OIL FILTER 8.99", prompt)
         self.assertIn("WIPER BLADE 16.00", prompt)
+        # And never the dataclass repr, which is what an f-string over the
+        # objects themselves would have put in the prompt.
+        self.assertNotIn("LineItem(", prompt)
+
+    def test_a_line_with_no_amount_is_shown_without_one(self):
+        # Not "OIL FILTER None", and not "OIL FILTER 0.00": an amount that could
+        # not be read is absent, and nought is a real amount a receipt can print.
+        prompt = self._prompt(line_items=[LineItem("LOOSE ITEM", None)])
+        self.assertIn("LOOSE ITEM", prompt)
+        self.assertNotIn("None", prompt)
+        self.assertNotIn("LOOSE ITEM 0.00", prompt)
+
+    def test_a_line_at_nought_says_nought(self):
+        prompt = self._prompt(line_items=[LineItem("FREE GIFT", 0.0)])
+        self.assertIn("FREE GIFT 0.00", prompt)
 
     def test_neither_leaves_a_trace_when_both_are_none(self):
         prompt = self._prompt()
@@ -159,7 +203,8 @@ class TheyReachThePromptTest(unittest.TestCase):
 
     def test_the_pool_is_still_the_only_thing_that_names_a_code(self):
         # Guard on the brief's "do not change what layer 5 chooses from".
-        prompt = self._prompt(gross_amount=24.99, line_items=["OIL FILTER 8.99"])
+        prompt = self._prompt(gross_amount=24.99,
+                              line_items=[LineItem("OIL FILTER", 8.99)])
         self.assertIn("- 7391: Car wash", prompt)
         self.assertIn("- 0081: Motor vehicles - cars - additions", prompt)
 
@@ -175,19 +220,50 @@ class ExtractionCarriesLineItemsTest(unittest.TestCase):
         )
         self.assertIsNone(result.line_items)
 
-    def test_a_list_of_strings_survives(self):
-        self.assertEqual(_normalise_line_items(["MILK 1.45", "BREAD 1.10"]),
-                         ["MILK 1.45", "BREAD 1.10"])
-
-    def test_a_list_of_objects_becomes_strings(self):
+    def test_a_list_of_objects_is_what_the_prompt_now_asks_for(self):
+        """Step 10p part one. The shape reversed: objects are the answer and
+        strings are the fallback, where it was the other way round."""
         self.assertEqual(
             _normalise_line_items([{"description": "MILK 2L", "amount": 1.45}]),
-            ["MILK 2L 1.45"],
+            [LineItem("MILK 2L", 1.45)],
         )
+
+    def test_a_missing_amount_is_none_and_not_nought(self):
+        # Nought and absent are different answers and the difference reaches
+        # 18.4's split, whose lines must sum to the original amount.
+        self.assertEqual(
+            _normalise_line_items([{"description": "LOOSE ITEM", "amount": None}]),
+            [LineItem("LOOSE ITEM", None)],
+        )
+
+    def test_an_amount_of_nought_survives_as_nought(self):
+        self.assertEqual(
+            _normalise_line_items([{"description": "FREE GIFT", "amount": 0}]),
+            [LineItem("FREE GIFT", 0.0)],
+        )
+
+    def test_a_list_of_strings_still_parses_and_the_amount_is_split_off(self):
+        """A model answers the prompt it was given and this one has changed, so
+        the old shape is still read. It is tolerance for a model that ignores
+        the schema, not for stored data: nothing stored is read through here."""
+        self.assertEqual(_normalise_line_items(["MILK 1.45", "BREAD 1.10"]),
+                         [LineItem("MILK", 1.45), LineItem("BREAD", 1.10)])
+
+    def test_a_string_with_no_trailing_amount_is_all_description(self):
+        self.assertEqual(_normalise_line_items(["LOOSE ITEM"]),
+                         [LineItem("LOOSE ITEM", None)])
 
     def test_one_newline_separated_string_becomes_a_list(self):
         self.assertEqual(_normalise_line_items("MILK 1.45\nBREAD 1.10"),
-                         ["MILK 1.45", "BREAD 1.10"])
+                         [LineItem("MILK", 1.45), LineItem("BREAD", 1.10)])
+
+    def test_the_cap_is_enforced_and_not_merely_asked_for(self):
+        """It was advisory: the prompt said "at most 40" and nothing truncated a
+        model that answered with more. Harmless while the lines were held in
+        memory and dropped; not harmless now they are written to a column."""
+        many = [{"description": f"ITEM {i}", "amount": 1.0} for i in range(60)]
+        self.assertEqual(len(_normalise_line_items(many)), MAX_LINE_ITEMS)
+        self.assertEqual(_normalise_line_items(many)[0], LineItem("ITEM 0", 1.0))
 
     def test_nothing_and_empty_both_come_back_as_none(self):
         for value in (None, [], "", "   ", 17):
@@ -204,12 +280,26 @@ class ExtractionCarriesLineItemsTest(unittest.TestCase):
         from worker.extraction import openai_vision
         self.assertIn("max_tokens=1500", inspect.getsource(openai_vision.OpenAIVisionExtractor))
 
-    def test_nothing_stores_them(self):
-        # The brief: "Nothing is stored. No column on extractions, nothing in
-        # the sidecar, nothing to IntelliBooks." This is the test that goes red
-        # if somebody adds the column without the decision behind it.
+    def test_they_are_stored_on_the_extraction(self):
+        """~~Nothing stores them.~~ **Reversed 2026-09-12 by step 10p part one,
+        amendment 340, on Paul's decision.**
+
+        The old test asserted the column's absence and was the guard on a
+        decision of 2026-09-05 that they were carried in memory only. That
+        decision is superseded: they were read once and stored nowhere, so the
+        same receipt was categorised from less on every run after the first.
+        """
         from worker.database import schema
-        self.assertNotIn("line_items", inspect.getsource(schema))
+        self.assertIn("line_items", inspect.getsource(schema))
+
+    def test_the_column_is_on_extractions_and_not_on_receipts(self):
+        # Evidence of what a document said belongs with the reading that said
+        # it. `extractions` is append-only, so a re-read gets its own lines
+        # rather than overwriting the first read's.
+        from worker.database import schema
+        source = inspect.getsource(schema)
+        extractions = source.split("CREATE TABLE IF NOT EXISTS extractions")[1]
+        self.assertIn("line_items", extractions.split("CREATE TABLE")[0])
 
 
 class EveryCallSitePassesTheAmountTest(unittest.TestCase):
@@ -283,13 +373,26 @@ class EveryCallSitePassesTheAmountTest(unittest.TestCase):
                    if "gross_amount" not in kws]
         self.assertEqual(missing, [], f"these call sites do not pass it: {missing}")
 
-    def test_only_the_live_path_can_pass_line_items(self):
-        # The other four read an extraction row back out of the database, and
-        # `extractions` has no column for line items. A call site that started
-        # passing them would be passing None dressed up as a value.
-        passing = sorted({f for f, _line, kws in self._call_sites()
-                          if "line_items" in kws})
-        self.assertEqual(passing, ["worker/extraction_pipeline.py"])
+    def test_every_one_of_them_passes_the_line_items(self):
+        """~~Only the live path can pass them.~~ **Reversed 2026-09-12 by step
+        10p part one.**
+
+        The old test asserted that only `worker/extraction_pipeline.py` passed
+        them, because the other four read an extraction row back out of the
+        database and `extractions` had no column for them. **That asymmetry is
+        the defect step 10p exists to fix**: the same receipt was categorised
+        from less on every run after the first, and nothing said so.
+
+        **This is the guard the brief asks for over the SET**, so a sixth path
+        added later fails here rather than silently sending the classifier
+        nothing. A per-path test cannot do that.
+        """
+        missing = [f"{f}:{line}" for f, line, kws in self._call_sites()
+                   if "line_items" not in kws]
+        self.assertEqual(
+            missing, [],
+            "these re-run the engine without passing the item lines the first "
+            f"read stored, so the classifier sees less than it saw: {missing}")
 
 
 if __name__ == "__main__":

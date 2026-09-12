@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -8,6 +9,7 @@ from openai import OpenAI
 
 import config
 from worker import vat_rates
+from worker.line_items import MAX_LINE_ITEMS, LineItem
 from .base import BaseExtractor, ExtractionResult
 from .postprocess import establish_gross_from_vat, resolve_invoice_date
 
@@ -24,11 +26,11 @@ _SYSTEM_PROMPT = """You are a receipt data extractor. Extract the following fiel
     "receipt_ref_number": "string or null (a visible transaction, ticket, or reference number on the receipt)",
     "receipt_time": "string or null (HH:MM time of day shown on the receipt, if any, 24-hour format)",
     "details": "string or null",
-    "line_items": ["array of strings, one per item line as it appears on the receipt, or null"],
+    "line_items": [{"description": "string, the item line as printed, without its amount", "amount": number or null}],
     "currency": "GBP"
 }
 For amounts use numbers only, no currency symbols. Use null for any field that cannot be determined.
-For line_items, copy each item line as printed, keeping its description and its amount on one string, for example "MILK SEMI SKIMMED 2L 1.45". Do not include subtotal, VAT, total, change or payment lines. Where the document has no itemised lines, use null. List at most 40 lines; if there are more, list the first 40."""
+For line_items, give one object per item line: "description" is the line as printed WITHOUT its amount, and "amount" is the line amount as a number. For "MILK SEMI SKIMMED 2L 1.45" that is {"description": "MILK SEMI SKIMMED 2L", "amount": 1.45}. Where a line shows no amount, use null for the amount rather than 0. Do not include subtotal, VAT, total, change or payment lines. Where the document has no itemised lines, use null for line_items. List at most 40 lines; if there are more, list the first 40."""
 
 _IMAGE_MIME = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -38,32 +40,69 @@ _IMAGE_MIME = {
 }
 
 
-def _normalise_line_items(value) -> Optional[List[str]]:
-    """Whatever the model returned for line_items, as a list of strings or None.
+def _normalise_line_items(value) -> Optional[List[LineItem]]:
+    """Whatever the model returned for line_items, as `LineItem`s or None.
 
-    The prompt asks for an array of strings and a model will sometimes answer
-    with a list of objects, or with one newline-separated string, or with an
-    empty list. Normalising here rather than at the reader keeps the shape
-    promised by `ExtractionResult.line_items` true for every caller, and keeps
-    provider-shaped parsing inside the provider's own module. An empty result
-    is None rather than [], so "no item lines" has one representation.
+    **The prompt asks for an array of objects from 2026-09-12**, step 10p part
+    one, and this reads that. It also still reads the two shapes the old prompt
+    produced, because a model answers the prompt it was given and this one has
+    changed: a list of bare strings, and one newline-separated string. **Those
+    are not legacy tolerance for stored data**, since nothing stored is read
+    through here; they are tolerance for a model that ignores the schema.
+
+    Normalising here rather than at the reader keeps the shape promised by
+    `ExtractionResult.line_items` true for every caller, and keeps
+    provider-shaped parsing inside the provider's own module. An empty result is
+    None rather than [], so "no item lines" has one representation.
+
+    **A bare string is split into a description and an amount** where it ends in
+    one, so a model answering in the old shape still yields a usable amount
+    rather than a description with the number stuck on the end. Where it does
+    not, the whole string is the description and the amount is None, which is
+    the honest answer: not read, rather than nought.
+
+    The cap is applied here, not only asked for in the prompt. See
+    `line_items.MAX_LINE_ITEMS`.
     """
     if value is None:
         return None
     if isinstance(value, str):
-        items = [line.strip() for line in value.splitlines()]
+        entries = [line.strip() for line in value.splitlines()]
     elif isinstance(value, list):
-        items = []
-        for entry in value:
-            if isinstance(entry, dict):
-                # e.g. {"description": "MILK 2L", "amount": 1.45}
-                items.append(" ".join(str(v) for v in entry.values() if v is not None).strip())
-            else:
-                items.append(str(entry).strip())
+        entries = value
     else:
         return None
-    items = [i for i in items if i]
-    return items or None
+
+    items: List[LineItem] = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            item = LineItem.from_dict(entry)
+        else:
+            item = _line_item_from_text(str(entry))
+        if item is not None:
+            items.append(item)
+    return items[:MAX_LINE_ITEMS] or None
+
+
+#: A trailing amount on a printed line: `MILK SEMI SKIMMED 2L 1.45`.
+#: Anchored at the end, so a quantity or a size inside the description is not
+#: mistaken for the amount. A leading currency symbol and thousands separators
+#: are allowed because receipts print both.
+_TRAILING_AMOUNT = re.compile(r"^(?P<description>.*?)[\s]+[£$]?(?P<amount>-?\d[\d,]*\.\d{2})$")
+
+
+def _line_item_from_text(text: str) -> Optional[LineItem]:
+    """One printed line as a `LineItem`, splitting a trailing amount off it."""
+    text = text.strip()
+    if not text:
+        return None
+    match = _TRAILING_AMOUNT.match(text)
+    if match and match.group("description").strip():
+        return LineItem(
+            description=match.group("description").strip(),
+            amount=float(match.group("amount").replace(",", "")),
+        )
+    return LineItem(description=text, amount=None)
 
 
 def _image_to_base64(path: Path) -> Tuple[str, str]:

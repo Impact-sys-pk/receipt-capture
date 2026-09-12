@@ -159,6 +159,29 @@ def init_db():
             pipeline_version    TEXT,
             receipt_ref_number  TEXT,
             receipt_time        TEXT,
+            -- Step 10p part one, amendment 340, 2026-09-12. The item lines off
+            -- the receipt, as a JSON array of {"description", "amount"}, or
+            -- NULL where the document had none. `worker/line_items.py` is the
+            -- contract and the only thing that writes or reads this format.
+            --
+            -- They were read once and stored nowhere, so the classifier saw
+            -- them on the first read and on no later run, and the same receipt
+            -- was categorised from less every time.
+            --
+            -- **An amount of NULL inside the JSON means "not read". 0 means the
+            -- receipt said nought.** They are different answers and the
+            -- difference reaches 18.4's split, whose lines must sum to the
+            -- original amount.
+            --
+            -- TEXT holding JSON rather than a table of its own: they are
+            -- evidence and not an accounting record, per 18.1. Nothing
+            -- categorises a line, posts a line or queries across lines, and a
+            -- table would invite all three.
+            --
+            -- **Nothing is backfilled.** Every row written before 2026-09-12
+            -- holds NULL and always will: those lines were never captured and
+            -- cannot be recovered. Paul's instruction.
+            line_items          TEXT,
             FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
         );
 

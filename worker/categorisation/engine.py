@@ -33,6 +33,7 @@ try:
 except ImportError:
     OpenAI = None
 from pydantic import BaseModel, Field
+from worker.line_items import LineItem, for_prompt
 from . import receipt_accounts
 from .receipt_accounts import load_receipt_accounts
 
@@ -189,6 +190,30 @@ def fuzzy_match(query: str, candidates: list[str], threshold: float = 0.70) -> l
     return sorted(matches, key=lambda x: x[1], reverse=True)
 
 
+#: Step 10p part two. Nought, so the classifier returns its most likely answer
+#: rather than sampling from the distribution.
+#:
+#: **Not a promise of correctness.** It is a promise that the same receipt
+#: produces the same account twice, which is the property step 10m's
+#: confirmation rule needs and the one the live probe showed missing.
+CLASSIFIER_TEMPERATURE = 0
+
+#: The seed sent with every classifier call. **Named rather than written as a
+#: literal at the call site**, per the brief, so it is one value that can be
+#: moved deliberately and a reader can see that it never moves by accident.
+#:
+#: **The number itself carries no meaning and must not be read as though it
+#: does.** Any fixed integer would do; what matters is that it is fixed. It is
+#: the date this was decided, which is the least mysterious constant available.
+#:
+#: **A seed is best-effort on OpenAI's side**, which documents it as making
+#: sampling deterministic "for the most part" and pairs it with a
+#: `system_fingerprint` that can change under the caller. So `temperature=0` is
+#: the load-bearing half and this is belt and braces. Said here rather than
+#: discovered later from two answers that should have matched.
+CLASSIFIER_SEED = 20260912
+
+
 class CategorisationEngine:
     """
     Three-layer categorisation engine with optional AI fallback.
@@ -243,7 +268,7 @@ class CategorisationEngine:
     def categorise(self, receipt_id: str, extraction_id: str, supplier_name: str,
                    client_id: str, business_type: str,
                    gross_amount: Optional[float] = None,
-                   line_items: Optional[List[str]] = None) -> CategorisationResult:
+                   line_items: Optional[List[LineItem]] = None) -> CategorisationResult:
         """
         Categorise a single receipt through the rules-first engine.
         Returns CategorisationResult with suggested code and confidence.
@@ -382,7 +407,7 @@ class CategorisationEngine:
     def _ai_suggest(self, vendor_key: str, client_id: str,
                     supplier_name: str = "",
                     gross_amount: Optional[float] = None,
-                    line_items: Optional[List[str]] = None) -> Optional[dict]:
+                    line_items: Optional[List[LineItem]] = None) -> Optional[dict]:
         """
         Call OpenAI with constrained output to categorise unmatched vendor.
 
@@ -486,7 +511,17 @@ class CategorisationEngine:
                     f"Gross amount on the receipt, VAT included: {gross_amount}"
                 )
             if line_items:
-                lines = chr(10).join(f"  {item}" for item in line_items)
+                # **`for_prompt()` and not the objects themselves.** From
+                # 2026-09-12 these are `LineItem`s with the description and the
+                # amount separate, step 10p part one, and formatting them here
+                # with an f-string would put a dataclass repr into the prompt.
+                # The stored shape and the prompt's wording are two things now,
+                # and `worker/line_items.py` is where they meet: the model is
+                # shown the printed line it has always been shown, so this step
+                # changes where the lines come from and not what the model is
+                # looking at.
+                rendered = for_prompt(line_items) or []
+                lines = chr(10).join(f"  {item}" for item in rendered)
                 facts.append(f"Item lines on the receipt:{chr(10)}{lines}")
 
             # Call OpenAI with constrained output
@@ -511,6 +546,23 @@ Return the best matching GL code and name."""
                 # it", and message.parsed is then always None. See
                 # AiAccountSuggestion's docstring for the defect this fixed.
                 response_format=AiAccountSuggestion,
+                # **Step 10p part two, amendment 340, Paul's decision of
+                # 2026-09-12 after running `probe_layer5.py` on live data.**
+                #
+                # The call passed `model`, `messages` and `response_format` and
+                # nothing else, so it sampled at the API default. The probe
+                # returned `7113 Business rates` on one receipt and `7110 Rates`
+                # on another, for the same supplier, the same 3.80 and the same
+                # client.
+                #
+                # **This does not make the answer right. It makes it the same
+                # answer every time**, which is what step 10m needs before a
+                # confirmation teaches a permanent firm-wide mapping: otherwise
+                # the mapping is taught from whichever of two answers the
+                # operator happened to see. Both of the probe's answers were
+                # wrong on a parking payment.
+                temperature=CLASSIFIER_TEMPERATURE,
+                seed=CLASSIFIER_SEED,
             )
 
             # Parse and validate response

@@ -265,7 +265,14 @@ def main():
 
     init_db()
     repo = Repository(config.DB_PATH)
-    engine = CategorisationEngine(repo)
+    # `enable_ai_fallback=False` stated rather than taken from the default,
+    # matching the other five construction sites. Flag 3 of
+    # `2026-09-12_REPORT_claude_code_service_corrections.md`, on Paul's
+    # instruction. The default IS False, so this changes nothing today; it is
+    # here because this is the CLI Paul runs by hand, so it is the one place a
+    # change to that default would turn the classifier on, and cost money per
+    # receipt, without anybody choosing it.
+    engine = CategorisationEngine(repo, enable_ai_fallback=False)
 
     try:
         view = get_resolution_view(repo, args.receipt_id)

@@ -1270,27 +1270,58 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
         except Exception as exc:
             logger.error(f"auto-retry error for {receipt_id}: {exc}", exc_info=True)
             stats['auto_retry_errors'] = stats.get('auto_retry_errors', 0) + 1
-            # Record the failed attempt against the current pipeline_version.
-            # process_extraction_result() never ran, so no extraction row was
-            # written, so the latest row still carries the OLD version and
+            # Record the failed attempt against the current pipeline_version,
+            # UNLESS this attempt already wrote one.
+            #
+            # Why a row is written at all: without one carrying the current
+            # version, the latest row still carries the OLD version and
             # find_failed_by_version() would re-select this receipt on every
             # poll. Via extract_with_transient_retry that is three real OpenAI
             # calls every five minutes, indefinitely.
+            #
+            # Why it is now conditional. Sub-step 10ay, 2026-09-13. This comment
+            # used to say "process_extraction_result() never ran, so no
+            # extraction row was written", and that is only true of a failure
+            # raised BEFORE that function's own repo.save_extraction(), which
+            # runs near the top of it, ahead of categorisation, the publish step
+            # and the client-folder copy. Anything raising after that point
+            # arrives here with a row for this attempt already on the table,
+            # carrying this pipeline_version and the status the document
+            # genuinely earned, and the write below put a `failed` row on top of
+            # it: a failure recorded that did not happen, and the real reading
+            # buried under it. Found verifying step 10ax's report, where
+            # copy_for_published_receipt() could raise past every guard between
+            # there and here.
+            #
+            # The version comparison is what tells the two apart, and it is
+            # sound because of how this receipt was selected:
+            # find_failed_by_version() returns only receipts whose LATEST
+            # extraction carries a version other than the current one. So on
+            # entry the latest row cannot match, and if it matches now, this
+            # attempt is what wrote it.
+            #
             # update_status=False: the API crashed, the document did not, so
             # a needs_review receipt must not be flipped to failed.
-            repo.save_extraction(
-                extraction_id=str(uuid.uuid4()),
-                receipt_id=receipt_id,
-                engine=extractor.name,
-                supplier_name=None, invoice_date=None,
-                net_amount=None, vat_amount=None, gross_amount=None,
-                currency=config.DEFAULT_CURRENCY,
-                raw_response=str(exc),
-                validation_status="failed",
-                validation_notes=[f"auto-retry extraction error: {exc}"],
-                pipeline_version=pipeline_version,
-                update_status=False,
-            )
+            latest = repo.get_extraction_for_receipt(receipt_id)
+            if latest is not None and latest.get('pipeline_version') == pipeline_version:
+                logger.info(
+                    f"auto-retry error for {receipt_id} came after its extraction "
+                    f"row was written; leaving that row as the record of the attempt"
+                )
+            else:
+                repo.save_extraction(
+                    extraction_id=str(uuid.uuid4()),
+                    receipt_id=receipt_id,
+                    engine=extractor.name,
+                    supplier_name=None, invoice_date=None,
+                    net_amount=None, vat_amount=None, gross_amount=None,
+                    currency=config.DEFAULT_CURRENCY,
+                    raw_response=str(exc),
+                    validation_status="failed",
+                    validation_notes=[f"auto-retry extraction error: {exc}"],
+                    pipeline_version=pipeline_version,
+                    update_status=False,
+                )
         finally:
             # Release the lock repo.acquire_receipt_lock() took at the top of
             # this iteration. Named rather than numbered: this comment said

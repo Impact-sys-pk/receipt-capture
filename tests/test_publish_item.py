@@ -73,7 +73,6 @@ def sidecar():
         validation_status="ok",
         asserted=None,
         original_filename="receipt.pdf",
-        claimed_client_id=None,
     )
 
 DOCUMENT_BYTES = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\nnot really a pdf\n\x00\xff"
@@ -89,9 +88,11 @@ class ItemShapeTest(unittest.TestCase):
     def test_the_item_carries_the_sidecar_key_set_and_two_more(self):
         """The contract with Desktop, read off `make_enriched_sidecar()` itself.
 
-        Amendment 283 and the brief both say 19 keys. It returns 20. The count
-        is not restated here for that reason: the set is asked for rather than
-        remembered.
+        ~~Amendment 283 and the brief both say 19 keys. It returns 20.~~
+        **It returns 19 from 2026-09-13**, sub-step 10ar having removed
+        `claimed_client_id`, so the two agree again. The count is still not
+        restated here, for the reason it never was: the set is asked for rather
+        than remembered, so this test did not have to move when the set did.
         """
         item = publish.build_item(self.sidecar, self.document)
         self.assertEqual(

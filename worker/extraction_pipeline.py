@@ -438,7 +438,6 @@ def process_extraction_result(
             validation_status="ok",
             asserted=asserted_values,
             original_filename=filename,
-            claimed_client_id=None,
         )
 
         # **Nothing is written into `Clients\` here any more.** Sub-step
@@ -478,7 +477,6 @@ def process_extraction_result(
             validation_status=validation.status,
             asserted=asserted_values,
             original_filename=filename,
-            claimed_client_id=None,
         )
 
         # File to Review folder. 10d.54: keyed on client_id.

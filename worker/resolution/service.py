@@ -1346,7 +1346,6 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             validation_status="ok",
             asserted=None,
             original_filename=receipt["filename"],
-            claimed_client_id=None,
         )
 
         # 11. The client folder copy, by the same single route as any other

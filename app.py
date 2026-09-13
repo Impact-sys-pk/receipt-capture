@@ -738,7 +738,6 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 validation_status="ok",
                 asserted=None,
                 original_filename=receipt["filename"],
-                claimed_client_id=None,
             )
             published = publish_receipt(
                 repo, receipt_id, sidecar_payload, source_path,

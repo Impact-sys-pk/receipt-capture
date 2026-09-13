@@ -394,7 +394,6 @@ def make_enriched_sidecar(
     validation_status: str,
     asserted: dict[str, Any] | None,
     original_filename: str,
-    claimed_client_id: str | None = None,
 ) -> dict[str, Any]:
     """Build the sidecar that travels with a filed receipt.
 
@@ -413,9 +412,10 @@ def make_enriched_sidecar(
     posts it to the cashbook. null fails honestly.
 
     18.2b freezes this function and sub-step 10d.14 repeats that it is not
-    touched at all. It has been touched, once, and only to rename `client_code`
-    to `client_id` and `claimed_client_code` to `claimed_client_id`. The reason
-    is evidence rather than judgement: `parseSidecar()` in
+    touched at all. It has been touched twice. ~~once~~ The first was a rename
+    only, `client_code` to `client_id` and `claimed_client_code` to
+    `claimed_client_id`. The reason was evidence rather than judgement:
+    `parseSidecar()` in
     IntelliBooks-Desktop-v3.html reads `data.client_id` and no longer reads any
     code, so leaving this key named `client_code` would hand the other half of
     the contract a key it has already stopped reading. Section A of the step 10d
@@ -423,16 +423,24 @@ def make_enriched_sidecar(
     writes, and this is such a file. Nothing else here moved: not the filename
     convention, not the three category keys, not the write on arrival.
 
-    `claimed_client_id` is still dead and is still passed None at all four call
-    sites. Outstanding item 117 says whether step 10d populates or removes it is
-    a decision for Paul, so it is neither populated nor removed here, only
-    renamed off an abolished word.
+    The second touch REMOVED `claimed_client_id`, sub-step 10ar on 2026-09-13,
+    closing outstanding item 117 on Paul's decision recorded at amendment 407.
+    ~~It is still dead and is still passed None at all four call sites.
+    Outstanding item 117 says whether step 10d populates or removes it is a
+    decision for Paul, so it is neither populated nor removed here.~~ That
+    decision is now made. The phone can no longer claim a client at all since
+    `capture_token` replaced a phone-supplied code under step 10d, so the
+    mismatch the field existed to catch has no source left to produce it, and
+    this project deletes a confirmed-dead field rather than carrying it, as at
+    items 114 to 116. Nothing read the key: neither the pipeline nor
+    `parseSidecar()` in IntelliBooks-Desktop-v3.html, which contains the word
+    `claimed` nowhere at all. The sidecar therefore has 19 keys, not 20, and
+    tests/test_fallback_accounts.py's count guard moved with it.
     """
     return {
         "receipt_id": receipt_id,
         "client_id": client_id,
         "client_name": client_name,
-        "claimed_client_id": claimed_client_id,
         "source": source,
         "capture_date": capture_date,
         "invoice_date": invoice_date,

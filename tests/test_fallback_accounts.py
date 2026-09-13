@@ -666,6 +666,12 @@ class NoSchemaChangeTest(unittest.TestCase):
     def test_the_sidecar_gained_no_key(self):
         # make_enriched_sidecar() is frozen by design document 18.2b and
         # sub-step 10d.14. This is the guard on that.
+        #
+        # 20 until 2026-09-13. Sub-step 10ar removed claimed_client_id, a field
+        # with no writer and no reader, on Paul's decision at amendment 407
+        # closing outstanding item 117. This assertion is the only thing in the
+        # suite that caught the removal, which is what it is for, so the number
+        # is moved deliberately rather than the check loosened to a subset.
         from worker.filing import make_enriched_sidecar
         keys = set(make_enriched_sidecar(
             receipt_id="r", source="email", client_id="c", client_name="n",
@@ -674,7 +680,7 @@ class NoSchemaChangeTest(unittest.TestCase):
             confidence="none", validation_status="ok", asserted=None,
             original_filename="f.pdf",
         ))
-        self.assertEqual(len(keys), 20)
+        self.assertEqual(len(keys), 19)
         self.assertFalse([k for k in keys if "fallback" in k or "chart" in k])
 
 

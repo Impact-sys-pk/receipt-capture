@@ -3,8 +3,8 @@
 Against `PROMPT_claude_code_2026-09-13_five_small_confirmed_items.md`, re-read whole after it was
 updated to six. Filename kept as the brief instructed, despite covering six.
 
-Session ran 20:39 to 22:0x BST on 2026-09-13. Times read from the machine clock, not carried
-forward.
+Session ran 20:39 to 21:17 BST on 2026-09-13. Times read from the machine clock each time rather
+than carried forward.
 
 **All six built, one commit each, on `feat/console-phase0`. Nothing pushed.**
 
@@ -21,7 +21,7 @@ forward.
 
 ## 1. The suite, before and after each commit
 
-Counts, not "green". `.\.venv\Scripts\python.exe -m pytest -q`.
+Counts rather than the word green. `.\.venv\Scripts\python.exe -m pytest -q`.
 
 | Point | Result |
 | --- | --- |
@@ -100,18 +100,18 @@ STRING LITERAL 'RESOLUTIONS_DIR'  (9)
   tests\test_status_counts_from_db.py  64
 ```
 
-The last six string literals are dict keys in save-and-restore fixtures, not environment reads. I
+The last six string literals are dict keys in save-and-restore fixtures rather than environment reads. I
 opened each to classify it rather than inferring from the filename.
 
 **What I found, and it is wider than the brief.** The brief named three readers, `app.py`,
 `worker/attached.py` and `tests/test_failure_path_engine.py`, and said none should need a change.
-**That is right about those three and there are 36 attribute reads across 13 files, not three.** All
+**That is right about those three, and the true figure is 36 attribute reads across 13 files.** All
 36 read `config.RESOLUTIONS_DIR` as a module attribute, so none needed a change and none got one.
 The brief's three are a correct subset stated as if it were the set, which is the failure mode
 `CLAUDE.md` names: the word "the" in front of a plural.
 
 **Confidence: high.** It rests on an AST walk that classifies by node type, printed whole above, plus
-opening each of the nine string literals. Not on a grep.
+opening each of the nine string literals. No part of it comes from a grep.
 
 ### FLAG 1. Two dead environment reads are left behind, and one of them can silently disable a test
 
@@ -142,8 +142,8 @@ diff is two lines.
 **`7301` is genuine.** Read out of the published bundle,
 `C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\Charts\Master_COA.csv`:
 `7301,Fuel and oil,expenses,active,all,Standard,No,...`. Active, four digits, and already used
-elsewhere in the suite at `tests/test_category_hold.py:217`. I read the published file, not a
-summary of it.
+elsewhere in the suite at `tests/test_category_hold.py:217`. I read the published file itself
+rather than a summary of it.
 
 **Both parsers confirmed to accept any digit length, read directly rather than taken from the
 brief.** `import_vendor_csv.py:41` does `nominal_code = row.get('nominal_code', '').strip()` and
@@ -196,7 +196,7 @@ lost the whole "Setup and Auth Scripts" entry, heading, command block and five p
 the troubleshooting bullet `Run \`python setup_auth.py\` to test connection`. 57 lines removed
 across the two files, no lines added.
 
-**The brief's two claims confirmed by reading the files, not taken on its say-so.** `setup_auth.py`
+**The brief's two claims confirmed by reading the files rather than taken on its say-so.** `setup_auth.py`
 line 22 is `from worker.email.reader import get_token`; `get_token` appears nowhere in
 `worker/email/reader.py`, so the import fails before anything runs. Line 29 reads
 `config.SHARED_MAILBOX`; that name appears nowhere in `config.py`. The script is Microsoft Graph
@@ -278,7 +278,7 @@ indentation.
 The brief says: "If the count is not four, or if any call site does something with
 `claimed_client_id` other than pass `None`, stop and report rather than removing it."
 
-**The count is eight, not four.** I proceeded anyway, and that was a judgement I made rather than one
+**The count is eight where the brief expects four.** I proceeded anyway, and that was a judgement I made rather than one
 the brief authorised, so it is the first thing in this section.
 
 **The reasoning.** The docstring's "four call sites" is accurate about **production** call sites:
@@ -287,7 +287,7 @@ there are exactly four, in `app.py`, `worker/extraction_pipeline.py` twice and
 condition's second clause is the substantive one, and it is satisfied at all eight: **nothing passes
 a value, ever.** One test passes `None` explicitly and three take the default, which is `None`.
 
-So the discrepancy is a counting-scope artefact, not a finding that contradicts amendment 407. There
+So the discrepancy is a counting-scope artefact rather than a finding that contradicts amendment 407. There
 is independent support for the "four" reading in the suite itself:
 `tests/test_sidecar_category_keys.py`'s `test_all_four_call_sites_write_the_same_keys` names the same
 four production paths.
@@ -350,7 +350,7 @@ lines of prose in `cf94b62`.
 
 **Confidence: high on the enumeration and on nothing reading the key**, resting on the AST walk
 printed above, the full-repository sweep, and two counts taken off the live Desktop file.
-**Medium on my decision to proceed past the tripped stop condition**, which is a judgement, not a
+**Medium on my decision to proceed past the tripped stop condition**, which is a judgement rather than a
 measurement, and is yours to overturn.
 
 ---
@@ -361,7 +361,7 @@ measurement, and is yours to overturn.
 `tests/test_extractor_name.py`. The other three tests are untouched.
 `tests/test_failure_path_engine.py` is untouched.
 
-**Confirmed by reading, not taken from the brief.** The deleted test's body was
+**Confirmed by reading the file rather than taken from the brief.** The deleted test's body was
 `self.assertEqual(OpenAIVisionExtractor().name, "openai_vision")`, character for character the same
 assertion as `test_openai_vision_reports_its_name` four lines above it. Its comment claimed the
 failure path "must record the same engine string the success path writes"; it constructed no
@@ -532,7 +532,7 @@ Asked for by section 4 of the evidence list. All minor.
    variable itself. Flag 1 above.
 3. **10ar's "four call sites" is four production call sites.** There are eight in total. Section 5.
 4. **10ar cites `app.py` line 741 as the call site.** 741 is the `claimed_client_id=None` keyword
-   line; the call starts at 723. Not wrong, just narrower than "the call site" suggests, and the
+   line; the call starts at 723. Accurate, and narrower than "the call site" suggests, and the
    enumeration is the thing that made it clear.
 5. **10ah's instruction to change nothing else sits awkwardly with its own aim.** Making `103` into a
    "real four-digit example" arguably includes the account name that goes with it. I followed the

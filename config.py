@@ -206,9 +206,15 @@ PIPELINE_LOCKFILE = UNSYNCED_ROOT / "pipeline.lock"
 # Where IntelliBooks Desktop writes its resolution notes, per design document 12.2.
 # Deliberately not created at import, unlike the directories below: the pipeline
 # creates it on demand, and importing config should not make a folder in OneDrive
-# on a machine that has never run the back-feed. An empty RESOLUTIONS_DIR in .env
-# means "use the default", not "use the current directory".
-RESOLUTIONS_DIR = Path(os.environ.get("RESOLUTIONS_DIR") or (INTELLIBILLS_ROOT / "Resolutions"))
+# on a machine that has never run the back-feed.
+#
+# **No environment override, deliberately.** There was one until 2026-09-13,
+# read from `RESOLUTIONS_DIR` in `.env` and falling back to this same default.
+# `IntelliBooks-Desktop-v3.html` hardcodes this folder and cannot read the
+# pipeline's `.env` at all, so a value set on this side would have parted the
+# two halves silently. Removed by sub-step 10ag, closing outstanding item 70,
+# amendment 386: one fixed location that both products necessarily agree on.
+RESOLUTIONS_DIR = INTELLIBILLS_ROOT / "Resolutions"
 
 # Where IntelliBooks Desktop hands over a document attached to a bank
 # transaction, per sub-step 10f.38. One folder, with `processed\` and `failed\`

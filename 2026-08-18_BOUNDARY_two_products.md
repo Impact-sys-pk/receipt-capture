@@ -4,7 +4,9 @@
 
 **This document is above both products.** `2026-07-25_CONSOLE_DESIGN.md` is the build authority for how things are built; this is the authority for **which product a thing belongs to**. Where the two disagree, this one decides, and the design document is corrected.
 
-**Its home is provisional.** It sits in `C:\LastingImpact\receipt_capture\` because that is where the authoritative documents live and both build sessions are pointed there. But that is Intellibills' repository and this document governs both products, which is the same category error it exists to prevent. Moving it is a filing decision Paul has not yet taken.
+~~**Its home is provisional.** It sits in `C:\LastingImpact\receipt_capture\` because that is where the authoritative documents live and both build sessions are pointed there. But that is Intellibills' repository and this document governs both products, which is the same category error it exists to prevent. Moving it is a filing decision Paul has not yet taken.~~
+
+**Settled 2026-09-12. Paul's decision: it stays in `C:\LastingImpact\receipt_capture\`.** No file move. **The category error above stands, tolerated rather than fixed**: Paul gave the decision without reasoning beyond it, and none is invented here. Recorded at amendment 350 of `2026-07-25_CONSOLE_DESIGN.md`, closing outstanding item 31.
 
 ---
 

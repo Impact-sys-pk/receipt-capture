@@ -72,7 +72,7 @@ def import_csv(csv_path: str, client_id: str):
 def main():
     if len(sys.argv) < 3:
         print("Usage: python import_vendor_csv.py <csv_path> <client_id>")
-        print(r'Example: python import_vendor_csv.py "C:\Users\PDK7\OneDrive - Intellitax Accounting Limited\Intellibills\categorisations_client_vendors_cleaned.csv" Client_006')
+        print(r'Example: python import_vendor_csv.py "<path to your Intellibills folder>\categorisations_client_vendors_cleaned.csv" Client_006')
         sys.exit(1)
 
     csv_path = sys.argv[1]

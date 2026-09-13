@@ -58,6 +58,14 @@ untouched.**
 |---|---|
 | none | **A service on AWS cannot write into a folder on the customer's own machine.** **Paul, 2026-09-07: "On AWS the firm may well choose to save to a top folder locally."** The client top folder is the firm's own filing structure, per section 18.2 of `2026-07-25_CONSOLE_DESIGN.md`, and not storage this product owns, **so it does not move to the cloud when our storage does.** A firm on the cloud version that wants the copy filed into their own folder needs something running on their side to receive it: an agent, a synced drive, or a pull rather than a push. **The local version has this for nothing**, because the pipeline runs on the same machine as the folder. **What is NOT a constraint here**: the setting itself. F17 is one absolute path on the firm record and it ports unchanged, which is why sub-step 10e.14 is worth doing properly now rather than as a local workaround. Section 18.11 of the design document records F17 as durable for the same reason |
 
+### 3.2 A tenth constraint, added 2026-09-13
+
+**It carries an item number because it was one.** Outstanding item 135 closed on Paul's decision, recorded as amendment 420 of `2026-07-25_CONSOLE_DESIGN.md`: not a fix, a constraint for this document instead.
+
+| Was item | Constraint |
+|---|---|
+| 135 | **A firm not found by id falls back to showing its internal id rather than its name.** `app.py`'s `config.FIRMS.get(firm_id, {}).get("name", firm_id)`. Unreachable today: the single firm on file, `FIRM001`, is always found. In a multi-firm cloud product a firm mid-onboarding, or one referenced after being removed from the tenant list, could hit this path and show a client the internal id instead of a name |
+
 ---
 
 ## 4. The ninth constraint, and where it went

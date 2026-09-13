@@ -3,7 +3,10 @@
 **Written 2026-09-11 by the consultant session, from Paul's decision the same day. Flags 5 and 6 of
 `2026-09-11_REPORT_claude_code_capture_report.md`.**
 
-**HELD behind `PROMPT_claude_code_2026-09-11_category_hold.md`. One brief per session at a time.**
+~~**HELD behind `PROMPT_claude_code_2026-09-11_category_hold.md`. One brief per session at a time.**~~
+**RELEASED 2026-09-12.** That brief and its follow-up
+`PROMPT_claude_code_2026-09-12_category_hold_trigger.md` have both executed and reported, commits
+`b439b92` and `e27aecc`, and nothing else is running. **The one-brief-at-a-time rule still holds.**
 
 **Read first, in this order:** `CLAUDE.md`, the section "How this project is worked" and the seven
 traps, including the two rules added on 2026-09-11. Then 18.2a of `2026-07-25_CONSOLE_DESIGN.md` for
@@ -156,6 +159,12 @@ changes; check the warning is gone rather than assuming it.
 **Commit on `feat/console-phase0`.** Do not push, do not create a branch, and do not commit
 `2026-07-25_CONSOLE_DESIGN.md`, any `PROMPT_*` or `HANDOVER_*` file, or anything under
 `Test Receipts\`.
+
+**COMMIT BY NAMING YOUR OWN PATHS, AND CHECK THE INDEX AFTERWARDS. Added 2026-09-12.** On 2026-09-12
+three files this brief forbids committing were already staged in the index when you started, the
+brief you were reading among them, and a plain `git commit` would have swept all three in. **Naming
+your paths commits those and leaves the rest of the index as it was.** Verify afterwards that it did,
+and say so in the report.
 
 **Write the report to
 `C:\LastingImpact\receipt_capture\2026-09-11_REPORT_claude_code_london_time.md`** and carry the

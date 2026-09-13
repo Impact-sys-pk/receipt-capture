@@ -247,7 +247,7 @@ IntelliBooks\Attachments\{CODE}\{year}\{month}\{receipt id}_{original filename}
 
 **The reasoning is right and the outcome is right.** Protecting the rows through the reset was not enough if the key they hang off is retired in the same operation, and this plan did not see that. It is recorded here because it is the substantive finding of the whole reset.
 
-**Two things about it are worth stating plainly, and neither is a criticism of the outcome.** It is an `UPDATE` and a `DELETE` against `data/receipts.db`, which `CLAUDE.md`'s AUTOMATIC list requires a session to stop and ask about. And **the row that was deleted is the only thing lost in the entire reset that was not test data**: one real mapping for `Client_003`. Recoverable from `Intellibills\categorisations_client_vendors_cleaned.csv` if it is ever wanted.
+**Two things about it are worth stating plainly, and neither is a criticism of the outcome.** It is an `UPDATE` and a `DELETE` against `data/receipts.db`, which `CLAUDE.md`'s AUTOMATIC list requires a session to stop and ask about. ~~And **the row that was deleted is the only thing lost in the entire reset that was not test data**: one real mapping for `Client_003`. Recoverable from `Intellibills\categorisations_client_vendors_cleaned.csv` if it is ever wanted.~~ **Corrected 2026-09-13, on Paul's word that `Client_003` is Test Company: the deleted row was test data after all, and nothing was lost that was not.** The recovery file named above was checked and would not have identified the row in any case, being 101 rows with no client column. Outstanding item 76 closed on this finding, recorded at amendment 391 of `2026-07-25_CONSOLE_DESIGN.md`.
 
 ### 0.7.4 The correction that matters most
 

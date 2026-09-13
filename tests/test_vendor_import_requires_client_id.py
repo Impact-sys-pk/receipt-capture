@@ -32,12 +32,12 @@ import seed_client_vendors
 # both, because the CSVs on disk were not rewritten. This fixture is what keeps
 # the back-compatible read exercised.
 IMPORT_CSV = """vendor_code,vendor_name,detail,nominal_code,account_name
-shell,Shell UK,Fuel purchase,103,Fuel
+shell,Shell UK,Fuel purchase,7301,Fuel
 """
 
 # seed_client_vendors parses a GL-grouped export: a "<code> <name>" line, then
 # dated transaction rows beneath it.
-SEED_CSV = """103 Fuel,,,
+SEED_CSV = """7301 Fuel,,,
 Date,Description,Debit,Credit
 2026-01-15,Shell Garage Dartford,50.00,
 """

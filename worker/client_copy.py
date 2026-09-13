@@ -449,6 +449,30 @@ def copy_for_published_receipt(
     succeeded and whose copy failed has a `published` row, so it is not swept.
     The failure is an ERROR in `run.log` and `filed_path` stays NULL.
 
+    ## "This never raises" was aspirational until step 10ax, 2026-09-13
+
+    **Two writes happen here and only the first was guarded.** The file write
+    sat in a `try`; the `mark_receipt_filed()` below it did not, so a locked,
+    full or missing database took the exception out uncaught. Both are guarded
+    now and the claim above is true.
+
+    **Why it was not merely untidy.** Four of the five callers hold a per-item
+    `try/except Exception`, so there the blast radius was one receipt, reported
+    wrongly: on the three intake paths the handler writes a `failed` extraction
+    row and moves the email to Failed Processing for a receipt that extracted,
+    validated, published and was copied correctly. **The fifth caller,
+    `_apply_attached_note()`, had no guard at all between here and
+    `process_once()`, which logs and re-raises**, so it took the entire poll
+    cycle with it: the remaining resolution notes, the email fetch, the inbox
+    scan and both sweeps below it never ran.
+
+    **The failure is self-healing and the log line says so.** `filed_path`
+    stays NULL, which is what
+    `get_published_receipts_without_client_copy()` selects on, so
+    `_copy_missing_client_copies()` offers the receipt again next poll and
+    10f.25's byte comparison records the document already there rather than
+    writing a second one.
+
     `filed_path` is passed in rather than read here, because every caller has
     the receipt row in hand and a second read could disagree with the row the
     caller decided from.
@@ -565,7 +589,35 @@ def copy_for_published_receipt(
     # `get_published_receipts_without_client_copy()`, which selects on exactly
     # that column, so `_copy_missing_client_copies()` would offer it again on
     # every poll for ever and log the same skip each time.
-    repo.mark_receipt_filed(receipt_id, str(result.path))
+    try:
+        repo.mark_receipt_filed(receipt_id, str(result.path))
+    except Exception as error:
+        # **Step 10ax, 2026-09-13.** The write above was guarded and this one
+        # was not, so the docstring's "this never raises" was aspirational: a
+        # database that is locked, full or gone took the exception out through
+        # every caller, and one of the five, `_apply_attached_note()`, has no
+        # guard between here and `process_once()`, which re-raises. That took
+        # the whole poll cycle down for a receipt whose document had already
+        # landed correctly.
+        #
+        # **The path is named because the document is there.** This is the one
+        # failure in this function where something was written and the record
+        # of it was not, so `run.log` has to say where it is. The reader is
+        # otherwise told a copy failed and will look for a file that exists.
+        #
+        # **Not retried here.** `filed_path` stays NULL, which is exactly what
+        # `get_published_receipts_without_client_copy()` selects on, so
+        # `_copy_missing_client_copies()` offers this receipt again on the next
+        # poll. `write_client_copy()` compares by bytes rather than by name, so
+        # that attempt finds the identical document already there and records
+        # it instead of writing a second one. 10f.25.
+        logger.error(
+            "receipt %s was copied into the client folder at %s, but recording "
+            "it failed: %s: %s. The document IS there and filed_path is still "
+            "NULL, so the next poll's retry sweep will record it without "
+            "writing a second copy.",
+            receipt_id, result.path, type(error).__name__, error)
+        return None
 
     if not result.written:
         # 10f.25. No second document, so no second file.

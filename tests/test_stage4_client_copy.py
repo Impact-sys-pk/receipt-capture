@@ -36,6 +36,7 @@ import ast
 import json
 import logging
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -743,6 +744,128 @@ class TheTriggerDecidesTest(unittest.TestCase):
             self.assertEqual(everything_under(config.CLIENTS_ROOT), [])
             self.assertIn("client_folder_name",
                           "\n".join(log.messages(logging.WARNING)))
+
+
+class RecordingTheCopyCanFailTooTest(unittest.TestCase):
+    """Step 10ax. The file write was guarded and the database write was not.
+
+    `copy_for_published_receipt()`'s docstring says "this never raises", and
+    until 2026-09-13 it could: `write_client_copy()` sat in a `try` and the
+    `mark_receipt_filed()` immediately below it did not, so a database that was
+    locked, full or gone took the exception out through every caller.
+
+    **Why that mattered more than it sounds.** Four of the five callers hold a
+    per-item `try/except Exception`, so the blast radius there was one receipt.
+    The fifth is `_apply_attached_note()` in the resolution service, which
+    reaches `app.py`'s note loop through `apply_resolution_note()`; neither the
+    loop nor `_consume_resolution_notes()` guards that call, and
+    `process_once()` logs and re-raises. **So that one path took the whole poll
+    cycle down**, and the email fetch, the inbox scan and both sweeps below it
+    never ran.
+
+    **The document is on disk either way**, which is why the log line has to
+    name the path: the copy succeeded and only the record of it failed, so
+    anyone reading `run.log` needs to know the file is there.
+    """
+
+    def _drive_the_copy(self, repo, receipt_id="r-1", source=None):
+        return client_copy.copy_for_published_receipt(
+            repo,
+            receipt_id=receipt_id,
+            client_id=CLIENT,
+            source_file=source,
+            invoice_date="2026-04-01",
+            supplier="Apcoa Parking",
+            gross=12.0,
+            validation_status="ok",
+            filed_path=None,
+        )
+
+    def _seed_receipt(self, repo, source, receipt_id):
+        """A real receipts row, so `filed_path` is read back off the database."""
+        repo.save_receipt(
+            receipt_id=receipt_id,
+            message_id="m-heals",
+            email_subject="a receipt",
+            email_from="client@example.com",
+            email_received_at="2026-04-01T00:00:00+00:00",
+            filename="doc.pdf",
+            file_path=str(source),
+            file_hash="heals",
+            firm_id="INTELLITAX",
+            client_id=CLIENT,
+            source="email",
+        )
+        return receipt_id
+
+    def test_a_failing_mark_receipt_filed_is_reported_and_does_not_propagate(self):
+        with TempEnvironment(), trigger("publish"):
+            source = config.FILES_DIR / "doc.pdf"
+            source.write_bytes(DOCUMENT)
+            repo = Repository()
+            try:
+                with patch.object(
+                        Repository, "mark_receipt_filed",
+                        side_effect=sqlite3.OperationalError(
+                            "database is locked")):
+                    with captured("worker.client_copy", logging.ERROR) as log:
+                        written = self._drive_the_copy(repo, source=source)
+            finally:
+                repo.close()
+
+            self.assertIsNone(written, "a failure returns None, the same as the "
+                                       "failure branch above it")
+
+            # The copy is on disk. Only the record of it failed.
+            copied = everything_under(config.CLIENTS_ROOT)
+            self.assertEqual(len(copied), 1, copied)
+            self.assertTrue(
+                copied[0].endswith("2026-04-01_apcoa-parking_12.00.pdf"), copied)
+
+            errors = log.messages(logging.ERROR)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("r-1", errors[0])
+            self.assertIn("2026-04-01_apcoa-parking_12.00.pdf", errors[0],
+                          "the line has to name where the document actually is, "
+                          "because it is there and the database does not say so")
+            self.assertIn("OperationalError", errors[0])
+
+    def test_the_next_attempt_records_it_rather_than_writing_a_second_copy(self):
+        """The self-healing the brief relies on, driven rather than assumed.
+
+        `write_client_copy()` compares by bytes and not by name, so the second
+        attempt finds the identical document already there and returns
+        `written=False`. The path it returns is the one already on disk, and
+        `filed_path` is recorded from it.
+        """
+        with TempEnvironment(), trigger("publish"):
+            source = config.FILES_DIR / "doc.pdf"
+            source.write_bytes(DOCUMENT)
+
+            repo = Repository()
+            try:
+                receipt_id = self._seed_receipt(repo, source, "r-heals")
+                with patch.object(
+                        Repository, "mark_receipt_filed",
+                        side_effect=sqlite3.OperationalError(
+                            "database is locked")):
+                    self.assertIsNone(
+                        self._drive_the_copy(repo, receipt_id, source))
+                after_first = everything_under(config.CLIENTS_ROOT)
+                self.assertEqual(len(after_first), 1, after_first)
+
+                # The same call again, with the database healthy. This is what
+                # `_copy_missing_client_copies()` does on the next poll.
+                second = self._drive_the_copy(repo, receipt_id, source)
+            finally:
+                repo.close()
+
+            self.assertIsNotNone(second)
+            self.assertEqual(everything_under(config.CLIENTS_ROOT), after_first,
+                             "the second attempt wrote a second copy")
+            recorded = [r for r in receipts() if r["receipt_id"] == receipt_id]
+            self.assertEqual(len(recorded), 1, recorded)
+            self.assertEqual(recorded[0]["filed_path"], str(second))
 
 
 class OnlyOkIsCopiedTest(unittest.TestCase):

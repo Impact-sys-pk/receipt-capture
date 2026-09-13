@@ -424,18 +424,6 @@ Purpose:
 - Creates a file suitable for importing into accounting software
 - Includes supplier, amount, date, and category
 
-### Setup and Auth Scripts
-
-**`setup_auth.py`** — Verify email access is working
-```bash
-python setup_auth.py
-```
-Purpose:
-- Tests that the system can successfully connect to and read emails from the capture mailbox
-- Must be run once before starting the main app
-- Shows how many emails are in the inbox
-- Helps diagnose permission or authentication issues
-
 ---
 
 ## The Main Application
@@ -589,7 +577,6 @@ Fields the pipeline reads:
 ### Email receipts not arriving?
 - Check `.env` has correct IMAP credentials
 - Verify mailbox address is correct (capture@lastingimpact.co.uk)
-- Run `python setup_auth.py` to test connection
 - Check the logs under `config.LOGS_DIR`, `C:\Intellibills\logs` by default
 
 ### Receipts marked as "needs_review" or "failed"?

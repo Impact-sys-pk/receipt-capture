@@ -283,8 +283,9 @@ unchanged. `py_compile` is clean on both changed files.
 
 **Note on `CLAUDE.md`'s post-commit rule.** It requires a second suite run after the commit whenever
 the change adds a file, because two source guards sweep `git ls-files` rather than the working tree.
-This change adds no production file, so the rule does not bite. The run was done anyway and its
-result is at section 9.
+This change adds no production file, only the report, so the rule does not bite. The run was done
+anyway, after commit `247442c`: **1385 passed, 1 skipped, 946 subtests passed** in 102.07s. Same
+figures as before the commit.
 
 ---
 

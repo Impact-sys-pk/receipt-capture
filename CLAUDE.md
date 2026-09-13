@@ -336,11 +336,11 @@ Read this before doing anything. Most of it was learned by getting it wrong.
 
 ### Three sessions, and none of them can see the others
 
-| Session                  | Runs in     | Owns                                                                                                                 |
-| ------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| Session                  | Runs in     | Owns                                                                                                                                                                                                                             |
+| ------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Consultant**           | Cowork      | Verification, the design document, and the prompts the other two work from. ~~Does not write production code.~~ **Writes `IntelliBooks-Desktop-v3.html` as well, standing from 2026-09-06. Does not write the Python pipeline.** |
-| **Implementation**       | Claude Code | The Python pipeline at `C:\LastingImpact\receipt_capture`. Works from `PROMPT_*.md` files written by the consultant. |
-| **IntelliBooks Desktop** | Cowork      | `IntelliBooks-Desktop-v3.html` in OneDrive. Works from `PROMPT_intellibooks_desktop_changes.md`.                     |
+| **Implementation**       | Claude Code | The Python pipeline at `C:\LastingImpact\receipt_capture`. Works from `PROMPT_*.md` files written by the consultant.                                                                                                             |
+| **IntelliBooks Desktop** | Cowork      | `IntelliBooks-Desktop-v3.html` in OneDrive. Works from `PROMPT_intellibooks_desktop_changes.md`.                                                                                                                                 |
 
 **Changed 2026-08-02, to stop Paul being the hands as well as the channel.** Through the reset and restructure he ran every check and moved every file himself, and the round trips cost more than the work. From now on:
 
@@ -454,7 +454,7 @@ Added 2026-08-21, moved here from the outstanding items list because it is a hab
 
 Added 2026-08-21 on Paul's instruction. **A spent file moves into `archive\` in this repository, with `git mv` so its history follows it.** Do it when the file becomes spent, not in a tidy-up later.
 
-**Spent means executed and superseded.** A `PROMPT_*` file is spent once the session it was written for has executed it and reported. A handover is spent once its successor exists. A report is spent on delivery, because its findings are carried into the design document and the outstanding items list.
+**Spent means executed and superseded.** A `PROMPT_*` file is spent once the session it was written for has executed it and reported. A handover is spent once its successor exists. A report is spent on delivery, because its findings are carried into the design document.
 
 **A standing brief is not spent however old it is.** `PROMPT_intellibooks_desktop_changes.md` is the brief the IntelliBooks Desktop session works from and it stays in the root.
 
@@ -748,8 +748,7 @@ on this project. **Deleting the duplicate needs no test.**
 this line.
 
 **There is no `client_code` on any table**, sub-step 10d.23 and Paul's ruling of 2026-09-02. **There
-is no `coa_accounts` table and there will not be one**, cancelled by amendment 96 and confirmed by
-124.
+is no `coa_accounts` table and there will not be one**, cancelled by amendment 96 and confirmed by 124.
 
 **The eight `receipts` statuses, and where each is written.** This is a claim about other modules, so
 it does not live in `schema.py`.
@@ -805,8 +804,7 @@ dangling id, and **that is exactly when somebody wants the history**.
 **Layer 0 is `categorisations_client_rules`**, the only layer a person authors by hand. **Layer 1 is
 `categorisations_client_vendors`**, this client's learned mappings. **Layer 2 is
 `categorisations_firm_vendors`**, the firm's shared pool. **`categorisations_firm_vendors` holds 0
-rows and has no writer**: `upsert_firm_vendor()` exists and its only caller was deleted at amendment
-234. Step 10m gives it one.
+rows and has no writer**: `upsert_firm_vendor()` exists and its only caller was deleted at amendment 234. Step 10m gives it one.
 
 ### ~~email_delta~~ Removed 2026-09-04
 

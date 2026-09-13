@@ -137,8 +137,8 @@ the client folder keeps filling.
    on 2026-09-09.**
 3. ~~**Whether stage 1's destination work is worth building now**, given one destination exists.
    10f.1 to 10f.3 are the settings model for something with one member.~~ **ANSWERED 2026-09-08. Paul: build F14, defer 10f.1.** ~~build F14 and F15~~ **Corrected the same day by amendment 280, which defers 10f.3 and F15 as well, because a switch with no defined output is not a setting yet.** Amendment 279 carries the reasoning for 10f.1 and amendment 280 for 10f.3. **The address becomes a setting rather than a literal, the per-client column waits for a second destination, and the CSV switch waits for a defined output.**
-4. **Whether the test estate is cleared before stage 3 or before 10i**, which is item 168. It says
-   immediately before 10i and stage 3 is a live test.
+4. ~~**Whether the test estate is cleared before stage 3 or before 10i**, which is item 168. It says
+   immediately before 10i and stage 3 is a live test.~~ **ANSWERED, and it moved. Item 168 closed 2026-09-13, amendment 429 of `2026-07-25_CONSOLE_DESIGN.md`: immediately before step 10i and not before, written onto step 10i's own row in section 16. This plan's question 4 is that same answer; nothing new was decided here.**
 
 ## 5. What this plan does not claim
 

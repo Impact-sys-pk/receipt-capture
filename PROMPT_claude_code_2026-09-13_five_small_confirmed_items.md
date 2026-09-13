@@ -1,16 +1,21 @@
-# Claude Code brief, 2026-09-13: five small, independent, already-decided items
+# Claude Code brief, 2026-09-13: six small, independent, already-decided items
 
-Section 16, steps 10ag, 10ah, 10ap, 10ar and 10as of `2026-07-25_CONSOLE_DESIGN.md`. Each closes
-one item from `2026-08-20_LIST_outstanding_items_and_decisions.md`, each is Paul's decision already
-made, and each is a deletion, a removal, or a small correction. No behaviour changes except where
-stated.
+Section 16, steps 10ag, 10ah, 10ap, 10ar, 10as and 10ay of `2026-07-25_CONSOLE_DESIGN.md`. Each
+closes one item from `2026-08-20_LIST_outstanding_items_and_decisions.md` or, for 10ay, a finding
+made verifying step 10ax's report. Each is Paul's decision already made.
+
+**Added after the first five, on Paul's instruction: combine rather than send separately.** Item
+10ay is a runtime behaviour change, not a deletion or a small correction like the other five; it
+carries its own test requirement below. It is added here rather than as a seventh brief because
+Paul asked for the two to be combined instead of scheduled apart.
 
 **Read this whole brief before starting.** One item, 10ah, is wider than the design document's own
 entry for it: read that section for why.
 
-**Five commits, one per item**, so any one can be reverted without the others.
+**Six commits, one per item**, so any one can be reverted without the others.
 
-**Report to `2026-09-13_REPORT_claude_code_five_small_items.md` in the repository root.**
+**Report to `2026-09-13_REPORT_claude_code_five_small_items.md` in the repository root**, covering
+all six items despite the filename.
 
 ---
 
@@ -173,6 +178,55 @@ which drives a stub extractor through a simulated failure and asserts the engine
 2. Leave `test_openai_vision_reports_its_name`, `test_base_declares_name_so_subclasses_must_provide_it`
    and `test_a_custom_extractor_can_supply_its_own_name` exactly as they are.
 3. Change nothing in `tests/test_failure_path_engine.py`.
+
+---
+
+## Item 10ay. `_retry_failed_receipts()`'s failure handler assumes no extraction row was written, and it can be wrong
+
+**Where.** `app.py`, `_retry_failed_receipts()`. The `try` at line 1207, `except Exception as exc` at
+line 1271, its comment at lines 1274-1279, and `repo.save_extraction(...)` at lines 1282-1294, as
+read 2026-09-13.
+
+**Confirmed, read directly.** The comment says "process_extraction_result() never ran, so no
+extraction row was written." That is false whenever the exception is raised from inside
+`process_extraction_result()` after its own `repo.save_extraction()` call at
+`worker/extraction_pipeline.py:321`, which runs near the top of that function, before
+categorisation, publish or the client-folder copy. Found verifying step 10ax's report: before that
+fix, `copy_for_published_receipt()`, called much later in the same function at
+`worker/extraction_pipeline.py:545`, could raise past every guard between there and this handler. By
+that point the extraction row for this attempt already existed, with the current `pipeline_version`
+and a genuine `ok` status, and this handler would write a second row over it marked `failed`.
+
+**Why it still matters after 10ax.** Step 10ax stopped the one call site this was found through
+from raising. The assumption in this handler's own comment is about `process_extraction_result()` in
+general, not about that one call site, and nothing guards the assumption itself: any other exception
+raised after `worker/extraction_pipeline.py:321` and before that function returns would trigger the
+same wrong write. Confirm this from the function's own body rather than take it on this brief's
+say-so.
+
+**The tool already exists.** `worker/database/repository.py:372`,
+`get_extraction_for_receipt(receipt_id)`, returns the latest extraction row for a receipt, ordered by
+`extracted_at DESC`. Confirm this reads as expected before relying on it.
+
+**What to do.**
+
+1. Before writing the `failed` extraction row in the `except` block at `app.py:1271`, call
+   `repo.get_extraction_for_receipt(receipt_id)` and compare its `pipeline_version` against the
+   `pipeline_version` this attempt is running under (already a local variable in this function).
+2. **If they match**, an extraction row for this attempt already exists, whatever it says, so do not
+   write a second one. Log the error as today (`app.py:1272`), still increment
+   `stats['auto_retry_errors']`, and leave the existing row as the record of what happened.
+3. **If they do not match, or no row exists**, nothing was written this attempt: keep today's
+   behaviour and write the `failed` row exactly as now, so `find_failed_by_version()` still stops
+   re-selecting this receipt on every poll.
+4. Correct the comment at lines 1274-1279 so it describes both branches rather than assumes only
+   one.
+5. Two tests: one where `process_extraction_result()` fails before its own `save_extraction()` call
+   (for example `extract_with_transient_retry()` raising), asserting the `failed` row is written as
+   today; one where it fails after (the same style of induced failure step 10ax's test used),
+   asserting no second row is written and the existing one is left alone. Each reads back the
+   `extractions` table rather than trusting the return value.
+6. Change nothing else in `_retry_failed_receipts()`.
 
 ---
 

@@ -63,6 +63,7 @@ from test_stage4_client_copy import (  # noqa: E402
     captured,
     everything_under,
     item_for,
+    items,
     publish_rows,
     receipts,
     trigger,
@@ -95,12 +96,18 @@ FIELDS = [
 ]
 
 
-def seed_unpublished_ok(env, **extraction):
+def seed_unpublished_ok(env, client_id=None, **extraction):
     """An `ok` receipt in scope for the sweep, with no publish row of its own.
 
     The cutover in `get_unpublished_ok_receipts()` ignores anything created
     before the earliest `publish_events` row, so one belonging to another
     receipt has to exist or the sweep correctly does nothing.
+
+    `client_id` overrides the fixture's own CLIENT001 after the row is written,
+    for the unresolved-client tests below. It is set with an UPDATE rather than
+    through `env.seed()` because that helper hardcodes the id, and the receipt
+    has to exist before anything can point it at a client the registry does not
+    hold.
     """
     repo = Repository()
     try:
@@ -108,6 +115,11 @@ def seed_unpublished_ok(env, **extraction):
         row.update(extraction)
         env.seed(repo, receipt_id=RECEIPT, status="ok",
                  validation_status="ok", validation_notes=[], **row)
+        if client_id is not None:
+            repo._conn.execute(
+                "UPDATE receipts SET client_id = ? WHERE receipt_id = ?",
+                (client_id, RECEIPT))
+            repo._conn.commit()
         repo.save_publish_event(
             event_id="cutover", receipt_id="r-someone-else",
             destination="intellibooks", outcome="published",
@@ -258,6 +270,102 @@ class AFallbackWritesNoClientCopyTest(unittest.TestCase):
             self.assertIsNone(
                 receipt_row()["filed_path"],
                 "filed_path records a copy that must not have happened")
+
+
+class AnUnresolvedClientIsNotPublishedTest(unittest.TestCase):
+    r"""The sweep's OTHER guard, which nothing covered until 2026-09-14.
+
+    Flag arising from flag 3 of
+    `2026-09-14_REPORT_claude_code_three_flags.md`, built on Paul's decision the
+    same day. `tests/test_resume_safety.py` carried a comment pointing at
+    `test_an_unresolved_client_is_not_filed` as "the other half" of the
+    registry-entry requirement; no such test existed anywhere, and striking that
+    reference recorded the gap rather than closing it. This closes it.
+
+    The guard is the one above the four fallbacks:
+
+        client_folder_name = _client_folder_name(receipt["client_id"])
+        if not client_folder_name:
+            logger.warning(...)
+            continue
+
+    **It is a different thing from the fallback routing in this file's other
+    tests, and the difference is the point.** A fallback publishes the receipt
+    marked for review, because the document was read and only a value is
+    missing. An unresolved client publishes NOTHING: 10d.18 says a receipt whose
+    client cannot be named files nowhere, and `_client_folder_name()` returns
+    None rather than guessing, which is the 2026-09-01 defect it exists to
+    prevent. The receipt keeps its `ok` status and is offered again on the next
+    poll, which is what makes leaving it the honest outcome rather than a loss.
+
+    Three ways the guard fires, from `_client_folder_name()` read directly: the
+    client is absent from the registry, its record has a blank
+    `client_folder_name`, or the id is the reserved UNKNOWN. Each gets its own
+    test rather than a subtest, because the branch is one line and the three
+    ways into it fail independently: a regression that closes one of them should
+    not be masked by the other two passing.
+    """
+
+    def _assert_nothing_happened(self, warnings):
+        self.assertTrue(
+            [w for w in warnings if RECEIPT in w and "client_folder_name" in w],
+            f"no warning naming the receipt and the missing folder name; "
+            f"got {warnings}")
+
+        self.assertEqual(
+            items(), [],
+            "an unresolved client must publish nothing at all, and something "
+            "was written into the inbox")
+        self.assertEqual(
+            [r for r in publish_rows() if r["receipt_id"] == RECEIPT], [],
+            "a publish_events row was written for a receipt that never published")
+        self.assertEqual(
+            everything_under(config.CLIENTS_ROOT), [],
+            "something reached Clients\\ for a client that cannot be named, "
+            "which is the 2026-09-01 defect")
+
+        row = receipt_row()
+        self.assertIsNone(row["filed_path"])
+        self.assertEqual(
+            row["status"], "ok",
+            "the receipt must be left alone: nothing about it was decided, so "
+            "its status is not a place to record that")
+
+        # And it is offered again, which is what makes leaving it honest.
+        repo = Repository()
+        try:
+            again = [r["receipt_id"] for r in repo.get_unpublished_ok_receipts()]
+        finally:
+            repo.close()
+        self.assertIn(
+            RECEIPT, again,
+            "the receipt was dropped from the sweep, so it would never be "
+            "picked up once its client is registered")
+
+    def test_a_client_the_registry_does_not_hold_publishes_nothing(self):
+        with TempEnvironment() as env, trigger(config.CLIENT_COPY_ON_PUBLISH):
+            seed_unpublished_ok(env, client_id="CLIENT999")
+            self.assertNotIn("CLIENT999", config.CLIENTS_BY_ID)
+            warnings, _stats = run_the_sweep()
+            self._assert_nothing_happened(warnings)
+
+    def test_a_record_with_a_blank_folder_name_publishes_nothing(self):
+        with TempEnvironment() as env, trigger(config.CLIENT_COPY_ON_PUBLISH):
+            seed_unpublished_ok(env)
+            # The client IS in the registry. Only the folder name is missing,
+            # which is the case a registry edit produces rather than a lookup
+            # miss.
+            config.CLIENTS_BY_ID = {
+                CLIENT: dict(config.CLIENTS_BY_ID[CLIENT], client_folder_name="")
+            }
+            warnings, _stats = run_the_sweep()
+            self._assert_nothing_happened(warnings)
+
+    def test_the_reserved_unknown_id_publishes_nothing(self):
+        with TempEnvironment() as env, trigger(config.CLIENT_COPY_ON_PUBLISH):
+            seed_unpublished_ok(env, client_id=config.UNKNOWN_CLIENT_ID)
+            warnings, _stats = run_the_sweep()
+            self._assert_nothing_happened(warnings)
 
 
 if __name__ == "__main__":

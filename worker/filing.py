@@ -202,8 +202,26 @@ def _review_dir_for_client_id(client_id: str) -> Path:
     The key was the client code until sub-step 10d.54 and is now `client_id`.
     The reasoning above holds word for word: a `client_id` cannot drift either,
     and it is the one field on the client record that is unchangeable by design.
-    `scanReview()` in IntelliBooks-Desktop-v3.html is the reader, sub-step
-    10d.59, and the two halves have to move together or the Review list is empty.
+
+    **IntelliBooks Desktop no longer reads this folder. Corrected 2026-09-14,
+    flag 2 of `2026-09-14_REPORT_claude_code_recovery_sweep_review_fallback.md`.**
+    ~~`scanReview()` in IntelliBooks-Desktop-v3.html is the reader, sub-step
+    10d.59, and the two halves have to move together or the Review list is
+    empty.~~ **Sub-step 10f.15 moved the Review queue onto the published inbox**
+    and step 10f completed on 2026-09-11: `scanReview()` calls `inboxItems()`,
+    and the string `Intellibills\\Review` appears NOWHERE in that file, counted
+    on 2026-09-14. So the two halves no longer have to move together, and a
+    change to the naming here cannot empty the Review list.
+
+    **It is still read, and by this module, which is why the write stays.**
+    `remove_review_pair()` finds the image and sidecar and deletes them when a
+    receipt's life in Review ends, on a successful resolve or a discard, and
+    `_scan_other_clients_for_receipt()` iterates every subfolder here to do it.
+    So this is the pipeline's own record of what is awaiting a human, written by
+    `file_review()` and cleaned up by the resolution service, rather than a
+    folder another product reads. **Whether it should still exist at all is a
+    question for Paul rather than a correction**, and nothing here assumes an
+    answer.
     """
     return config.REVIEW_ROOT / client_id
 

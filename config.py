@@ -159,6 +159,29 @@ CLIENT_INTELLIBOOKS_FOLDER_NAME = "IntelliBooks"
 CLIENT_RECEIPTS_FOLDER_NAME = "Receipts"
 CLIENT_STATEMENTS_FOLDER_NAME = "Statements"
 
+# The per-client delivery log, one file per client inside IntelliBooks' own
+# folder: IntelliBooks\Delivery\{client_id}.log. Step 10az, amendment 456.
+# One line per document this pipeline actually copies into that client's folder,
+# so step 10au can compare what is in the folder against what was recorded as
+# delivered there. Written by worker/client_copy.py and by nothing else.
+#
+# **Strings rather than a Path constant, and the reason is not brevity.** A
+# `DELIVERY_LOG_DIR = INTELLIBOOKS_ROOT / "Delivery"` would be a twenty-second
+# Path constant resolved at import, so it would need adding by hand to
+# tests/resolution_fixtures.py's TempEnvironment, to test_path_layout.py's
+# ALLOWED set and to test_conftest_redirect.py's count, and a test that forgot
+# the first of those would append to the LIVE IntelliBooks\Delivery\ on every
+# run. Composed at call time from INTELLIBOOKS_ROOT instead, it inherits that
+# constant's redirect everywhere it is already pinned, with no new list entry
+# for anyone to remember. This is CLIENT_RECEIPTS_FOLDER_NAME's own reasoning
+# one step further on.
+DELIVERY_FOLDER_NAME = "Delivery"
+# `.log` rather than `.ndjson`, which is what LOGS_DIR's event logs use.
+# Amendment 456 names the file IntelliBooks\Delivery\{CODE}.log and Desktop will
+# read that name. The CONTENT is NDJSON either way, one JSON object per line, so
+# the extension differs from the convention and the format does not.
+DELIVERY_LOG_SUFFIX = ".log"
+
 # In OneDrive, under the practice root.
 FILES_DIR = INTELLIBILLS_ROOT / "Documents"
 BACKUPS_ROOT = INTELLIBILLS_ROOT / "Backups"

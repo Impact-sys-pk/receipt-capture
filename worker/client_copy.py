@@ -67,11 +67,31 @@ did so in two places rather than the one this paragraph named:
 queries as well, and it runs first. **Both now ask for a `published` row**,
 which amendment 293's fifth point named as the marker. Amendment 303, and
 `Repository._PUBLISHED` carries the reasoning.
+
+## The delivery log. Step 10az, amendment 456, 2026-09-14
+
+**Every document this module writes into `Clients\\` gets one line in
+`IntelliBooks\\Delivery\\{client_id}.log`**, appended as it happens. Step 10au
+is a reconciliation check on the Desktop side, comparing what is in a client's
+folder against what was recorded as delivered there, and it could not be built
+because nothing wrote that record. `_record_delivery()` is the record.
+
+**It has the same gate as the copy, because it is not a second decision.**
+Whatever the trigger, the `ok`-only rule, the one-copy rule or the byte
+comparison refuses, there is no line: a line for a document that is not in the
+folder is the false positive step 10au would then have to explain away.
+
+**A log failure does not undo the copy.** The document is on disk before the
+line is written, so refusing would undo work that succeeded. It is a WARNING
+naming the receipt rather than a silence, which is step 10af's decision applied
+on this side.
 """
 
 import hashlib
+import json
 import logging
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
@@ -366,6 +386,105 @@ def _existing_under(destination_dir: Path, base_name: str, suffix: str) -> list:
     return found
 
 
+def _delivery_log_path(client_id: str) -> Path | None:
+    """This client's delivery log, or None if the id cannot name a file.
+
+    **The id is input, not a value this product composed.** `clients.json` is
+    written by IntelliBooks Desktop and read here, per 10d.35, so a `client_id`
+    carrying a separator would put the log somewhere other than
+    `IntelliBooks\\Delivery\\`, and `..` would put it in that folder's parent.
+    Refused rather than sanitised: a rewritten id would name a file that
+    belongs to no client, and step 10au would then reconcile a real folder
+    against a log nobody can attribute.
+
+    Composed from `config.INTELLIBOOKS_ROOT` at call time rather than from a
+    Path constant of its own, which is `config.DELIVERY_FOLDER_NAME`'s reason:
+    a test that pins `INTELLIBOOKS_ROOT` pins this with it.
+    """
+    if not client_id or Path(client_id).name != client_id or client_id in (
+            ".", ".."):
+        return None
+    directory = config.INTELLIBOOKS_ROOT / config.DELIVERY_FOLDER_NAME
+    return directory / f"{client_id}{config.DELIVERY_LOG_SUFFIX}"
+
+
+def _record_delivery(client_id: str, receipt_id: str, destination: Path,
+                     client_folder: Path) -> None:
+    """Append one line to this client's delivery log. Step 10az.
+
+    **One line per document actually written**, so the set of lines and the set
+    of files in the folder answer the same question, which is what step 10au is
+    for. Nothing is written on the identical-bytes skip: that document is
+    already there and already has the line the copy which put it there wrote,
+    and a second would count one file twice.
+
+    **NDJSON, and the field names are `receipt_events_{firm_id}.ndjson`'s own.**
+    Amendment 291 makes that log the convention for an event on this project and
+    amendment 456 asked for these names to be confirmed against it rather than
+    taken from the brief. `_log_receipt()` in `app.py` and its near-copy in
+    `worker/extraction_pipeline.py` both spell the moment an event happened
+    `timestamp`, so `posted_at` is not used: one spelling for one fact, rather
+    than a second for the products to disagree over.
+    `tests/test_delivery_log.py` reads that spelling off `app.py`'s syntax tree,
+    so the two cannot drift apart in silence.
+
+    **`document_path` is relative to the client's own folder**, per amendment
+    456, and POSIX-separated. Relative, because the check that reads it walks
+    one client's folder and the absolute path names a firm's top folder that is
+    the firm's own and can move, per 18.2. POSIX, because a backslash is escaped
+    in JSON and Desktop reads this file.
+
+    **`pipeline_version` is read here rather than passed in.** It is not a
+    parameter of `copy_for_published_receipt()` and four of that function's five
+    callers have no run-level version in scope at all, so threading one would
+    mean changing four signatures for a field. `config.get_pipeline_version()`
+    is the same function `process_once()` reads the run's version from, and it
+    returns `"unknown"` rather than raising when git is unavailable. **What it
+    is, exactly: HEAD at the moment of the copy**, which differs from the run's
+    recorded version only if a commit lands mid-run.
+
+    **`client_folder` is passed in and `config.CLIENTS_ROOT` is not read here.**
+    `tests/test_stage4_client_copy.py` enumerates every route into `Clients\\`
+    from the syntax tree and caught this function reading that root on the first
+    run, which is the guard doing its job: this function writes nothing there
+    and has no business composing a path into it. The caller derives the folder
+    from `get_client_directory()`, the same function `write_client_copy()`
+    composed the destination with, so there is one composition rather than two
+    that could disagree.
+
+    **This raises on failure and the caller reports it.** Same shape as
+    `ClientCopy`: only the caller knows how to say it without stopping the copy.
+    """
+    path = _delivery_log_path(client_id)
+    if path is None:
+        raise ValueError(
+            f"client_id {client_id!r} does not name a file inside "
+            f"{config.DELIVERY_FOLDER_NAME}, so no delivery log line can be "
+            f"written for it")
+    try:
+        relative = destination.relative_to(client_folder).as_posix()
+    except ValueError:
+        # Cannot happen through write_client_copy(), which composes the
+        # destination from get_client_directory(). Stated rather than assumed,
+        # because the alternative is a line whose document_path is absolute and
+        # which the reconciliation check would silently never match.
+        raise ValueError(
+            f"{destination} is not inside this client's own folder, so no "
+            f"relative document_path can be written for it") from None
+    entry = {
+        "client_id": client_id,
+        "receipt_id": receipt_id,
+        "document_path": relative,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "pipeline_version": config.get_pipeline_version(),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Append, never truncate, and never delete. Rule 1 of CLAUDE.md, and the
+    # mode the two receipt_events writers use for the same reason.
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry) + "\n")
+
+
 def write_client_copy(
     source_file: Path,
     client_folder_name: str,
@@ -581,6 +700,45 @@ def copy_for_published_receipt(
             "archive of record. Nothing retries this copy.",
             receipt_id, type(error).__name__, error)
         return None
+
+    if result.written:
+        # **Step 10az, amendment 456. Before the database write, deliberately.**
+        # The document is on disk from the line above, and this log is the
+        # record of what is in the folder rather than of what the database
+        # knows. `mark_receipt_filed()` below can fail, and does on a locked or
+        # full database; a delivered document must still have its line when it
+        # does, because step 10au reads the folder and this file and nothing
+        # else.
+        #
+        # **Only on `result.written`.** The identical-bytes skip delivered
+        # nothing: that file is already there with a line of its own from the
+        # copy that wrote it, and a second line would count one file twice.
+        #
+        # **A failure here does not undo the copy and is not swallowed.** Step
+        # 10af's decision, applied on this side: refusing would undo work that
+        # succeeded, and saying nothing would leave a delivered document with no
+        # record and nobody told, which is precisely what step 10au would find
+        # and report as a missing delivery.
+        try:
+            _record_delivery(
+                client_id=client_id,
+                receipt_id=receipt_id,
+                destination=result.path,
+                # The client's own folder, one level above the IntelliBooks
+                # folder inside it, derived from the same function
+                # `write_client_copy()` composed the destination with rather
+                # than recomposed from `config.CLIENTS_ROOT`. Two compositions
+                # of one path are two that can disagree.
+                client_folder=get_client_directory(client_folder_name).parent,
+            )
+        except Exception as error:
+            logger.warning(
+                "receipt %s was copied into the client folder at %s, but its "
+                "delivery log line could not be written: %s: %s. The copy "
+                "itself is unaffected and nothing retries this line, so "
+                "reconciling that folder will report this document as one "
+                "nothing recorded delivering.",
+                receipt_id, result.path, type(error).__name__, error)
 
     # **`filed_path` is recorded on the skip as well as on the write**, and
     # that is a decision 10f.25's brief did not settle. The path is true either

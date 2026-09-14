@@ -23,14 +23,22 @@ matches. Two other test files already carried that warning in as many words.
 
 **A comment in two files is not a guard. It is a hope that the next author reads
 those two files.** This is the guard: the two roots are redirected in the
-environment before `config` computes anything from them, so **twenty of the
-twenty-one Path constants land in temp**, including the five no fixture pins at
+environment before `config` computes anything from them, so **twenty-one of the
+twenty-two Path constants land in temp**, including the five no fixture pins at
 all: `FIRMS_JSON`, `INTELLIBILLS_ROOT`, `PIPELINE_LOCKFILE`, `UNSYNCED_ROOT` and
-`RESOLUTIONS_DIR`. ~~nineteen of the twenty~~ ~~seventeen of the eighteen~~
+`RESOLUTIONS_DIR`. ~~twenty of the twenty-one~~ ~~nineteen of the twenty~~
+~~seventeen of the eighteen~~
 **Moved 2026-09-09 by stage 1 piece 3, which added `INTELLIBOOKS_ROOT` and
 `INTELLIBOOKS_PUBLISH_DIR`, and again 2026-09-11 by sub-step 10f.38, which
-added `ATTACHED_DIR`. The count is asserted next door, so a figure in this
+added `ATTACHED_DIR`, and again 2026-09-14 by step 10r, which added
+`EXPORTS_DIR`. The count is asserted next door, so a figure in this
 prose going stale is caught rather than believed.**
+
+**`EXPORTS_DIR` needed no entry anywhere, and that is this arrangement working
+rather than luck.** It is derived from `INTELLIBILLS_ROOT`, which is derived from
+a root this file redirects in the environment before `config` is imported, so it
+lands in temp without any fixture naming it. **The only thing that had to move
+was the count, and the count is asserted next door rather than described here.**
 
 **Both of those figures were wrong here until 2026-09-07 and the test next door
 was right.** ~~all eighteen Path constants land in temp, including the five no

@@ -831,9 +831,23 @@ class ReadsOnlyTest(unittest.TestCase):
             self.assertEqual(len(sorted(env.output.glob("*.txt"))), 2)
 
     def test_the_output_folder_is_not_the_client_folder(self):
-        r"""18.2b's single writer is untouched: nothing new appears in `Clients\`."""
+        r"""18.2b's single writer is untouched: nothing new appears in `Clients\`.
+
+        **The second assertion moved at step 10r, amendment 359.** ~~the parent
+        is `config.BASE_DIR`~~ Paul's decision of 2026-09-12 took exports out of
+        the repository and into `Intellibills\Exports\`, so the anchor is
+        `config.EXPORTS_DIR`. **The subject of this test did not move**: it is
+        that a capture report is not written into a client's folder, and that is
+        what the first assertion says. The second says the folder is the one
+        constant that owns it rather than a path composed here, which is the
+        same claim it always made about a different constant.
+
+        **Step 10ai will move this again**, into the client's own folder, and
+        when it does the first assertion is the one that has to be argued with
+        rather than edited.
+        """
         self.assertNotIn("Clients", capture_report.OUTPUT_DIR.parts)
-        self.assertEqual(capture_report.OUTPUT_DIR.parent, config.BASE_DIR)
+        self.assertEqual(capture_report.OUTPUT_DIR, config.EXPORTS_DIR)
 
     def test_main_makes_the_console_safe_before_it_prints(self):
         """`resolve_receipt.py`'s lesson: the crash lands after the work is done.

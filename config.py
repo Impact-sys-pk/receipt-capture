@@ -189,6 +189,27 @@ RECEIPT_INBOX_ROOT = INTELLIBILLS_ROOT / "Receipt Inbox"
 # Review leaves the client folder and is keyed on client_id, not the name. 10d.54.
 # A receipt awaiting a human is work in progress, not a client-facing document.
 REVIEW_ROOT = INTELLIBILLS_ROOT / "Review"
+# Where an export is written. Step 10r, amendment 359, Paul's decision of
+# 2026-09-12 closing outstanding item 37. `export_bookkeeping.py` and
+# `capture_report.py` both had `OUTPUT_DIR = config.BASE_DIR / "exports"`, so
+# the repository held an `exports\` while the practice root already held
+# `Intellibills\Exports\` with two CSVs of 2026-08-18 in it. Two folders for one
+# thing, which is the same fault the logs half of item 37 existed to remove.
+#
+# **Why the practice root rather than the repository.** 18.2's third rule is
+# that each store has one owner, and an export is an Intellibills output for a
+# person rather than source. The repository anchor was convenience: `BASE_DIR`
+# was the nearest stable path when those scripts were written.
+#
+# **Why sync is not an objection.** 18.2a's test is whether a file is held open
+# while it is written. An export is written once and closed, like the document
+# store and `backup_db()`'s output, both of which are already in OneDrive while
+# the live database is not.
+#
+# **What the change did not lose.** Both scripts still pin `OUTPUT_DIR` to a
+# constant rather than writing a relative path, and each still says why in its
+# own comment. That reason is about having an anchor, not about which anchor.
+EXPORTS_DIR = INTELLIBILLS_ROOT / "Exports"
 CLIENTS_JSON = INTELLIBILLS_ROOT / "clients.json"
 FIRMS_JSON = INTELLIBILLS_ROOT / "firms.json"
 PIPELINE_STATUS_PATH = INTELLIBILLS_ROOT / "pipeline-status.json"
@@ -882,6 +903,11 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 # until stage 2, and the pipeline is its only writer, so an absent folder would
 # show up as the first publish failing rather than as a missing folder.
 INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
+# Step 10r, for INTELLIBOOKS_PUBLISH_DIR's reason one line above. Both export
+# scripts call mkdir on their own output folder before writing, so this is not
+# what makes them work; it is what stops an absent folder showing up as the
+# first export failing on a machine that has never run one.
+EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _registry_mtime():

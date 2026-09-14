@@ -13,16 +13,23 @@ db = config.DB_PATH
 if not db.exists():
     sys.exit(f"no database at {db}. Set INTELLIBILLS_UNSYNCED_ROOT if it has moved.")
 
-#: Where the export is written. **Derived from `config.BASE_DIR` rather than
+#: Where the export is written. **Derived from a config constant rather than
 #: written relative to the working directory**, so running this from anywhere
-#: but the repository root still writes here rather than scattering an
-#: `exports\` wherever the shell happened to be standing. Flag 5 of the step 10n
-#: report and Paul's decision of 2026-09-11; `capture_report.py` already did
-#: this and its `OUTPUT_DIR` carries the reasoning for the folder itself.
+#: still writes to one place rather than scattering an `exports\` wherever the
+#: shell happened to be standing. Flag 5 of the step 10n report and Paul's
+#: decision of 2026-09-11; `capture_report.py` does the same and its
+#: `OUTPUT_DIR` carries the reasoning for the folder itself.
 #:
-#: The folder is created rather than assumed: it is not in the repository, it is
-#: gitignored, and this script used to fail on open.
-OUTPUT_DIR = config.BASE_DIR / "exports"
+#: ~~Derived from `config.BASE_DIR`~~ **Step 10r, amendment 359, Paul's decision
+#: of 2026-09-12: the anchor is `config.EXPORTS_DIR` under the practice root,
+#: not the repository.** The reason for pinning it at all is unchanged and is
+#: the sentence above: it is about having an anchor, not about which anchor.
+#:
+#: The folder is created rather than assumed, and the mkdir stays for the same
+#: reason it was written: this script used to fail on open. `config.py` now
+#: creates it at import as well, which covers the machine that has never run an
+#: export; this covers the folder being removed between then and now.
+OUTPUT_DIR = config.EXPORTS_DIR
 output = OUTPUT_DIR / "bookkeeping_export.csv"
 output.parent.mkdir(parents=True, exist_ok=True)
 

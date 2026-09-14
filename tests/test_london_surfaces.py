@@ -383,8 +383,15 @@ class ExportPathTest(unittest.TestCase):
     r"""Section 4 of the brief. `export_bookkeeping.py` wrote to
     `Path("exports/bookkeeping_export.csv")`, relative to the working directory,
     so running it from anywhere else created an `exports\` wherever the shell
-    was standing. It now derives from `config.BASE_DIR`, as `capture_report.py`
-    already did.
+    was standing. It now derives from a config constant, as `capture_report.py`
+    already did. ~~from `config.BASE_DIR`~~
+
+    **Step 10r, amendment 359, Paul's decision of 2026-09-12: that constant is
+    `config.EXPORTS_DIR`, under the practice root, and not the repository.**
+    **What this class tests did not change and that is why it was edited rather
+    than rewritten**: it says the path is anchored on a constant instead of
+    being relative to the working directory. The anchor moved; the property is
+    the same one.
 
     Read from the syntax tree rather than by running the script, because the
     script does its work at module scope and importing it would open the
@@ -401,10 +408,10 @@ class ExportPathTest(unittest.TestCase):
                         found[target.id] = ast.unparse(node.value)
         return found
 
-    def test_the_output_folder_is_derived_from_config_base_dir(self):
+    def test_the_output_folder_is_derived_from_a_config_constant(self):
         assignments = self._assignments()
         self.assertIn("OUTPUT_DIR", assignments)
-        self.assertEqual(assignments["OUTPUT_DIR"], "config.BASE_DIR / 'exports'")
+        self.assertEqual(assignments["OUTPUT_DIR"], "config.EXPORTS_DIR")
 
     def test_the_output_file_is_under_that_folder(self):
         assignments = self._assignments()
@@ -422,11 +429,32 @@ class ExportPathTest(unittest.TestCase):
             f"exports\\ wherever the shell is standing: {relative}")
 
     def test_it_writes_where_capture_report_writes(self):
+        """The two export scripts write to one folder, resolved rather than spelled.
+
+        **Rewritten at step 10r, amendment 359, and it is stronger than what it
+        replaces.** ~~`f"config.BASE_DIR / {capture_report.OUTPUT_DIR.name!r}"`~~
+        That compared this script's SOURCE TEXT against the other's folder NAME,
+        so it agreed whenever both ended in the same word, and it would have
+        gone on passing had one script moved to a different root while keeping
+        the name `exports`. This resolves the name against `config` and compares
+        the two folders themselves, so it fails if they part company for any
+        reason. It also survives the constant being renamed, which the old form
+        did not.
+        """
         import capture_report
-        assignments = self._assignments()
+        expression = self._assignments()["OUTPUT_DIR"]
+        # A whole constant and nothing composed onto it. Asserted before the
+        # getattr rather than after, so a composed path fails with this sentence
+        # instead of raising AttributeError on a name like "BASE_DIR / 'Exports'".
+        self.assertRegex(
+            expression, r"^config\.[A-Z][A-Z0-9_]*$",
+            f"OUTPUT_DIR is no longer one config constant: {expression!r}. "
+            "The pin is the point: without it this script writes an exports\\ "
+            "wherever the shell is standing.")
+        resolved = getattr(config, expression.split(".", 1)[1])
         self.assertEqual(
-            assignments["OUTPUT_DIR"],
-            f"config.BASE_DIR / {str(capture_report.OUTPUT_DIR.name)!r}")
+            resolved, capture_report.OUTPUT_DIR,
+            "the two export scripts no longer write to the same folder")
 
 
 class AlreadyFiledMessageTest(unittest.TestCase):

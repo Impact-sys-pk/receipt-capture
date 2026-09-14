@@ -57,16 +57,26 @@ from worker.filing import determine_tax_year
 #: output and covered by the same `.gitignore` line, so a report cannot dirty the
 #: working tree and trip `config.check_git_status_on_startup()` before a run.
 #:
-#: **Deliberately not under any config root.** It is not a client-facing document,
-#: so `Clients\` is out by 18.2b; it is not an archive of record, so
+#: ~~**Deliberately not under any config root.** It is not a client-facing
+#: document, so `Clients\` is out by 18.2b; it is not an archive of record, so
 #: `Intellibills\Documents\` is out by 18.2; and it is not process state, so the
 #: unsynced root is out by 18.2a. It is an operator's working output, and this
-#: repository is where the operator is standing when they run it.
+#: repository is where the operator is standing when they run it.~~
 #:
-#: Derived from `config.BASE_DIR` rather than written relative to the working
-#: directory, so running the command from elsewhere still writes here rather than
-#: scattering an `exports\` wherever the shell happened to be.
-OUTPUT_DIR = config.BASE_DIR / "exports"
+#: **Struck by step 10r, amendment 359, Paul's decision of 2026-09-12.** Those
+#: three exclusions still hold and none of them argued for the repository; they
+#: ruled out three other roots and the repository was what was left. **18.2's
+#: third rule decides it: each store has one owner, and an export is an
+#: Intellibills output for a person rather than source.** It goes to
+#: `Intellibills\Exports\`, which already existed and already held two CSVs, so
+#: the repository's `exports\` was the second of two folders for one thing.
+#:
+#: Derived from a config constant rather than written relative to the working
+#: directory, so running the command from elsewhere still writes to one place
+#: rather than scattering an `exports\` wherever the shell happened to be. That
+#: reason is about having an anchor, not about which anchor, and it survives the
+#: move intact.
+OUTPUT_DIR = config.EXPORTS_DIR
 
 #: The columns each scope selects on, named in the output so a reader never has
 #: to infer which one answered their question.

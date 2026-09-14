@@ -670,11 +670,73 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                     "client_folder_name in the registry, so it is not filed into Clients"
                 )
                 continue
-            invoice_date = extraction.get("invoice_date") or datetime.now(timezone.utc).date().isoformat()
+            # Step 10aq, 2026-09-14. Paul's decision at amendment 405, closing
+            # outstanding item 112.
+            #
+            # **These four values are this function's own, not the extraction's,
+            # whenever the row it re-read is missing one.** Until this step they
+            # were supplied silently and the receipt published as `ok`. The
+            # invented `invoice_date` is today's date, and the invoice date
+            # decides the tax year subfolder the client folder copy lands in, so
+            # a receipt whose date was never read reached a live client folder
+            # filed under whichever year the sweep happened to run in. 18.2b
+            # says a copy there is never withdrawn.
+            #
+            # **A fallback now sends the receipt to Review**, which is the gate
+            # the normal validation path already applies to a missing supplier,
+            # date or gross in `worker/validation/rules.py`.
+            #
+            # **Routing to Review means publishing it, and that is the opposite
+            # of how amendment 405 words it.** Since sub-step 10f.15 the Review
+            # queue in `IntelliBooks-Desktop-v3.html` reads the published inbox
+            # rather than `Intellibills\Review\`: `scanReview()` calls
+            # `inboxItems()`, and what keeps an item in that queue rather than
+            # letting the drain take it into the books is `itemIsHeld()`, which
+            # is true when the item's validation is anything but `ok`. A receipt
+            # that is not published reaches the operator nowhere at all. So the
+            # receipt publishes carrying `needs_review`, exactly as one that
+            # fails validation on the poll does.
+            #
+            # Nothing new is built for the client folder: `validation_status` is
+            # passed down to `copy_for_published_receipt()` below, which already
+            # refuses every status but `ok` and `bank_attachment`.
+            fallbacks: list[str] = []
+
+            invoice_date = extraction.get("invoice_date")
+            if not invoice_date:
+                fallbacks.append("invoice_date")
+                invoice_date = datetime.now(timezone.utc).date().isoformat()
             tax_year = determine_tax_year(invoice_date)
-            supplier = extraction.get("supplier_name") or "unknown"
-            gross = extraction.get("gross_amount") if extraction.get("gross_amount") is not None else 0.0
-            currency = extraction.get("currency") or config.DEFAULT_CURRENCY
+
+            supplier = extraction.get("supplier_name")
+            if not supplier:
+                fallbacks.append("supplier")
+                supplier = "unknown"
+
+            gross = extraction.get("gross_amount")
+            if gross is None:
+                fallbacks.append("gross")
+                gross = 0.0
+
+            currency = extraction.get("currency")
+            if not currency:
+                fallbacks.append("currency")
+                currency = config.DEFAULT_CURRENCY
+
+            # One line per field rather than one per receipt: the operator needs
+            # to know WHICH value is invented, and a receipt can fall back on
+            # more than one.
+            for field in fallbacks:
+                logger.warning(
+                    f"receipt {receipt_id}: its extraction row has no {field}, so the "
+                    f"recovery sweep used a fallback value; the receipt goes to Review "
+                    f"rather than publishing as ok"
+                )
+
+            validation_status = "needs_review" if fallbacks else "ok"
+            validation_notes = [
+                f"recovery sweep supplied a fallback {field}" for field in fallbacks
+            ]
 
             # Categorise the receipt (reuse the real extraction_id, don't generate a new one)
             trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
@@ -735,7 +797,10 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 category_code=categorisation.suggested_code,
                 category_name=categorisation.suggested_name,
                 confidence=categorisation.confidence,
-                validation_status="ok",
+                # Step 10aq: `"ok"` until 2026-09-14. This is what Desktop
+                # routes on, so it is what sends a fallback to the Review queue
+                # rather than into the drain.
+                validation_status=validation_status,
                 asserted=None,
                 original_filename=receipt["filename"],
             )
@@ -745,12 +810,17 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 # list is stated rather than left out so every item carries the
                 # key. extra_for() is the one builder, shared with the poll.
                 #
+                # Step 10aq: the notes are empty on the `ok` path and name the
+                # fallback fields on the Review one, so the operator sees which
+                # value was invented on the row itself rather than only in
+                # run.log.
+                #
                 # Step 10l: the categorisation this sweep has just produced,
                 # twenty lines above, so a receipt recovered here carries the
                 # same `category_unconfirmed` answer as one arriving on the
                 # poll. It is the reason `extra_for()` takes the object rather
                 # than a boolean: two call sites, one expression deciding.
-                extra=extra_for([], categorisation=categorisation),
+                extra=extra_for(validation_notes, categorisation=categorisation),
             )
             if not published:
                 # publish_receipt() has already recorded why and logged it. The
@@ -766,13 +836,26 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 invoice_date=invoice_date,
                 supplier=supplier,
                 gross=gross,
-                validation_status="ok",
+                # Step 10aq: `"ok"` until 2026-09-14. This function already
+                # refuses every status but `ok` and `bank_attachment`, so a
+                # receipt carrying an invented invoice date no longer reaches a
+                # live client folder under a tax year nobody chose. The gate is
+                # its own and is not duplicated here.
+                validation_status=validation_status,
                 filed_path=receipt.get("filed_path"),
             )
             stats["recovery_published"] = stats.get("recovery_published", 0) + 1
+            if fallbacks:
+                # Step 10aq. The same counter the normal validation path uses
+                # for a receipt it sends to Review, so the run summary counts
+                # all of them together rather than hiding the sweep's in a name
+                # of its own.
+                repo.update_receipt_status(receipt_id, validation_status)
+                stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
             logger.info(
                 f"receipt {receipt_id} recovered, categorised as "
                 f"{categorisation.suggested_code}, and published"
+                + (f" for review ({', '.join(fallbacks)} fell back)" if fallbacks else "")
                 + (f"; copied to {dest_path}" if dest_path else ""))
         except Exception as exc:
             logger.error(f"failed to publish recovered receipt {receipt_id}: {exc}", exc_info=True)

@@ -121,15 +121,41 @@ Not fixed, because the brief says one constant and change nothing else.
   comment explaining that the override would survive the redirect and point at the live folder.
   There is no override now, so the pop protects against nothing.
 - **`tests/test_path_layout.py:58-62`**, `test_the_resolutions_folder_defaults_into_it`, skips itself
-  if `os.environ.get("RESOLUTIONS_DIR")` is set. **That guard is now worse than dead.** The variable
-  no longer changes anything, so the test would pass if it ran, and setting an unrelated environment
-  variable of that name silently turns off the only assertion that `RESOLUTIONS_DIR` defaults where
-  it should. A check that can be switched off by something it no longer depends on.
+  if `os.environ.get("RESOLUTIONS_DIR")` is set. The variable no longer changes anything, so the
+  test would pass if it ran, and the guard now describes a condition that cannot matter.
 
 **The obvious fix, and it removes rather than adds:** delete the `os.environ.pop` line and its
 comment, and delete the two-line skip guard, leaving the assertion. Both are a few lines, neither
 changes behaviour, and I can do them in one commit on a yes. I have not, because the brief was
 explicit.
+
+### CORRECTION to this flag, 2026-09-14, and I got the severity wrong
+
+**Paul said yes and the deletions are commit `af60be2`. Doing them showed this flag overstated the
+risk, so the overstatement is recorded rather than quietly dropped.**
+
+~~That guard is now worse than dead. Setting an unrelated environment variable of that name silently
+turns off the only assertion that `RESOLUTIONS_DIR` defaults where it should. A check that can be
+switched off by something it no longer depends on.~~
+
+**The guard was unreachable under pytest, so it could not have switched anything off.**
+`tests/conftest.py:18` imports `live_paths`, and pytest loads `conftest.py` before the test modules
+beside it, so the `os.environ.pop` always ran first and
+`os.environ.get("RESOLUTIONS_DIR")` was already `None` by the time the test was reached.
+
+**Measured rather than reasoned.** Running `tests/test_path_layout.py` with
+`RESOLUTIONS_DIR="C:/some/wrong/place"` set gives **17 passed, 19 subtests, no skip** on the code as
+it stood BEFORE the deletion, taken from a `git stash` of the change. It gives the same after.
+
+**What was actually true: the two were coupled, and together they were dead.** The guard would only
+have begun firing if somebody removed the pop and left it behind, which is a real trap and a smaller
+one than "worse than dead" claims. Removing both together is still the right call, and is what the
+commit does.
+
+**How I got it wrong.** I read both sites, saw that one could disable the other, and wrote up the
+consequence without running the case. The check cost one command. This is the same fault as
+reasoning from a filter's output instead of the file: I reasoned from the two lines rather than from
+what the suite does with them.
 
 ---
 
@@ -554,9 +580,11 @@ in my session context. It is gone. **I did not delete it, and I did not read it.
 repository references the name: a grep across `.py` and `.md`, `.history` excluded, returns nothing.
 It is not in any commit I made; all six commits are listed in section 1 and none names it.
 
-I cannot say what removed it or when, only that it was there and is not. Recorded because an
-untracked file at the repository root vanishing during a session is the kind of thing that gets
-noticed later and attributed to the wrong change.
+~~I cannot say what removed it or when, only that it was there and is not.~~
+
+**CLOSED 2026-09-14. Paul deleted it himself earlier. Nothing to investigate, and there was no
+defect here at all.** The section is kept rather than removed so that anyone reading the commit
+range later finds the answer beside the question.
 
 ---
 
@@ -574,9 +602,17 @@ includes it.
 **Two things wanting a yes or no from you:**
 
 1. **Flag 1**, the two dead `RESOLUTIONS_DIR` environment reads in the test support. Recommendation
-   is to delete both, including the skip guard that can silently disable an assertion. One small
-   commit.
+   is to delete both. One small commit.
 2. **Section 5's judgement**, proceeding past a tripped stop condition because its purpose was
    served. If you would rather a tripped condition always stops me, say so and it will.
 
 Flag 2 (the fixture account name) and flag 3 (the ordering edge) need nothing unless you want them.
+
+### Both answered, 2026-09-14
+
+1. **Flag 1: yes, delete both.** Done, commit `af60be2`, with a correction to the flag's own
+   severity claim recorded at the end of section 2.
+2. **Section 5: acceptable, and standing.** Paul's words: judging whether a stop condition's real
+   purpose is served, and proceeding when it is, is fine going forward, and a tripped condition need
+   not halt the work on the letter of it every time.
+3. **Pushed.** `feat/console-phase0` to `origin`.

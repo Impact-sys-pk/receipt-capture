@@ -48,8 +48,16 @@ class ResumeSafetyTest(unittest.TestCase):
             # 10d.13 and 10d.18. The recovery pass needs a real registry entry
             # now: the folder under Clients comes off client_folder_name, and an
             # unresolved client files nothing rather than getting a folder named
-            # from a lookup miss. test_an_unresolved_client_is_not_filed below is
-            # the other half of that.
+            # from a lookup miss.
+            #
+            # ~~test_an_unresolved_client_is_not_filed below is the other half
+            # of that.~~ **Struck 2026-09-14, flag 3 of
+            # `2026-09-14_REPORT_claude_code_recovery_sweep_review_fallback.md`.
+            # There is no such test, here or anywhere in tests\.** The nearest
+            # is test_an_unresolved_client_names_nothing in
+            # tests/test_step10d_pipeline.py, which covers the HELPER,
+            # app._client_folder_name(), rather than the sweep's own branch that
+            # reads it and skips the receipt.
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {
                     "client_id": "CLIENT001", "client_name": "Test Client",

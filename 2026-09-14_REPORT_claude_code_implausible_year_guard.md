@@ -147,7 +147,13 @@ and the set of doors.
 
 ---
 
-## 5. A judgement the brief did not settle
+## 5. A judgement the brief did not settle, and Paul has now settled it
+
+**CONFIRMED by Paul, 2026-09-14, after this report was first written.** His words: "an implausible
+year with no supplier is `failed`, the same as an invalid date. Your reading of the brief is right
+and the brief should have said it." **So this is no longer a judgement held by one test pending a
+decision; it is the specification.** The section below is kept as written, because the reasoning is
+what he was agreeing to.
 
 **With no supplier as well, an implausible year makes the receipt `failed` rather than
 `needs_review`.**
@@ -177,6 +183,7 @@ wrong.**
 | Baseline at `f9f81ec`, measured at the start of this session | **1428 passed, 1 skipped, 979 subtests** |
 | After the change | **1458 passed, 1 skipped, 1113 subtests** |
 | After the mutation sweep restored every file | **1458 passed, 1 skipped, 1113 subtests** |
+| **After the commit, `7bbc80d`, and this is the run that counts** | **1458 passed, 1 skipped, 1113 subtests, 159.92s** |
 
 **+30 tests and +134 subtests, and the arithmetic reconciles exactly rather than approximately.**
 `CLAUDE.md` records a regression found only because a subtest total moved by nine, so the total is
@@ -192,6 +199,31 @@ worth accounting for:
 
 The fifth false positive is `test_implausible_year.py` itself, which was never in the baseline, so it
 subtracts nothing from it.
+
+**The post-commit run, added 2026-09-14 after committing as `7bbc80d`.** `CLAUDE.md` requires it
+whenever a change adds a file, because two source guards sweep the git-tracked set through
+`git ls-files` and a new production file is invisible to them until it is committed. **Unchanged:
+1458 passed, 1 skipped, 1113 subtests, and nothing appeared that the pre-commit run had not shown.**
+
+**Why nothing moved, and it is the same reasoning step 10az's report set out, re-checked rather than
+carried.** The two guards are `tests/test_attached_document.py` and `tests/test_corrected_note.py`,
+both filtering `if not name.startswith("tests/")`. The only file this change adds is
+`tests/test_implausible_year.py`, which is outside their scope, and the two production files it
+touches were already tracked. **The run still had to happen**: that reasoning is mine and the run is
+the evidence.
+
+**One thing did change under the commit and it is worth recording.** `TheSetOfDoorsTest` and
+`test_logs_isolation.py` both build their file list from `git ls-files`, so both were blind to
+`tests/test_implausible_year.py` before it was committed. Neither cares: the first filters production
+files only, and the second reads `tests\*.py` off the filesystem with `glob` rather than off git. **So
+the new module was inside the second guard's reach in both runs and inside neither guard's tracked
+set in the first**, which is why the figures are identical either way.
+
+**HEAD had moved three commits under this work before the commit landed**, `26939c7`, `bcd3992` and
+`04c6b96`, all the consultant session's. `git diff --stat 0406f52..HEAD` shows them touching
+`2026-07-25_BUILD_STATUS.md`, `2026-07-25_CONSOLE_DESIGN.md` and this report and no Python at all, so
+the baseline above is still comparable. **This report is now a tracked file**, committed by that
+session in `04c6b96`, so this paragraph is an edit to a committed document rather than to a draft.
 
 ### 6.2 Red before green
 
@@ -325,6 +357,12 @@ would notice.
 ## 8. Flags, each with the obvious fix
 
 **Nothing below is repaired. Each carries the fix I would make.**
+
+**Disposition, added 2026-09-14 after Paul read them.** **8.1 and 8.4 are his and he is correcting
+them**: the design document names `_parse_numeric_date()` where the function is
+`parse_ambiguous_date()`, and `badYear()`'s comment says `Receipts\0026-27` where the live path is
+`26-27`. **8.2 and 8.3 are decisions and stay open. Neither is to be built.** **8.5 is unresolved and
+nobody has picked it up**, which is stated so it is not mistaken for closed.
 
 ### 8.1 The brief names a function that does not exist
 
@@ -514,10 +552,14 @@ with a grep on that file.
 **High on the premise at section 1**, because the row was read out of `C:\Intellibills\db\receipts.db`
 directly with `sqlite3` in read-only mode, on Windows, not through any staging layer.
 
-**Moderate on the judgement at section 5**, the `failed` rather than `needs_review` outcome when the
+~~**Moderate on the judgement at section 5**, the `failed` rather than `needs_review` outcome when the
 supplier is missing too. It follows from the brief's words and one test holds it, and it is one line
 to reverse. **What I am confident about is the reading, not that it is what Paul wants**, which is a
-different proposition and is his to settle.
+different proposition and is his to settle.~~ **Struck 2026-09-14: he settled it and the reading was
+right.** The distinction that paragraph drew is the one worth keeping, though, and it is amendment
+110's rule in `CLAUDE.md`: say what the confidence is about, not only what it rests on. High
+confidence in a reading of a brief is not confidence in the author's intent, and here the two
+happened to agree.
 
 **Moderate on the scope of flag 8.2.** I traced `transaction_date` to a `resolution_events` row and
 found no path to a filed path or a tax year, but I did not read `worker/attached.py` whole, so that

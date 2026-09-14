@@ -34,7 +34,7 @@ session before this brief was written:
 **Re-enumerate that set from the syntax tree before building.** It is one session's enumeration and
 a claim about a set is not verified by verifying its members.
 
-Sub-step 10d.41 already put a year rule into `_parse_numeric_date()` in
+Sub-step 10d.41 already put a year rule into ~~`parse_ambiguous_date()`~~ **`parse_ambiguous_date()`, corrected 2026-09-14 by amendment 467: the underscore-prefixed name does not exist anywhere in the repository** in
 `worker/extraction/postprocess.py`. That guard covers numeric dates the extractor parses and covers
 none of the three doors above. Same shape as steps 10ab and 10ac.
 

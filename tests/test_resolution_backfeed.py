@@ -1676,16 +1676,24 @@ class SettledDespiteFailedChecksTest(BackfeedTestCase):
             finally:
                 repo.close()
 
-    def test_a_note_that_could_reach_the_other_four_is_refused_by_the_parser(self):
+    def test_a_note_that_could_reach_the_other_five_is_refused_by_the_parser(self):
         """The safety property, and it is what bounds this change.
 
-        `validate()` can append six distinct notes, enumerated from its own
-        syntax tree by `test_validate_can_append_exactly_six_notes` below. Four
-        of them need a shape `parse_resolution_note()` refuses, so
-        `decided_by_operator` can never force one through. **The consequence
-        that matters: it can only ever turn a `needs_review` receipt `ok`, never
-        a `failed` one**, because `failed` needs a missing gross or a missing
-        supplier.
+        `validate()` can append seven distinct notes, enumerated from its own
+        syntax tree by `test_validate_can_append_exactly_seven_notes` below.
+        ~~six~~ ~~Four~~ **Five** of them need a shape
+        `parse_resolution_note()` refuses, so `decided_by_operator` can never
+        force one through. **The consequence that matters: it can only ever
+        turn a `needs_review` receipt `ok`, never a `failed` one**, because
+        `failed` needs a missing gross or a missing supplier.
+
+        **The seventh note is the implausible year guard, 2026-09-14, and it
+        joins the refused group.** That is the decision the guard below demands
+        of whoever adds a check: `parse_resolution_note()` is itself one of the
+        three doors that rule now sits at, so a note carrying year 26 never
+        reaches `resolve_receipt()` and `decided_by_operator` has nothing to
+        force. **The count that matters did not move: exactly two failures can
+        still reach here**, the gross mismatch and the negative amount.
         """
         base = settle_payload()["values"]
         cases = {
@@ -1696,6 +1704,9 @@ class SettledDespiteFailedChecksTest(BackfeedTestCase):
             "missing invoice_date": {k: v for k, v in base.items()
                                      if k != "invoice_date"},
             "invalid date": dict(base, invoice_date="2026-02-31"),
+            # Step 10ba. A real calendar date that passes every check above it,
+            # and the value the live receipt actually carries.
+            "implausible year": dict(base, invoice_date="0026-08-30"),
         }
         for label, values in cases.items():
             with self.subTest(case=label):
@@ -1719,13 +1730,19 @@ class SettledDespiteFailedChecksTest(BackfeedTestCase):
                     finally:
                         repo.close()
 
-    def test_validate_can_append_exactly_six_notes(self):
+    def test_validate_can_append_exactly_seven_notes(self):
         """The set the test above reasons about, enumerated rather than named.
 
         `CLAUDE.md`: a claim about a set is not verified by verifying its
-        members. If `worker\\validation\\rules.py` gains a seventh check, this
+        members. If `worker\\validation\\rules.py` gains an eighth check, this
         fails and somebody has to decide whether
         `decided_by_operator` may force it through.
+
+        **It did its job on 2026-09-14.** The implausible year guard made the
+        seventh, this went red on the count alone, and the decision it demanded
+        is recorded in the test above: the note joins the five the parser
+        refuses, because `parse_resolution_note()` is one of that rule's own
+        three doors. ~~six~~
         """
         import ast
 
@@ -1739,7 +1756,7 @@ class SettledDespiteFailedChecksTest(BackfeedTestCase):
             ast.unparse(node.args[0]) for node in ast.walk(target)
             if isinstance(node, ast.Call)
             and ast.unparse(node.func) == "notes.append"})
-        self.assertEqual(len(appended), 6, appended)
+        self.assertEqual(len(appended), 7, appended)
         self.assertEqual(
             appended,
             ["'missing gross_amount'",
@@ -1747,6 +1764,7 @@ class SettledDespiteFailedChecksTest(BackfeedTestCase):
              "'missing supplier_name'",
              "f'gross mismatch: {result.net_amount} + {result.vat_amount} = "
              "{expected}, got {actual}'",
+             "f'implausible year {implausible}: {result.invoice_date}'",
              "f'invalid date: {result.invoice_date}'",
              "f'{field} is negative: {val}'"])
 

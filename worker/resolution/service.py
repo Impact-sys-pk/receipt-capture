@@ -41,7 +41,11 @@ from worker.filing import (
     make_enriched_sidecar,
     remove_review_pair,
 )
-from worker.validation.rules import validate
+from worker.validation.rules import (
+    unreadable_year,
+    unreadable_year_reason,
+    validate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +297,16 @@ def parse_corrections(raw: dict) -> Tuple[Corrections, Dict[str, str]]:
                 datetime.strptime(text, "%Y-%m-%d")
             except ValueError:
                 errors[name] = f"'{supplied}' is not a real calendar date."
+                continue
+            # The implausible year guard, 2026-09-14. `0026-08-30` is a real
+            # calendar date and passes every check above it, which is how a
+            # receipt came to be filed under a tax year of `26-27`. One rule
+            # and one helper: the bound lives in `worker\\validation\\rules.py`
+            # and this door asks rather than restates it.
+            implausible = unreadable_year(text)
+            if implausible is not None:
+                errors[name] = (
+                    f"'{supplied}' {unreadable_year_reason(implausible)}.")
                 continue
             values[name] = text
         else:
@@ -566,6 +580,16 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         datetime.strptime(invoice_date, "%Y-%m-%d")
     except ValueError:
         raise ResolutionNoteError(f"'values.invoice_date' is not a real date: {invoice_date!r}")
+    # **This is the door the receipt in `26-27` actually came through**, so it
+    # is the one that would have stopped it. Desktop's `badYear()` now refuses
+    # the same year at the keyboard; this refuses it at the contract, because
+    # the two products are built by sessions that cannot see each other and a
+    # note can be written by a Desktop build that predates that check.
+    implausible = unreadable_year(invoice_date)
+    if implausible is not None:
+        raise ResolutionNoteError(
+            f"'values.invoice_date' {unreadable_year_reason(implausible)}: "
+            f"{invoice_date!r}")
 
     currency = raw_values.get("currency")
     if currency is not None and not isinstance(currency, str):

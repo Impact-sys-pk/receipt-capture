@@ -1,3 +1,4 @@
+import ast
 import sys
 import tempfile
 import types
@@ -155,6 +156,45 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
     #: moved rather than by anything going red.
     FIXTURE_DRIVERS = ("run_pipeline_once", "Routes")
 
+    #: Every name whose use means "this module drives the pipeline".
+    DRIVERS = ("process_once",) + FIXTURE_DRIVERS
+
+    @classmethod
+    def _drives(cls, source: str) -> bool:
+        """Does this module USE a driver, as opposed to mentioning one?
+
+        **Asked of the syntax tree, 2026-09-14, because the substring test this
+        replaces had five false positives out of 28 and they were not rare
+        cases.** `CLAUDE.md`, 2026-09-08: a source guard parses the tree rather
+        than string-matching the source, because on this project the prose is
+        always a few lines from the code.
+
+        The five, each confirmed by reading it: `BothRoutesTest` in
+        `test_firm_vendor_writer.py` and `AFallbackRoutesToReviewTest` in
+        `test_recovery_sweep_fallback.py` are class names containing the
+        substring `Routes`; `test_attached_document_reach.py` names
+        `app.process_once()` in a docstring saying it deliberately does not
+        drive one; this module names it in its own prose and constants; and
+        `test_implausible_year.py` names it in a list of functions a different
+        guard exempts.
+
+        **No module is lost that a real driver reaches.** A module that calls
+        `process_once()`, constructs `Routes(...)` or calls
+        `run_pipeline_once(...)` uses the name as a `Name`, an `Attribute` or an
+        import, all three of which this reads. What it stops reading is a name
+        inside a string, a docstring or a comment, none of which can drive
+        anything.
+        """
+        names = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.alias):
+                names.add((node.asname or node.name).rsplit(".", 1)[-1])
+        return bool(names & set(cls.DRIVERS))
+
     def test_every_test_that_drives_process_once_redirects_what_it_writes(self):
         tests_dir = Path(__file__).parent
         fixtures = (tests_dir / "resolution_fixtures.py").read_text(encoding="utf-8")
@@ -162,9 +202,7 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
         checked = 0
         for module in sorted(tests_dir.glob("test_*.py")):
             source = module.read_text(encoding="utf-8")
-            drives = ("process_once" in source
-                      or any(name in source for name in self.FIXTURE_DRIVERS))
-            if not drives:
+            if not self._drives(source):
                 continue
             # Modules that use the shared fixture inherit its redirects.
             if "resolution_fixtures" in source:
@@ -179,6 +217,34 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
                     )
 
         self.assertGreater(checked, 0, "the guard found nothing to check, so it guards nothing")
+
+    def test_the_predicate_discriminates(self):
+        """The control, without which the change above could not be trusted.
+
+        A predicate that answered False to everything would empty this guard
+        and nothing else in the suite would notice, which is amendment 97's
+        shape: a check that cannot fail. Both directions are asserted here.
+        """
+        drives = [
+            "import app\napp.process_once(repo)\n",
+            "from app import process_once\nprocess_once(repo)\n",
+            "from tests.resolution_fixtures import Routes\nRoutes().send()\n",
+            "run_pipeline_once(env)\n",
+        ]
+        for source in drives:
+            with self.subTest(source=source.strip()):
+                self.assertTrue(self._drives(source))
+
+        mentions = [
+            '"""A docstring naming app.process_once() and nothing more."""\n',
+            '# a comment naming process_once and Routes\n',
+            'EXEMPT = [("app.py", "process_once")]\n',
+            'class BothRoutesTest:\n    pass\n',
+            'class AFallbackRoutesToReviewTest:\n    pass\n',
+        ]
+        for source in mentions:
+            with self.subTest(source=source.strip()):
+                self.assertFalse(self._drives(source))
 
 
 if __name__ == "__main__":

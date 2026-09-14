@@ -706,8 +706,12 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
             if not invoice_date:
                 fallbacks.append("invoice_date")
                 invoice_date = datetime.now(timezone.utc).date().isoformat()
-            tax_year = determine_tax_year(invoice_date)
-
+            # No tax year is computed here. `tax_year = determine_tax_year(...)`
+            # sat on this line, assigned and never read, until flag 1 of
+            # `2026-09-14_REPORT_claude_code_recovery_sweep_review_fallback.md`.
+            # The tax year that decides the client folder subfolder is worked
+            # out inside `copy_for_published_receipt()` from the `invoice_date`
+            # passed to it below, so there is nothing for this to feed.
             supplier = extraction.get("supplier_name")
             if not supplier:
                 fallbacks.append("supplier")

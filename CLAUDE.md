@@ -330,7 +330,7 @@ This section is specific to the Receipt Capture App Project
 
 ## How this project is worked
 
-Added 2026-07-29, ahead of handing the project to another account in the organisation. This section is the **working method**: who does what, what standard of evidence is expected, and how to write for the person operating the system. It is deliberately separate from the current state of the build, which lives in the design document and in the handover.
+Added 2026-07-29, ahead of handing the project to another account in the organisation. This section is the **working method**: who does what, what standard of evidence is expected, and how to write for the person operating the system. It is deliberately separate from the current state of the build, which lives in `2026-07-25_BUILD_STATUS.md` (sections 16 and 17, moved out of the design document 2026-09-14) and in the handover.
 
 Read this before doing anything. Most of it was learned by getting it wrong.
 

@@ -240,11 +240,12 @@ TEMP_UNSYNCED_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ[PRACTICE_VAR] = str(TEMP_PRACTICE_ROOT)
 os.environ[UNSYNCED_VAR] = str(TEMP_UNSYNCED_ROOT)
 
-# RESOLUTIONS_DIR has an environment override of its own, read before the fall
-# back to INTELLIBILLS_ROOT, so a value set in .env would survive this redirect
-# and point at the live folder. Cleared for the run. (Its line number was cited
-# here until 2026-09-07; dropped by amendment 247.)
-os.environ.pop("RESOLUTIONS_DIR", None)
+# RESOLUTIONS_DIR needs no clearing here. It had an environment override of its
+# own until 2026-09-13, read before the fall back to INTELLIBILLS_ROOT, so a
+# value set in .env would have survived this redirect and pointed at the live
+# folder; this module popped it for the run. Sub-step 10ag removed the override,
+# closing outstanding item 70, so the constant now derives from INTELLIBILLS_ROOT
+# and the two lines above already redirect it.
 
 #: The client top folder the whole suite runs against. Deliberately not called
 #: `Clients`: see the docstring. It is under the temp practice root because

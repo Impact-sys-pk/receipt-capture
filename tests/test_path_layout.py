@@ -21,7 +21,6 @@ a test that only passes on one machine's real paths would have had to be skipped
 for them.
 """
 
-import os
 import unittest
 from pathlib import Path
 
@@ -55,10 +54,11 @@ class PracticeRootTest(unittest.TestCase):
                 )
 
     def test_the_resolutions_folder_defaults_into_it(self):
-        # RESOLUTIONS_DIR has an environment override of its own, per 12.2, so
-        # this checks the default rather than whatever a .env says today.
-        if os.environ.get("RESOLUTIONS_DIR"):
-            self.skipTest("RESOLUTIONS_DIR is overridden in this environment")
+        # This skipped itself when an environment variable named RESOLUTIONS_DIR
+        # was set, because the constant used to read one, per 12.2. Sub-step 10ag
+        # removed that override on 2026-09-13, so the variable changes nothing
+        # and the guard could only ever have switched this assertion off for a
+        # reason that no longer exists.
         self.assertEqual(config.RESOLUTIONS_DIR, config.INTELLIBILLS_ROOT / "Resolutions")
 
     def test_the_document_store_is_not_called_data(self):

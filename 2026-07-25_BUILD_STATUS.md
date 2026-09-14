@@ -15,7 +15,7 @@ body, sections 1 to 15, 18 and 19, and the full amendment record.
 
 Commit after each step.
 
-**Where we are, as at 2026-09-14, later once more. 49 built, 27 outstanding, 3 cancelled, 1 moved out of this order, 80 steps. Corrected by amendment 457, which built step 10aq. Counted from the table's own 80 rows, not carried from the line above. The twenty-seven outstanding are 10r, 10t, 10v, 10w, 10x, 10ai, 10aj, 10ak, 10al, 10am, 10an, 10ao, 10at, 10au, 10aw, 10az, 10i, 11, 13, 14, 15, 16, 17, 18, 20, 21 and 22.** Superseded corrections to this line, and the sub-step decomposition notes that used to sit beside them, moved to Appendix 16A at the end of this section, 2026-09-14, so this line stops growing without bound. Nothing deleted, only relocated, in the original order.
+**Where we are, as at 2026-09-14, later still. 50 built, 26 outstanding, 3 cancelled, 1 moved out of this order, 80 steps. Corrected by amendment 459, which built step 10az. Counted from the table's own 80 rows, not carried from the line above. The twenty-six outstanding are 10r, 10t, 10v, 10w, 10x, 10ai, 10aj, 10ak, 10al, 10am, 10an, 10ao, 10at, 10au, 10aw, 10i, 11, 13, 14, 15, 16, 17, 18, 20, 21 and 22.** Superseded corrections to this line, and the sub-step decomposition notes that used to sit beside them, moved to Appendix 16A at the end of this section, 2026-09-14, so this line stops growing without bound. Nothing deleted, only relocated, in the original order.
 **Kept up to date in the same edit as the step below it.** Every step and every sub-step carries one of those four words at its head. **Nothing is inferred from strikethrough**, which in this section means built, superseded wording, suspended or cancelled depending on where it appears.
 
 | Step | What it is | Status |
@@ -86,7 +86,7 @@ Commit after each step.
 | 10aw | The null-id filename fallback fixed, 12.3 step 2 | **OUTSTANDING. Added 2026-09-13 by amendment 444, Paul's decision. Recorded at 12.3 step 2 and amendment 48. Claude Code's to build.** |
 | 10ax | `mark_receipt_filed()` error handling in `copy_for_published_receipt()` | **BUILT, 2026-09-13, commits `247442c` and `01a8dbc`. See amendment 453.** |
 | 10ay | `_retry_failed_receipts()`'s failure handler no longer assumes no extraction row was written this attempt | **BUILT, 2026-09-13, commit `e9aab22`. See amendment 454.** |
-| 10az | The delivery-log writer: one entry per document `copy_for_published_receipt()` copies into a client's folder, written to `IntelliBooks\Delivery\{CODE}.log` | **OUTSTANDING. Added 2026-09-14 by amendment 456, Paul's decision. Format specified in the same amendment. Briefed in `PROMPT_claude_code_2026-09-14_delivery_log_writer.md`, held for when Claude Code reaches it. Claude Code's to build.** |
+| 10az | The delivery-log writer: one entry per document `copy_for_published_receipt()` copies into a client's folder, written to `IntelliBooks\Delivery\{CODE}.log` | **BUILT, 2026-09-14, in `copy_for_published_receipt()` (`worker/client_copy.py`), commit `f9f81ec`. The moment field is `timestamp` and not amendment 456's `posted_at`, corrected in place by amendment 458. See amendment 459.** ~~OUTSTANDING. Added 2026-09-14 by amendment 456, Paul's decision. Format specified in the same amendment. Briefed in `PROMPT_claude_code_2026-09-14_delivery_log_writer.md`, held for when Claude Code reaches it. Claude Code's to build.~~ |
 | 10i | The pilot | **OUTSTANDING. Immediately before this step, and not before, the test estate is cleared: 17 receipt pairs and 34 files across four of the five test clients in `Clients\*\IntelliBooks\Receipts\`; five `Client_00X-books.json` files in `IntelliBooks\Books\`; 14 receipts and 11 categorisations in `receipts.db`; and the processed inbox copies under `Intellibills\Receipt Inbox\*\Processed\`. `Clients\Paul Keating\` and `Clients\She Run's It! Ldn Ltd\` are NOT test data and are not in scope. The three have to go together and in this order: clearing the receipt files without clearing the books leaves IntelliBooks showing receipts whose images are gone; clearing the books without the database leaves the pipeline's duplicate guard holding receipts that no longer exist anywhere. The consultant session tells Paul when this step is scheduled. Closed here 2026-09-13 as outstanding item 168, amendment 429.** |
 | 11 | Console schema additions | **OUTSTANDING** |
 | 12 | Load the app default chart into `coa_accounts` | **CANCELLED** |
@@ -900,6 +900,8 @@ Step 10e stays OUTSTANDING because sub-steps of it are still OUTSTANDING
 Struck 2026-09-02 by amendment 167, on the same ground as amendment 166: it is a derived count in a step that is still being decomposed. It was correct when written.**
 
 ~~As at 2026-08-21.~~
+
+~~**Where we are, as at 2026-09-14, later once more. 49 built, 27 outstanding, 3 cancelled, 1 moved out of this order, 80 steps. Corrected by amendment 457, which built step 10aq. Counted from the table's own 80 rows, not carried from the line above. The twenty-seven outstanding are 10r, 10t, 10v, 10w, 10x, 10ai, 10aj, 10ak, 10al, 10am, 10an, 10ao, 10at, 10au, 10aw, 10az, 10i, 11, 13, 14, 15, 16, 17, 18, 20, 21 and 22.**~~
 
 ---
 

@@ -10,13 +10,35 @@
 
 ---
 
-## 1. Two products, sold two ways
+## 0. What this document is for, settled 2026-09-15
 
-**Intellibills, the receipts capture app.** Sellable on its own to a firm that keeps its books elsewhere: Xero, QuickBooks, a CSV, or IntelliBooks. It must therefore be **complete without IntelliBooks**, including having its own front end, because a standalone customer has no other screen to borrow.
+**Paul's statement, in his own words, 2026-09-15. It governs everything below it. Where anything later in this document disagrees with it, this section decides.**
+
+1. **One product line. IntelliBooks is the Mark 2 version of Intellibills, with the bookkeeping added.** The names may change later.
+2. **Intellibills on its own does not amount to a product today.** It would need connectors to QBO, Xero and the rest before anyone could sell it.
+3. **Spinning it off is an option being kept open, not a plan.**
+4. **If it ever happens it is the cloud version**, so today's local constraints do not travel with it.
+5. **IntelliBooks includes Intellibills. IntelliBooks may depend on Intellibills. Intellibills may not depend on IntelliBooks.**
+6. **They are not two independent systems.**
+
+**What follows from it, written here so it is not worked out twice.**
+
+- **Standalone completeness is not an obligation on today's build.** Sections 1, 5 and 12 were written as though it were, and each is struck or reframed where it says so.
+- **Point 5 is the only rule in this document that constrains anything today, and it runs one way.** It is what stops Intellibills reading the books file.
+- **The standalone question survives as a test, not as a rule.** Paul's own form of it: what would come out to leave Intellibills alone? Run on `IntelliBooks-Desktop-v3.html` on 2026-09-15, the answer was two tabs out whole, being Bank Transactions and Reports; three in whole, being Receipts, Clients and Firm Settings; and two that split, being Client Data and Client Settings. **The list is worth more than a verdict, because the tabs that split are where a function gets tangled without anyone noticing.**
+- **What has to be kept is the record of which function belongs to which product, not separated code.** The code does not survive a cloud rebuild. The record does, and it is sections 5, 7 and 10 of this document.
+
+**Recorded by amendment 480 of `2026-07-25_CONSOLE_DESIGN.md`.**
+
+---
+
+## 1. ~~Two products, sold two ways~~ **One product line, and a capture-only variant that does not exist yet**
+
+**Intellibills, the receipts capture app.** ~~Sellable on its own to a firm that keeps its books elsewhere: Xero, QuickBooks, a CSV, or IntelliBooks. It must therefore be **complete without IntelliBooks**, including having its own front end, because a standalone customer has no other screen to borrow.~~ **STRUCK 2026-09-15 BY AMENDMENT 480, on section 0 points 2, 3 and 4. It is not sellable on its own today and would need connectors to QBO, Xero and the rest first. A spin-off is an option being kept open and would be the cloud version, so completeness of this local build is not an obligation on it. A standalone shell would still need a front end, and that is recorded at section 7.**
 
 **IntelliBooks, the bookkeeping app.** **Never sold on its own.** It is Intellibills plus the books. One login, one client list, one bill.
 
-Both possibilities are live, and "both" is the stricter constraint. Standalone means each product must be complete. Sold together means the join must be a declared interface rather than a convenience.
+~~Both possibilities are live, and "both" is the stricter constraint. Standalone means each product must be complete. Sold together means the join must be a declared interface rather than a convenience.~~ **STRUCK 2026-09-15 BY AMENDMENT 480, on section 0 point 6. They are not two independent systems, so "both" is not a live constraint. What survives is that the join is worth declaring.**
 
 ## 2. Where the line falls
 
@@ -30,7 +52,7 @@ That is the whole test. For anything new, ask: **is this a document function or 
 
 ~~**No function may live only in the other product.**~~ **STRUCK 2026-09-15 BY AMENDMENT 473, on Paul's finding. The struck sentence is symmetric and this rule is not. It is replaced by: NO INTELLIBILLS FUNCTION MAY LIVE ONLY IN INTELLIBOOKS.** If Intellibills needs something in order to work, that thing must be inside Intellibills. It may not sit in IntelliBooks and be borrowed. **Those two sentences were always one way round, and so is the asymmetry two paragraphs below. The struck headline contradicted both, and it was the one that got quoted because it was the bold one.**
 
-**The test is one question: take IntelliBooks away. Does Intellibills still work?**
+~~**The test is one question: take IntelliBooks away. Does Intellibills still work?**~~ **REPLACED 2026-09-15 BY AMENDMENT 480 with Paul's own form of it, which returns a list instead of a verdict: WHAT WOULD COME OUT TO LEAVE INTELLIBILLS ALONE? It is a test and not a rule, per section 0. Run on `IntelliBooks-Desktop-v3.html` on 2026-09-15: Bank Transactions and Reports come out whole, Receipts, Clients and Firm Settings stay whole, and Client Data and Client Settings split. The two that split are the watch list.**
 
 **And the dependency runs one way only.** IntelliBooks is never sold alone, so **IntelliBooks may depend on Intellibills for anything; Intellibills may depend on IntelliBooks for nothing.**
 
@@ -44,11 +66,11 @@ That asymmetry is why one client registry owned by Intellibills is permitted rat
 
 **Also forbidden: naming.** Nothing in Intellibills may be named after IntelliBooks. No constant, no adapter, no field. An adapter is named for what it does; the address it writes to is configuration. **Intellibills publishes to the destination configured for that client and does not know what is at the other end.**
 
-## 5. Four breaches, and how they arose
+## 5. ~~Four breaches, and how they arose~~ **Four Intellibills functions that live only on IntelliBooks' screens**
 
 ~~Three breaches found on 2026-08-18.~~ **Three were found on 2026-08-18 and a fourth on 2026-08-20.** The heading was corrected rather than left to contradict its own table.
 
-None of these was a decision to put an Intellibills function inside IntelliBooks. **Each was a reasonable decision about something else, whose side effect was a breach.** That is the pattern to watch for, and it is why the rule has to be applied deliberately rather than relied on to be obvious.
+None of these was a decision to put an Intellibills function inside IntelliBooks. **Each was a reasonable decision about something else, whose side effect was a breach.** That is the pattern to watch for, and it is why the rule has to be applied deliberately rather than relied on to be obvious. **REFRAMED 2026-09-15 BY AMENDMENT 480. Under section 0 these are not breaches of anything binding today. The table below is the list of what a capture-only product would have to be given, and that is what it is worth. The word breach is left standing in the table so the history reads straight.**
 
 | Breach | Why it happened |
 |---|---|
@@ -149,11 +171,11 @@ Recorded because nothing else records it, and because these four move in the opp
 
 **The overlap that exists today was designed in for expediency, one convenience at a time.** Something needed a home, one product had a convenient place, and it went there.
 
-Every one of those decisions was reasonable on the day. **None of them was a decision about the boundary**, which is precisely why they were invisible. The bill arrives the first time Intellibills is offered to a firm that does not want the books, and by then it is in a dozen places.
+Every one of those decisions was reasonable on the day. **None of them was a decision about the boundary**, which is precisely why they were invisible. ~~The bill arrives the first time Intellibills is offered to a firm that does not want the books, and by then it is in a dozen places.~~ **STRUCK 2026-09-15 BY AMENDMENT 480, on section 0 points 3 and 4. That bill does not arrive in this form, because a spin-off would be a cloud rebuild and none of this code goes with it. What is still worth having is the record of which function belongs where, because that is what does survive the rebuild.**
 
 A breach you argue for is one you can weigh. A breach that arrives as a side effect of a good decision about something else is one you only find by going looking.
 
-**So the question gets asked deliberately, every time: would this still work if IntelliBooks were not there?**
+~~**So the question gets asked deliberately, every time: would this still work if IntelliBooks were not there?**~~ **REPLACED 2026-09-15 BY AMENDMENT 480 with section 3's replacement test: what would come out to leave Intellibills alone? Asked deliberately, and asked for the list it produces rather than for a yes or a no.**
 
 ---
 

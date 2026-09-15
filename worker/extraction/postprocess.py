@@ -95,9 +95,28 @@ def parse_ambiguous_date(raw: str, prefer_dayfirst: bool) -> str | None:
     # and 2028 on its own. CLAUDE.md's closing rule governs: if something is
     # uncertain, mark it for review and do not guess.
     #
-    # The `elif c < 1000` branch is deleted. It had an identical body to the one
-    # above it and a comment claiming "treat as 2000s" while 2000 + 999 is 2999.
+    # ~~The `elif c < 1000` branch is deleted.~~ **Wrong, and it was wrong the
+    # day it was written. Corrected 2026-09-14, flag 8.3.** The branch is live
+    # four lines below. What 10d.41 deleted was a DIFFERENT branch, one with an
+    # identical body to the one above it and a comment claiming "treat as
+    # 2000s" while 2000 + 999 is 2999, and this sentence described the deletion
+    # as though it had taken the refusal with it. Superseded wording kept rather
+    # than removed, per this project's convention.
+    #
     # A three-digit year is a misread, not a year.
+    #
+    # **And that sentence is now true, which it was not until 2026-09-14.**
+    # `elif c < 1000` tests the INTEGER, and `int("026")` is 26, so a
+    # three-digit year written with a leading zero took the two-digit branch
+    # and `30/08/026` came back as `2026-08-30`. Only 100 to 999 ever reached
+    # the refusal. The digit count below is what the sentence always claimed.
+    #
+    # **The value test is kept as well, not replaced.** Paul's instruction:
+    # change the behaviour, keep the bound. A year spelled with four characters
+    # that still adds up to under 1000 has always returned None here, and
+    # dropping `elif c < 1000` would have quietly made `30/08/0126` readable.
+    if len(parts[2]) == 3:
+        return None
     if c < 100:
         year = 2000 + c
         if year > date.today().year:

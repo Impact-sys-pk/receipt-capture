@@ -87,6 +87,7 @@ from typing import Any, Dict, Optional
 
 import config
 from worker.storage.store import compute_hash, is_supported, save_inbox_file
+from worker.validation.rules import unreadable_year, unreadable_year_reason
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,29 @@ def parse_attached_message(raw: Any) -> AttachedMessage:
     except ValueError as error:
         raise AttachedMessageError(
             f"'transaction_date' {transaction_date!r} is not a date: {error}") from None
+    # The implausible year guard, flag 8.2, Paul's decision of 2026-09-14.
+    # `0026-08-30` is a real calendar date and passed everything above it, which
+    # is exactly how a receipt came to be filed under a tax year of `26-27`.
+    #
+    # **A fourth door on a different field, and the same rule**, because the
+    # point of one rule is that nobody has to ask which fields it covers. The
+    # bound lives in `worker\\validation\\rules.py` and this door asks rather
+    # than restates it, as the three receipt doors do.
+    #
+    # **What is at stake here is a record rather than a tax year.**
+    # `transaction_date` reaches a `resolution_events` audit row through
+    # `record_attached_document()`, as `corrections_json`. It composes no filed
+    # path and it does not reach `determine_tax_year()`. That makes it worth
+    # four lines rather than worth skipping.
+    #
+    # The two checks are mutually exclusive: `unreadable_year()` answers None
+    # for anything that did not parse above, so one fault never gets two
+    # messages.
+    implausible = unreadable_year(transaction_date)
+    if implausible is not None:
+        raise AttachedMessageError(
+            f"'transaction_date' {unreadable_year_reason(implausible)}: "
+            f"{transaction_date!r}")
 
     amount = raw.get("transaction_amount")
     if isinstance(amount, bool) or not isinstance(amount, (int, float)):

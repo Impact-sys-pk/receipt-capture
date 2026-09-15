@@ -71,6 +71,7 @@ import unittest
 from datetime import date
 
 from tests import source_guards
+from worker import attached
 from worker.extraction.base import ExtractionResult
 from worker.extraction.postprocess import parse_ambiguous_date
 from worker.resolution.service import (
@@ -299,6 +300,99 @@ class TheNoteErrorTest(unittest.TestCase):
         self.assertIn("is not a real date", str(raised.exception))
 
 
+class TheAttachedDoorTest(unittest.TestCase):
+    """The fourth door, on `transaction_date`. Flag 8.2, Paul's decision 2026-09-14.
+
+    **A different field, and the same rule.** `parse_attached_message()` in
+    `worker\\attached.py` validated `transaction_date` with the shape the three
+    receipt doors had before 2026-09-14: `_ISO_DATE_RE` for the form, then
+    `datetime.fromisoformat()` for the calendar, and nothing about the year. So
+    `0026-08-30` passed.
+
+    **Paul's reason for taking it, and it is a scope decision rather than a bug
+    fix:** the point of one rule is that nobody has to ask which fields it
+    covers.
+
+    **What is at stake here is smaller than on a receipt date, and saying so is
+    part of the record.** `transaction_date` reaches a `resolution_events` audit
+    row through `record_attached_document()`, as `corrections_json`. It composes
+    no filed path and it does not reach `determine_tax_year()`, so a bad year
+    corrupts a record of what happened rather than a tax year. Traced in
+    `2026-09-14_REPORT_claude_code_implausible_year_guard.md` section 8.2 and
+    not re-argued here.
+    """
+
+    def message(self, transaction_date):
+        """One valid handoff message carrying that date. 10f.38's contract."""
+        return {
+            "schema": attached.ATTACHED_SCHEMA,
+            "action": attached.ATTACH_ACTION,
+            "receipt_id": "abe4a034-878b-43cd-965d-e4096b5a6bcd",
+            "client_id": "CLIENT001",
+            "transaction_id": "TXN-0001",
+            "transaction_date": transaction_date,
+            "transaction_description": "APCOA PARKING 8841 LONDON",
+            "transaction_amount": -96.0,
+            "filename": "bank-line-invoice.pdf",
+            "attached_by": "desktop",
+            "attached_at": "2026-09-11T10:00:00.000Z",
+        }
+
+    def test_the_year_is_named_and_the_message_is_refused(self):
+        with self.assertRaises(attached.AttachedMessageError) as raised:
+            attached.parse_attached_message(self.message(THE_REAL_ONE))
+        self.assertIn("reads as year 26", str(raised.exception))
+        self.assertIn(THE_REAL_ONE, str(raised.exception))
+
+    def test_it_is_worded_the_way_the_other_doors_are(self):
+        """One fault, one wording, whichever door meets it.
+
+        The subject prefix stays this door's own, exactly as the CLI names the
+        value supplied and the note validator names the field. What the four
+        must not do is describe the same fault four different ways.
+        """
+        with self.assertRaises(attached.AttachedMessageError) as raised:
+            attached.parse_attached_message(self.message(THE_REAL_ONE))
+        self.assertIn(rules.unreadable_year_reason(26), str(raised.exception))
+        self.assertIn("'transaction_date'", str(raised.exception))
+
+    def test_a_readable_date_still_passes(self):
+        message = attached.parse_attached_message(self.message("2026-04-01"))
+        self.assertEqual(message.transaction_date, "2026-04-01")
+
+    def test_next_year_is_accepted_here_too(self):
+        """The same ceiling as the other three, not a fourth bound."""
+        nxt = f"{date.today().year + 1}-04-01"
+        self.assertEqual(
+            attached.parse_attached_message(self.message(nxt)).transaction_date,
+            nxt)
+
+    def test_1999_is_refused_and_2000_is_not(self):
+        with self.assertRaises(attached.AttachedMessageError):
+            attached.parse_attached_message(self.message("1999-12-31"))
+        self.assertEqual(
+            attached.parse_attached_message(
+                self.message("2000-01-01")).transaction_date,
+            "2000-01-01")
+
+    def test_a_date_that_is_not_a_date_keeps_its_own_error(self):
+        """One fault, one message. The year check must not shadow this one.
+
+        `unreadable_year()` answers None for anything that is not a real
+        calendar date, which is what makes the two mutually exclusive.
+        """
+        with self.assertRaises(attached.AttachedMessageError) as raised:
+            attached.parse_attached_message(self.message("2026-02-31"))
+        self.assertIn("is not a date", str(raised.exception))
+        self.assertNotIn("reads as year", str(raised.exception))
+
+    def test_a_date_of_the_wrong_shape_keeps_its_own_error(self):
+        with self.assertRaises(attached.AttachedMessageError) as raised:
+            attached.parse_attached_message(self.message("2026-4-1"))
+        self.assertIn("must be YYYY-MM-DD", str(raised.exception))
+        self.assertNotIn("reads as year", str(raised.exception))
+
+
 class TenD41IsLeftStricterTest(unittest.TestCase):
     """Sub-step 10d.41's branch is untouched, and the difference is the point.
 
@@ -332,22 +426,71 @@ class TenD41IsLeftStricterTest(unittest.TestCase):
             parse_ambiguous_date(f"30/08/{nxt % 100:02d}", prefer_dayfirst=True))
         self.assertEqual(validate(extraction(f"{nxt}-08-30")).notes, [])
 
-    def test_a_three_digit_year_is_still_refused(self):
-        """126, not 026, and the difference is a finding this test records.
+    def test_a_three_digit_year_is_refused_however_it_is_spelled(self):
+        """**This test pinned the opposite on 2026-09-14, and that is the point.**
 
-        10d.41's branch reads `c < 1000` on the INTEGER, and `int("026")` is 26,
-        so a year written with a leading zero takes the two-digit branch and is
-        read as 2026. Only 100 to 999 reach the refusal. That is narrower than
-        the comment beside it says, which is flagged in the report and not
-        repaired here.
+        It was written that morning to assert the comment beside the branch, "A
+        three-digit year is a misread, not a year", and it failed. The branch
+        read `c < 1000` on the INTEGER, and `int("026")` is 26, so a year
+        written with a leading zero took the TWO-digit branch and came back as
+        `2026-08-30`. Only 100 to 999 ever reached the refusal.
+
+        **It was then rewritten to pin the behaviour as found**, with the
+        discrepancy stated in the test rather than hidden by it, and flagged as
+        8.3 rather than repaired, because changing it changes 10d.41's
+        behaviour and that was not the morning's task.
+
+        **Paul took the flag on 2026-09-14 and this is the other side of it.**
+        The branch now counts the digits that were written, which is what its
+        own comment always claimed. `30/08/026` returns None and the receipt
+        routes to Review with the note that branch already produces.
+
+        ~~"a leading zero makes it a two-digit year to int(), and this is the
+        behaviour as found rather than the behaviour as intended"~~ **The
+        superseded assertion, struck rather than deleted.**
         """
         self.assertIsNone(parse_ambiguous_date("30/08/126",
                                                prefer_dayfirst=True))
+        self.assertIsNone(parse_ambiguous_date("30/08/026",
+                                               prefer_dayfirst=True))
+        self.assertIsNone(parse_ambiguous_date("30/08/000",
+                                               prefer_dayfirst=True))
+
+    def test_the_value_bound_is_kept_as_well_as_the_digit_count(self):
+        """**Change the behaviour, keep the bound.** Paul's instruction, 8.3.
+
+        `elif c < 1000` is not replaced by the digit count, it is joined by it.
+        A year spelled with four characters that still adds up to less than
+        1000 has always returned None here, and it still does. Removing the
+        value test would have quietly made `30/08/0126` readable, which nobody
+        asked for.
+        """
+        self.assertIsNone(parse_ambiguous_date("30/08/0126",
+                                               prefer_dayfirst=True))
+        self.assertIsNone(parse_ambiguous_date("30/08/0999",
+                                               prefer_dayfirst=True))
+
+    def test_a_four_character_year_under_a_hundred_is_unchanged_and_flagged(self):
+        """`30/08/0026` still comes back as 2026, and that is left alone.
+
+        **The adjacent case, one digit further out.** Four characters, value
+        under 100, so it takes the two-digit branch before either refusal can
+        see it. It is the same family as 8.3 and it is outside 8.3's scope: the
+        brief says three digits, and the comment beside the branch says three
+        digits.
+
+        **Pinned rather than ignored**, so the day somebody widens the rule the
+        change is loud. Flagged in
+        `2026-09-14_REPORT_claude_code_two_year_flags.md`.
+        """
         self.assertEqual(
-            parse_ambiguous_date("30/08/026", prefer_dayfirst=True),
+            parse_ambiguous_date("30/08/0026", prefer_dayfirst=True),
             "2026-08-30",
-            "a leading zero makes it a two-digit year to int(), and this is "
-            "the behaviour as found rather than the behaviour as intended")
+            "behaviour as found, flagged and deliberately not built")
+        self.assertEqual(
+            parse_ambiguous_date("30/08/6", prefer_dayfirst=True),
+            "2006-08-30",
+            "one character, same branch, same flag")
 
     def test_a_four_digit_year_below_the_floor_is_still_read(self):
         """**Deliberately unchanged, and this test exists to say so.**
@@ -375,11 +518,22 @@ class TheSetOfDoorsTest(unittest.TestCase):
     """
 
     #: Every function that must ask the question, and does.
+    #:
+    #: **Four from 2026-09-14, flag 8.2 taken.** `parse_attached_message()` is
+    #: the one that validates a `transaction_date` rather than an
+    #: `invoice_date`, which is why the predicate below reads both names. Paul's
+    #: reason: the point of one rule is that nobody has to ask which fields it
+    #: covers.
     DOORS = {
         ("worker/validation/rules.py", "validate"),
         ("worker/resolution/service.py", "parse_corrections"),
         ("worker/resolution/service.py", "parse_resolution_note"),
+        ("worker/attached.py", "parse_attached_message"),
     }
+
+    #: The date fields this rule covers, and the sweep's predicate is built
+    #: from this rather than from a literal, so widening it again is one line.
+    FIELDS = {"invoice_date", "transaction_date"}
 
     #: The helper itself, which parses a date and takes an `invoice_date`, so
     #: the predicate catches it. Its own category rather than an exemption: it
@@ -416,24 +570,34 @@ class TheSetOfDoorsTest(unittest.TestCase):
             capture_output=True, text=True, check=True).stdout.split()
         return [name for name in listed if not name.startswith("tests/")]
 
-    def _mentions_invoice_date(self, function, docstrings):
+    def _mentions_a_covered_date(self, function, docstrings):
+        """Does this function name one of `FIELDS`, other than in a docstring?
+
+        ~~`_mentions_invoice_date`, one field~~ **Widened 2026-09-14 to the set
+        above, flag 8.2.** The widening adds exactly one function to the sweep,
+        `parse_attached_message()`, measured before it was made rather than
+        after: the predicate was run over all 58 tracked production files with
+        each field set in turn and the two results differed by that one entry.
+        **So no new exemption was needed**, which is the outcome that made this
+        a four-line change rather than a scope argument.
+        """
         for node in ast.walk(function):
-            if isinstance(node, ast.Name) and node.id == "invoice_date":
+            if isinstance(node, ast.Name) and node.id in self.FIELDS:
                 return True
-            if isinstance(node, ast.Attribute) and node.attr == "invoice_date":
+            if isinstance(node, ast.Attribute) and node.attr in self.FIELDS:
                 return True
-            if isinstance(node, ast.arg) and node.arg == "invoice_date":
+            if isinstance(node, ast.arg) and node.arg in self.FIELDS:
                 return True
-            if isinstance(node, ast.keyword) and node.arg == "invoice_date":
+            if isinstance(node, ast.keyword) and node.arg in self.FIELDS:
                 return True
-            if (isinstance(node, ast.Constant) and node.value == "invoice_date"
+            if (isinstance(node, ast.Constant) and node.value in self.FIELDS
                     and id(node) not in docstrings):
                 return True
         return False
 
     def date_readers(self):
         """Every production function that turns a string into a date and
-        mentions an `invoice_date`, mapped to what it calls.
+        mentions a date field this rule covers, mapped to what it calls.
 
         Off the tree, never off a grep: a grep returns the prose too, and this
         project keeps superseded wording beside every correction.
@@ -458,7 +622,7 @@ class TheSetOfDoorsTest(unittest.TestCase):
                 if not any(call.rsplit(".", 1)[-1] in self.PARSERS
                            for call in calls):
                     continue
-                if not self._mentions_invoice_date(function, docstrings):
+                if not self._mentions_a_covered_date(function, docstrings):
                     continue
                 found[(name, function.name)] = calls
         return found

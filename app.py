@@ -18,6 +18,11 @@ import config
 from worker.categorisation.engine import CategorisationEngine
 from worker.categorisation.fallback import resolve_against_chart
 from worker.database.repository import Repository
+from worker.database.schema import (
+    init_db,
+    schema_drift_message,
+    undeclared_columns,
+)
 from worker.email.reader import fetch_attachments, fetch_new_messages, move_email_to_folder, fetch_emails_without_attachments, extract_embedded_images
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.factory import get_extractor
@@ -2178,6 +2183,37 @@ def main():
     logger.info(f"receipt capture started — poll every {config.POLL_INTERVAL_SECONDS}s")
     # Part 1: Check for uncommitted changes that might invalidate pipeline_version
     config.check_git_status_on_startup()
+
+    # Part 1a: does the live database hold every column the schema declares?
+    #
+    # **After `init_db()` and before anything else, which is why both calls are
+    # here rather than behind a helper.** `init_db()` creates a missing table
+    # and never alters one that exists, and sub-step 10d.34 removed the nine
+    # `ALTER TABLE ADD COLUMN` migrations, so a column added to `schema.py`
+    # never reaches a database that already has its table. `Repository()`
+    # inside `process_once()` calls `init_db()` anyway; calling it here just
+    # brings it forward so the check reads a database with its tables made.
+    #
+    # **It refuses rather than warns**, Paul's decision of 2026-09-14. A
+    # pipeline that cannot write an extraction does nothing useful, and a
+    # start-up warning is a line nobody reads: `check_git_status_on_startup()`
+    # above has warned about a dirty tree on every start for weeks.
+    #
+    # Amendment 466, and the fault is written up in `schema.py` beside the
+    # check itself.
+    init_db()
+    drift = schema_drift_message()
+    if drift:
+        logger.error(drift)
+        return
+    undeclared = undeclared_columns()
+    if undeclared:
+        # Never a refusal: nothing writes a column the schema does not declare.
+        # Said out loud because it is what a hand-applied fix leaves behind
+        # when the name typed at the prompt was not quite the declared one.
+        logger.info(f"the database has columns the schema does not declare, "
+                    f"which nothing writes and nothing reads: {undeclared}")
+
     if not acquire_lock():
         logger.error("Exiting because another pipeline instance is active")
         return

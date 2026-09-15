@@ -231,28 +231,46 @@ class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):
 
 
 def _create_statements() -> str:
-    """The CREATE script out of init_db(), without opening the live database.
+    """The CREATE script, without opening the live database.
 
     init_db() connects to config.DB_PATH, and a test that reads the real
     database is a test that depends on what happens to be in it.
+
+    **It used to pull the literal out of `init_db()`'s `executescript()` call
+    with `ast.literal_eval`, and that stopped working on 2026-09-15**, when the
+    schema-drift check moved the SQL into the module constant `SCHEMA_SQL` so
+    the check and `init_db()` read one definition. The argument is a name now,
+    not a literal, and `literal_eval` raised `ValueError: malformed node or
+    string`. **Reading the constant is the better answer in any case**: there is
+    nothing left to parse, so there is nothing left to go stale.
+
+    The guard below keeps it honest: if `init_db()` ever stops executing this
+    constant, these tests would be checking SQL that nothing runs.
     """
-    source = (REPO_ROOT / "worker" / "database" / "schema.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "executescript"):
-            return ast.literal_eval(node.args[0])
-    raise AssertionError("schema.init_db() no longer calls executescript()")
+    return schema.SCHEMA_SQL
 
 
 class TheScriptUnderTestIsTheRealOne(unittest.TestCase):
     def test_init_db_exists_and_is_what_was_parsed(self):
-        # Guards _create_statements() above: if init_db() stops being one
-        # executescript() call, these tests would silently test old SQL.
+        # Guards _create_statements() above: if init_db() stops executing
+        # SCHEMA_SQL, these tests would silently test SQL nothing runs.
         self.assertTrue(callable(schema.init_db))
         self.assertIn("CREATE TABLE IF NOT EXISTS categorisations_client_vendors",
                       _create_statements())
+
+    def test_init_db_executes_that_constant_and_nothing_else(self):
+        tree = ast.parse((REPO_ROOT / "worker" / "database" / "schema.py")
+                         .read_text(encoding="utf-8"))
+        found = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "init_db"]
+        self.assertEqual(len(found), 1, "schema.py defines init_db() once")
+        scripts = [node for node in ast.walk(found[0])
+                   if isinstance(node, ast.Call)
+                   and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "executescript"]
+        self.assertEqual(len(scripts), 1,
+                         "init_db() no longer calls executescript() exactly once")
+        self.assertEqual(ast.unparse(scripts[0].args[0]), "SCHEMA_SQL")
 
 
 if __name__ == "__main__":

@@ -196,8 +196,12 @@ REVIEW_ROOT = INTELLIBILLS_ROOT / "Review"
 # `Intellibills\Exports\` with two CSVs of 2026-08-18 in it. Two folders for one
 # thing, which is the same fault the logs half of item 37 existed to remove.
 #
-# **Why the practice root rather than the repository.** 18.2's third rule is
-# that each store has one owner, and an export is an Intellibills output for a
+# **Why the practice root rather than the repository.** CORRECTED 2026-09-15 by
+# amendment 475, on Paul's finding. This said "18.2's third rule is that each
+# store has one owner". That is not what 18.2c's third rule says; that rule is
+# about the two stores never holding the same set. One owner per store is 18.2's
+# TABLE, not a numbered rule. 18.2's table gives each store one owner, and an
+# export is an Intellibills output for a
 # person rather than source. The repository anchor was convenience: `BASE_DIR`
 # was the nearest stable path when those scripts were written.
 #

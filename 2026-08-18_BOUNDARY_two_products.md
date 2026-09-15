@@ -28,7 +28,7 @@ That is the whole test. For anything new, ask: **is this a document function or 
 
 ## 3. The rule
 
-**No function may live only in the other product.** If Intellibills needs something in order to work, that thing must be inside Intellibills. It may not sit in IntelliBooks and be borrowed.
+~~**No function may live only in the other product.**~~ **STRUCK 2026-09-15 BY AMENDMENT 473, on Paul's finding. The struck sentence is symmetric and this rule is not. It is replaced by: NO INTELLIBILLS FUNCTION MAY LIVE ONLY IN INTELLIBOOKS.** If Intellibills needs something in order to work, that thing must be inside Intellibills. It may not sit in IntelliBooks and be borrowed. **Those two sentences were always one way round, and so is the asymmetry two paragraphs below. The struck headline contradicted both, and it was the one that got quoted because it was the bold one.**
 
 **The test is one question: take IntelliBooks away. Does Intellibills still work?**
 
@@ -85,7 +85,7 @@ None of these was a decision to put an Intellibills function inside IntelliBooks
 
 **Three conditions make that real rather than a label:**
 
-1. Its code calls no books functions, and no books code calls into it. Physically in the same file, logically separate.
+1. Its code calls no books functions~~, and no books code calls into it~~. Physically in the same file, logically separate. **The second half struck 2026-09-15 by amendment 473, on Paul's finding. Section 3 lets IntelliBooks depend on Intellibills for anything, so books code calling into this tab is not a breach. It is also not true of the built product: nine books-side functions in `IntelliBooks-Desktop-v3.html` read `books.receipts`, being `editTxn`, `renderBank`, `refreshMatches`, `handoverPack`, `exportClientBackup`, `categoryReferences`, `ensureAcct`, `migrateBooks` and `taxYearRange`. The half that survives is the half that carries the separation: this tab's code calls no books functions.**
 2. It reads and writes only Intellibills' stores, plus the shared client registry.
 3. Its access to `Clients\` is legitimate, because client-folder filing is Intellibills' function.
 

@@ -1761,62 +1761,103 @@ def process_once():
                     stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
                     continue
 
-                statement_folder_name = _client_folder_name(intake.client_id)
-                if not statement_folder_name:
-                    # 10d.11 and 10d.18. No sidecar, or a client the registry does
-                    # not hold, means no client, so nothing is filed into Clients.
-                    logger.warning(f"statement with no resolvable client, routing to review: {intake.filename}")
-                    file_review(intake.source_path, _review_key(intake.client_id), intake.filename,
-                                "unresolved_client", ["no client_id could be resolved for this file"],
-                                intake.sidecar or {})
-                    stats["review_flags_issued"] += 1
-                    continue
+                # **Every exit from this branch moves the inbox pair out.** Paul's
+                # decision of 2026-09-16, from the finding in
+                # `2026-09-16_REPORT_claude_code_statement_end_to_end.md`.
+                #
+                # ~~Three `continue`s below left the document and its sidecar in
+                # the Receipt Inbox.~~ The two Review branches and the success
+                # path. The duplicate branch above was the only one that moved
+                # it, and the receipt path's own `try/finally` is far below and
+                # is never entered from here.
+                #
+                # **Two of the three never corrected themselves.**
+                # `file_review()` uses `_unique_path()`, so a statement whose
+                # client cannot be resolved, or whose sidecar carries no platform
+                # or no week ending, wrote a FRESH copy into Review on every
+                # poll: `-2`, `-3` and onwards, 288 a day on the five-minute
+                # default, with `review_flags_issued` climbing beside them.
+                #
+                # **The third self-corrected and is in scope anyway.** The
+                # success path left the pair behind, and the next poll matched
+                # its own hash and took the duplicate branch, which does move it.
+                # That cost one wasted poll and counted every statement the
+                # system ever filed as its own duplicate.
+                #
+                # **A `finally` rather than three calls**, which is the receipt
+                # path's shape and the second half of its comment's reasoning: a
+                # fourth branch added here is covered without anybody
+                # remembering it. That is the class of defect this is fixing.
+                #
+                # **It opens AFTER the duplicate check**, which already moves the
+                # pair explicitly. A `try` around the whole statement branch
+                # would move it twice, and nothing on disk would show that,
+                # because `_move_inbox_pair_to_processed()` returns early when
+                # neither file is left. `tests/test_statement_inbox_pair.py`
+                # counts the calls rather than looking at the folder.
+                try:
+                    statement_folder_name = _client_folder_name(intake.client_id)
+                    if not statement_folder_name:
+                        # 10d.11 and 10d.18. No sidecar, or a client the registry does
+                        # not hold, means no client, so nothing is filed into Clients.
+                        logger.warning(f"statement with no resolvable client, routing to review: {intake.filename}")
+                        file_review(intake.source_path, _review_key(intake.client_id), intake.filename,
+                                    "unresolved_client", ["no client_id could be resolved for this file"],
+                                    intake.sidecar or {})
+                        stats["review_flags_issued"] += 1
+                        continue
 
-                if not intake.statement_metadata.get("platform") or not intake.statement_metadata.get("week_ending"):
-                    logger.warning(f"statement missing metadata, routing to review: {intake.filename}")
-                    file_review(intake.source_path, _review_key(intake.client_id), intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
-                    stats["review_flags_issued"] += 1
-                    continue
+                    if not intake.statement_metadata.get("platform") or not intake.statement_metadata.get("week_ending"):
+                        logger.warning(f"statement missing metadata, routing to review: {intake.filename}")
+                        file_review(intake.source_path, _review_key(intake.client_id), intake.filename, "missing_statement_metadata", ["missing platform or week_ending"], intake.sidecar or {})
+                        stats["review_flags_issued"] += 1
+                        continue
 
-                statement_id = str(uuid.uuid4())
-                tax_year = determine_tax_year(intake.statement_metadata["week_ending"])
-                # 10d.55, Paul's decision of 2026-09-02. The statement gets its own
-                # copy in the document store BEFORE it is filed, the way the receipt
-                # branch below already does. Until now this branch never called into
-                # worker/storage/store.py at all, so the copy in the client folder was
-                # the only copy and a statement could not be reconstructed where a
-                # receipt could.
-                store_path = save_inbox_file(statement_id, intake.client_id, intake.source_path)
-                # One path back, and no sidecar payload. Paul's decision of
-                # 2026-09-10: the copy in the client folder is the document
-                # alone, per 18.2b, so the dict that used to be built here
-                # existed only to be written into a file nothing read.
-                # `sidecar_path` was unpacked at this one call site and never
-                # used. See `file_statement()`.
-                dest_path = file_statement(
-                    intake.source_path,
-                    statement_folder_name,
-                    tax_year,
-                    intake.statement_metadata["platform"],
-                    intake.statement_metadata["week_ending"],
-                    intake.source_path.suffix,
-                )
-                repo.save_statement(
-                    statement_id=statement_id,
-                    client_id=intake.client_id,
-                    platform=intake.statement_metadata["platform"],
-                    week_ending=intake.statement_metadata["week_ending"],
-                    source=intake.source,
-                    file_hash=intake.file_hash,
-                    # 10d.56. file_path is the document store copy and filed_path is
-                    # the client folder copy, which is what both names mean on
-                    # `receipts`. file_path used to hold the client folder path.
-                    file_path=store_path,
-                    filed_path=dest_path,
-                )
-                logger.info(f"statement filed: {statement_id} {dest_path}")
-                stats["receipts_created"] += 1
-                continue
+                    statement_id = str(uuid.uuid4())
+                    tax_year = determine_tax_year(intake.statement_metadata["week_ending"])
+                    # 10d.55, Paul's decision of 2026-09-02. The statement gets its own
+                    # copy in the document store BEFORE it is filed, the way the receipt
+                    # branch below already does. Until now this branch never called into
+                    # worker/storage/store.py at all, so the copy in the client folder was
+                    # the only copy and a statement could not be reconstructed where a
+                    # receipt could.
+                    store_path = save_inbox_file(statement_id, intake.client_id, intake.source_path)
+                    # One path back, and no sidecar payload. Paul's decision of
+                    # 2026-09-10: the copy in the client folder is the document
+                    # alone, per 18.2b, so the dict that used to be built here
+                    # existed only to be written into a file nothing read.
+                    # `sidecar_path` was unpacked at this one call site and never
+                    # used. See `file_statement()`.
+                    dest_path = file_statement(
+                        intake.source_path,
+                        statement_folder_name,
+                        tax_year,
+                        intake.statement_metadata["platform"],
+                        intake.statement_metadata["week_ending"],
+                        intake.source_path.suffix,
+                    )
+                    repo.save_statement(
+                        statement_id=statement_id,
+                        client_id=intake.client_id,
+                        platform=intake.statement_metadata["platform"],
+                        week_ending=intake.statement_metadata["week_ending"],
+                        source=intake.source,
+                        file_hash=intake.file_hash,
+                        # 10d.56. file_path is the document store copy and filed_path is
+                        # the client folder copy, which is what both names mean on
+                        # `receipts`. file_path used to hold the client folder path.
+                        file_path=store_path,
+                        filed_path=dest_path,
+                    )
+                    logger.info(f"statement filed: {statement_id} {dest_path}")
+                    stats["receipts_created"] += 1
+                    continue
+                finally:
+                    # Every exit, an exception included, which is the same
+                    # guarantee the receipt path's `finally` gives. Last, so the
+                    # two Review branches above copy the original before it
+                    # moves.
+                    _move_inbox_pair_to_processed(intake)
 
             # 10d.16 and 10d.18. An unresolved client is a recorded conclusion,
             # not a fallback. Worked out here rather than after the hash check,

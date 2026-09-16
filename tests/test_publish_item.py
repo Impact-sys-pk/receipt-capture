@@ -37,8 +37,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import config
 from worker import publish
 from worker.filing import make_enriched_sidecar
+from worker.resolution.service import resolve_practice_path
 from worker.storage.store import SUPPORTED_EXTENSIONS
 
 RECEIPT_ID = "11111111-2222-3333-4444-555555555555"
@@ -78,11 +80,46 @@ def sidecar():
 DOCUMENT_BYTES = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\nnot really a pdf\n\x00\xff"
 
 
+#: The archive's own shape, per section 20.1:
+#: `Intellibills\Documents\{client_id}\{year}\{month}\{receipt_id}_{filename}`.
+ARCHIVE_CLIENT = "CLIENT01"
+ARCHIVE_YEAR = "2026"
+ARCHIVE_MONTH = "09"
+
+
+def archived(name: str, filename: str, contents=DOCUMENT_BYTES) -> Path:
+    """One document written where the pipeline actually writes one.
+
+    Under `config.FILES_DIR`, which `tests/live_paths.py` has already pointed
+    into the session temp practice root, and in a folder named by the calling
+    test so two tests cannot see each other's document.
+
+    **Not a bare temp directory, which is what these tests used until
+    2026-09-15.** `build_item()` now expresses the document's address relative
+    to the practice root and refuses a document sitting outside it, so a
+    fixture writing anywhere else would be testing a layout the pipeline cannot
+    produce. Section 20.6 item 3.
+    """
+    directory = (config.FILES_DIR / ARCHIVE_CLIENT / ARCHIVE_YEAR
+                 / ARCHIVE_MONTH / name)
+    directory.mkdir(parents=True, exist_ok=True)
+    document = directory / f"{RECEIPT_ID}_{filename}"
+    document.write_bytes(contents)
+    return document
+
+
 class ItemShapeTest(unittest.TestCase):
+    """**The document now lives under the practice root, deliberately.**
+
+    Section 20.6 item 3: the address on the item is relative to the practice
+    root, so `build_item()` refuses a document it cannot express that way. The
+    fixture used to write into a bare temp directory, which modelled a layout
+    the pipeline never produces.
+    """
+
     def setUp(self):
         self.tmp = Path(self.enterContext(__import__("tempfile").TemporaryDirectory()))
-        self.document = self.tmp / "receipt.pdf"
-        self.document.write_bytes(DOCUMENT_BYTES)
+        self.document = archived(self.tmp.name, "receipt.pdf")
         self.sidecar = sidecar()
 
     def test_the_item_carries_the_sidecar_key_set_and_two_more(self):
@@ -97,7 +134,7 @@ class ItemShapeTest(unittest.TestCase):
         item = publish.build_item(self.sidecar, self.document)
         self.assertEqual(
             set(item),
-            set(self.sidecar) | {publish.IMAGE_KEY, publish.MEDIA_TYPE_KEY},
+            set(self.sidecar) | {publish.ARCHIVE_PATH_KEY, publish.MEDIA_TYPE_KEY},
         )
 
     def test_every_sidecar_value_survives_unchanged(self):
@@ -113,15 +150,72 @@ class ItemShapeTest(unittest.TestCase):
         item = publish.build_item(self.sidecar, self.document)
         self.assertEqual(item["receipt_id"], RECEIPT_ID)
 
-    def test_the_document_round_trips_byte_for_byte(self):
-        item = publish.build_item(self.sidecar, self.document)
-        self.assertEqual(base64.b64decode(item[publish.IMAGE_KEY]), DOCUMENT_BYTES)
+    def test_the_item_carries_no_picture_at_all(self):
+        """**The change of 2026-09-15, section 20.6 items 1 and 2.**
 
-    def test_the_encoded_document_is_plain_ascii(self):
-        # It has to survive json.dumps and a JSON.parse the other side.
+        ~~`test_the_document_round_trips_byte_for_byte` and
+        `test_the_encoded_document_is_plain_ascii`~~ **Both replaced by this
+        one.** The item carried the document base64-encoded; it now carries the
+        document's address and the front end reads the file from the archive
+        itself. The two struck tests asserted the bytes were there and were
+        decodable, and neither question exists any more.
+
+        **The key name is asserted as a literal here on purpose.** Everywhere
+        else this file asks `publish.ARCHIVE_PATH_KEY`, which would follow a
+        rename and keep passing. The other end of this contract is Intellibills'
+        front end, written by a session that cannot see this file, so the actual
+        string is worth pinning in one place.
+        """
         item = publish.build_item(self.sidecar, self.document)
-        self.assertIsInstance(item[publish.IMAGE_KEY], str)
-        item[publish.IMAGE_KEY].encode("ascii")
+        self.assertNotIn("image_base64", item)
+        self.assertNotIn(publish.ARCHIVE_PATH_KEY, ("image_base64",))
+        for key, value in item.items():
+            with self.subTest(key=key):
+                self.assertNotIn(
+                    DOCUMENT_BYTES[:8], str(value).encode("utf-8", "replace"),
+                    "the document's bytes are on the item somewhere")
+
+    def test_the_address_is_relative_to_the_practice_root(self):
+        """Section 20.6 item 3, and the reason is portability.
+
+        No drive letter and no user profile, so the same record works on Paul's
+        machine and on a subcontractor's Azure Virtual Desktop. Backslashes,
+        because that is the form `resolve_practice_path()` in
+        `worker/resolution/service.py` states and resolves.
+        """
+        item = publish.build_item(self.sidecar, self.document)
+        address = item[publish.ARCHIVE_PATH_KEY]
+        self.assertIsInstance(address, str)
+        self.assertFalse(Path(address.replace("\\", "/")).is_absolute(),
+                         f"the address is absolute: {address!r}")
+        self.assertNotIn(":", address, "the address carries a drive letter")
+        self.assertNotIn("/", address, "the address is not in backslash form")
+        self.assertTrue(address.startswith("Intellibills\\Documents\\"),
+                        f"the address does not name the archive: {address!r}")
+
+    def test_the_address_resolves_back_to_the_document(self):
+        """The round trip, which is the only thing that makes the address useful.
+
+        Against `resolve_practice_path()` itself rather than against a second
+        join written here: it is the function the rest of this system uses to
+        turn a stored path back into a file, so if the two ever disagree this
+        is where it shows.
+        """
+        item = publish.build_item(self.sidecar, self.document)
+        resolved = resolve_practice_path(item[publish.ARCHIVE_PATH_KEY])
+        self.assertEqual(resolved, self.document)
+        self.assertEqual(resolved.read_bytes(), DOCUMENT_BYTES)
+
+    def test_the_address_carries_the_archive_layout(self):
+        """Client, year, month and the receipt-id-prefixed filename, in order."""
+        item = publish.build_item(self.sidecar, self.document)
+        parts = item[publish.ARCHIVE_PATH_KEY].split("\\")
+        self.assertEqual(parts[0], "Intellibills")
+        self.assertEqual(parts[1], "Documents")
+        self.assertEqual(parts[2], ARCHIVE_CLIENT)
+        self.assertEqual(parts[3], ARCHIVE_YEAR)
+        self.assertEqual(parts[4], ARCHIVE_MONTH)
+        self.assertTrue(parts[-1].startswith(f"{RECEIPT_ID}_"))
 
     def test_the_media_type_comes_off_the_extension(self):
         item = publish.build_item(self.sidecar, self.document)
@@ -141,7 +235,67 @@ class ItemShapeTest(unittest.TestCase):
         before = dict(self.sidecar)
         publish.build_item(self.sidecar, self.document)
         self.assertEqual(self.sidecar, before)
-        self.assertNotIn(publish.IMAGE_KEY, self.sidecar)
+        self.assertNotIn(publish.ARCHIVE_PATH_KEY, self.sidecar)
+
+
+class TheDocumentHasToBeThereTest(unittest.TestCase):
+    """Section 20.6 item 5, Paul's decision of 2026-09-15.
+
+    **The byte read was doing this check as a side effect.** A missing document
+    raised inside `build_item()`, `publish_receipt()` swallowed it and wrote a
+    `publish_events` row naming the reason. With the read gone there is nothing
+    checking the file is there, and an item could publish an address pointing at
+    nothing. **That behaviour must not change**, so the check is explicit, in
+    the same place, raising `PublishError` the same way.
+    """
+
+    def setUp(self):
+        self.tmp = Path(self.enterContext(__import__("tempfile").TemporaryDirectory()))
+        self.sidecar = sidecar()
+
+    def test_a_missing_document_still_raises_publish_error(self):
+        document = archived(self.tmp.name, "receipt.pdf")
+        document.unlink()
+        with self.assertRaises(publish.PublishError) as caught:
+            publish.build_item(self.sidecar, document)
+        self.assertIn(str(document), str(caught.exception))
+
+    def test_a_directory_is_not_a_document(self):
+        """`exists()` would say yes. The question is whether a file is there."""
+        document = archived(self.tmp.name, "receipt.pdf")
+        document.unlink()
+        document.mkdir()
+        with self.assertRaises(publish.PublishError):
+            publish.build_item(self.sidecar, document)
+
+    def test_the_check_runs_before_anything_is_built(self):
+        """A missing document must not produce a half-built item.
+
+        It raises rather than returning something with an address on it, which
+        is what an early return or a logged warning would have done.
+        """
+        document = archived(self.tmp.name, "receipt.pdf")
+        document.unlink()
+        with self.assertRaises(publish.PublishError):
+            publish.build_item(self.sidecar, document, extra={"notes": ["x"]})
+        self.assertNotIn(publish.ARCHIVE_PATH_KEY, self.sidecar)
+
+    def test_a_document_outside_the_practice_root_is_refused(self):
+        """It has no address that would work on another machine.
+
+        **Not a case the pipeline produces**, which is why this is a guard
+        rather than a behaviour: `publish_receipt()`'s one production call site
+        is handed `receipts.file_path`, which `save_file()` wrote under
+        `config.FILES_DIR`. Refusing is what makes item 3's "no drive letter and
+        no user profile" true by construction rather than by every caller
+        remembering.
+        """
+        stray = self.tmp / "receipt.pdf"
+        stray.write_bytes(DOCUMENT_BYTES)
+        with self.assertRaises(publish.PublishError) as caught:
+            publish.build_item(self.sidecar, stray)
+        self.assertIn(str(stray), str(caught.exception))
+        self.assertIn(str(config.PRACTICE_ROOT), str(caught.exception))
 
 
 class MediaTypeTest(unittest.TestCase):
@@ -183,8 +337,11 @@ class WriteItemTest(unittest.TestCase):
         self.tmp = Path(self.enterContext(__import__("tempfile").TemporaryDirectory()))
         self.destination = self.tmp / "Incoming"
         self.destination.mkdir()
-        self.document = self.tmp / "receipt.pdf"
-        self.document.write_bytes(DOCUMENT_BYTES)
+        # In the archive, for `ItemShapeTest`'s reason: `build_item()` refuses a
+        # document it cannot address relative to the practice root. The
+        # destination folder stays in the bare temp directory, because this
+        # class is about writing the item rather than about where it goes.
+        self.document = archived(self.tmp.name, "receipt.pdf")
         self.item = publish.build_item(sidecar(), self.document)
 
     def test_the_file_is_named_after_the_receipt(self):

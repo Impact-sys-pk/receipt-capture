@@ -38,7 +38,16 @@ class FakeExtractor:
 
 class AutoRetryCapTest(unittest.TestCase):
     def _make_stuck_receipt(self, repo, temp_path, receipt_id, age_days, client_id):
-        file_path = temp_path / f"{receipt_id}.pdf"
+        # **In the archive rather than in a bare temp directory. 2026-09-15.**
+        # `receipts.file_path` holds what `save_file()` wrote, which is always
+        # under `config.FILES_DIR`, and `build_item()` now expresses that path
+        # relative to the practice root and refuses a document outside it. A
+        # fixture publishing from anywhere else was modelling something the
+        # pipeline cannot produce. `config.FILES_DIR` is already in the session
+        # temp practice root, per `tests/live_paths.py`.
+        directory = config.FILES_DIR / "CLIENT001" / "2026" / "09"
+        directory.mkdir(parents=True, exist_ok=True)
+        file_path = directory / f"{receipt_id}.pdf"
         file_path.write_text("dummy", encoding="utf-8")
 
         repo.save_receipt(

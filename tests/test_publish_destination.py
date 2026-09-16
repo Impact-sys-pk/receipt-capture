@@ -1,17 +1,29 @@
 """The publish destination is a firm setting, and it has no default.
 
 **The change this tests, 2026-09-09. Stage 1 piece 3, sub-steps 10f.2 and
-10f.4.** Intellibills is to push a receipt into `IntelliBooks\\Incoming\\`
-rather than leave IntelliBooks to pull it out of the client folder. **Where it
-pushes is not written into the pipeline**: the leaf folder name is
+10f.4.** Intellibills is to push a receipt into an exchange folder rather than
+leave the front end to pull it out of the client folder.
+~~into `IntelliBooks\\Incoming\\`~~ **The folder moved to
+`Intellibills\\Incoming\\` on 2026-09-15, section 20.6 item 6; the paragraph
+below carries the reasoning.** **Where it pushes is not written into the
+pipeline**: the leaf folder name is
 `publish_destinations["intellibooks"]` on the firm record in
 `Intellibills\\firms.json`, which the Firm Settings page in
 `IntelliBooks-Desktop-v3.html` writes.
 
-**The setting is the leaf only.** The `IntelliBooks` level above it stays in
-code, because design document 18.2 gives that whole tree to IntelliBooks and a
-firm does not get to move somebody else's root. So the path is the practice
-root, then `IntelliBooks`, then the setting.
+**The setting is the leaf only.** The level above it stays in code, because a
+firm does not get to move a product's root. So the path is the practice root,
+then that root, then the setting.
+
+~~The `IntelliBooks` level above it stays in code, because design document 18.2
+gives that whole tree to IntelliBooks... the practice root, then `IntelliBooks`,
+then the setting.~~ **Changed 2026-09-15, section 20.6 item 6, Paul's decision.**
+The middle level is `Intellibills`. The exchange folder has Intellibills at both
+ends: the only writer anywhere is `publish_receipt()` in `worker/publish.py`, and
+the only readers are the Receipts tab and the Review queue, which are
+Intellibills' front end. **Both ends are Intellibills, so the folder sits in
+Intellibills' tree.** The leaf being a firm setting is unchanged, and so is
+everything this file says about refusing a value that is not a single name.
 
 **Why it refuses rather than defaults**, which is `_client_top_folder()`'s
 reasoning and this project's rule every other time: amendment 245 made the two
@@ -62,7 +74,13 @@ CHILD = (
     "sys.modules['dotenv'] = stub\n"
     "import config\n"
     "print('IMPORTED', config.INTELLIBOOKS_PUBLISH_DIR)\n"
-    "print('MIDDLE', config.INTELLIBOOKS_ROOT)\n"
+    # ~~MIDDLE is INTELLIBOOKS_ROOT~~ **Changed 2026-09-15, section 20.6 item
+    # 6.** MIDDLE is the level the publish directory is actually composed from,
+    # which is now Intellibills' root. BOOKS is printed beside it so the guard
+    # below can assert the two are different folders rather than assert one of
+    # them in isolation.
+    "print('MIDDLE', config.INTELLIBILLS_ROOT)\n"
+    "print('BOOKS', config.INTELLIBOOKS_ROOT)\n"
 )
 
 FIELD = "publish_destinations"
@@ -126,7 +144,7 @@ class AcceptedTest(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
 
-    def test_the_destination_is_the_practice_root_then_intellibooks_then_the_leaf(self):
+    def test_the_destination_is_the_practice_root_then_intellibills_then_the_leaf(self):
         """The control, and it is not optional.
 
         Every test in the refusal class asserts that an import failed. Without
@@ -136,7 +154,7 @@ class AcceptedTest(unittest.TestCase):
         """
         result = import_config(self.tmp, [firm_with({KEY: "Incoming"})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        wanted = self.tmp / "practice" / "IntelliBooks" / "Incoming"
+        wanted = self.tmp / "practice" / "Intellibills" / "Incoming"
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
     def test_the_word_incoming_is_not_required_anywhere(self):
@@ -144,7 +162,7 @@ class AcceptedTest(unittest.TestCase):
         # something else works with no code change. Sub-step 10f.2.
         result = import_config(self.tmp, [firm_with({KEY: "Handover"})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        wanted = self.tmp / "practice" / "IntelliBooks" / "Handover"
+        wanted = self.tmp / "practice" / "Intellibills" / "Handover"
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
     def test_a_name_with_a_space_is_accepted(self):
@@ -152,7 +170,7 @@ class AcceptedTest(unittest.TestCase):
         # name and so is this, and only a separator is refused.
         result = import_config(self.tmp, [firm_with({KEY: "From Intellibills"})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        wanted = self.tmp / "practice" / "IntelliBooks" / "From Intellibills"
+        wanted = self.tmp / "practice" / "Intellibills" / "From Intellibills"
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
     def test_surrounding_whitespace_is_stripped(self):
@@ -160,7 +178,7 @@ class AcceptedTest(unittest.TestCase):
         # begins with a space is not creatable on Windows in any case.
         result = import_config(self.tmp, [firm_with({KEY: "  Incoming  "})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        wanted = self.tmp / "practice" / "IntelliBooks" / "Incoming"
+        wanted = self.tmp / "practice" / "Intellibills" / "Incoming"
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
     def test_other_destinations_in_the_object_are_ignored(self):
@@ -169,21 +187,55 @@ class AcceptedTest(unittest.TestCase):
         result = import_config(
             self.tmp, [firm_with({KEY: "Incoming", "somewhere_else": "Out"})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        wanted = self.tmp / "practice" / "IntelliBooks" / "Incoming"
+        wanted = self.tmp / "practice" / "Intellibills" / "Incoming"
         self.assertIn(f"IMPORTED {wanted}", result.stdout)
 
-    def test_the_middle_level_is_intellibooks_under_the_practice_root(self):
-        """`IntelliBooks\\` is a sibling of `Intellibills\\`, per 18.2a.
+    def test_the_middle_level_is_intellibills_under_the_practice_root(self):
+        """`Intellibills\\` is a sibling of `IntelliBooks\\`, per 18.2a.
 
         Named on its own because the two words are two letters apart and a
         constant derived from the wrong one would still be an existing folder,
         so the mistake would show up as a published item nobody finds.
+
+        ## Turned round on 2026-09-15 rather than deleted
+
+        ~~`test_the_middle_level_is_intellibooks_under_the_practice_root`,
+        asserting `MIDDLE` was `IntelliBooks` and that `Intellibills` did not
+        appear in it.~~ **Section 20.6 item 6, Paul's decision of 2026-09-15.**
+        The exchange folder has Intellibills at both ends, the only writer being
+        `publish_receipt()` and the only readers being the Receipts tab and the
+        Review queue, so it moved into Intellibills' tree.
+
+        **The substitution this guard was built to catch is still caught**, and
+        that is why it was turned round rather than removed. It refused
+        `Intellibills` where `IntelliBooks` was meant; it now refuses
+        `IntelliBooks` where `Intellibills` is meant. **The direction changed
+        and the protection did not.** Deleting it because the design moved would
+        have left the two-letter substitution unguarded in both directions.
         """
         result = import_config(self.tmp, [firm_with({KEY: "Incoming"})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(f"MIDDLE {self.tmp / 'practice' / 'IntelliBooks'}",
+        self.assertIn(f"MIDDLE {self.tmp / 'practice' / 'Intellibills'}",
                       result.stdout)
-        self.assertNotIn("Intellibills", result.stdout.split("MIDDLE ")[1])
+        middle = result.stdout.split("MIDDLE ")[1].splitlines()[0]
+        self.assertNotIn("IntelliBooks", middle)
+
+    def test_the_two_roots_are_still_two_different_folders(self):
+        """The control on the guard above, so it cannot pass by them merging.
+
+        If `INTELLIBOOKS_ROOT` were ever derived from `INTELLIBILLS_ROOT`, or
+        the other way round, the assertion above would read as green while the
+        distinction it protects had gone. The child prints both.
+        """
+        result = import_config(self.tmp, [firm_with({KEY: "Incoming"})])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        middle = result.stdout.split("MIDDLE ")[1].splitlines()[0]
+        books = result.stdout.split("BOOKS ")[1].splitlines()[0]
+        self.assertNotEqual(middle, books)
+        self.assertEqual(Path(middle).name, "Intellibills")
+        self.assertEqual(Path(books).name, "IntelliBooks")
+        self.assertEqual(Path(middle).parent, Path(books).parent,
+                         "the two roots are siblings under the practice root")
 
     def test_the_destination_folder_is_created_at_import(self):
         """Deliverable 2's second half.
@@ -194,7 +246,7 @@ class AcceptedTest(unittest.TestCase):
         """
         result = import_config(self.tmp, [firm_with({KEY: "Incoming"})])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((self.tmp / "practice" / "IntelliBooks" / "Incoming").is_dir())
+        self.assertTrue((self.tmp / "practice" / "Intellibills" / "Incoming").is_dir())
 
 
 class RefusedTest(unittest.TestCase):
@@ -448,24 +500,44 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"config.py composes a path from the folder name: {offenders}")
 
-    def test_the_middle_level_is_derived_from_the_practice_root(self):
+    def test_the_publish_directory_is_composed_from_intellibills_root(self):
         """Deliverable 2, held on the source as well as on the behaviour.
 
-        `INTELLIBILLS_ROOT` is two letters from `INTELLIBOOKS_ROOT` and is
-        already a folder that exists, so deriving this from the wrong one would
-        publish into `Intellibills\\IntelliBooks\\Incoming\\` and every test that
-        only compared folder names would still pass.
+        ~~`test_the_middle_level_is_derived_from_the_practice_root`, reading
+        `INTELLIBOOKS_ROOT`'s assignment and requiring `INTELLIBILLS_ROOT` to be
+        absent from it.~~ **Turned round 2026-09-15, section 20.6 item 6**, with
+        the sibling guard above. `INTELLIBOOKS_ROOT`'s own assignment has not
+        changed and is still `PRACTICE_ROOT / "IntelliBooks"`, asserted below;
+        what moved is which root the publish directory hangs off.
+
+        `INTELLIBILLS_ROOT` is two letters from `INTELLIBOOKS_ROOT` and both are
+        folders that exist, so composing this from the wrong one would publish
+        into a real folder nobody drains and every test that only compared leaf
+        names would still pass.
         """
-        assignment = None
+        publish_dir = None
+        books_root = None
         for node in self.tree.body:
-            if (isinstance(node, ast.Assign)
-                    and any(ast.unparse(t) == "INTELLIBOOKS_ROOT"
-                            for t in node.targets)):
-                assignment = node
-        self.assertIsNotNone(assignment, "config.py has no INTELLIBOOKS_ROOT")
-        source = ast.unparse(assignment.value)
-        self.assertIn("PRACTICE_ROOT", source)
-        self.assertNotIn("INTELLIBILLS_ROOT", source)
+            if not isinstance(node, ast.Assign):
+                continue
+            targets = [ast.unparse(t) for t in node.targets]
+            if "INTELLIBOOKS_PUBLISH_DIR" in targets:
+                publish_dir = node
+            if "INTELLIBOOKS_ROOT" in targets:
+                books_root = node
+        self.assertIsNotNone(publish_dir,
+                             "config.py has no INTELLIBOOKS_PUBLISH_DIR")
+        source = ast.unparse(publish_dir.value)
+        self.assertIn("INTELLIBILLS_ROOT", source)
+        self.assertNotIn("INTELLIBOOKS_ROOT", source)
+
+        # The control: IntelliBooks' own root still exists and still hangs off
+        # the practice root, so the assertion above is about which root is used
+        # rather than about one of them having been deleted.
+        self.assertIsNotNone(books_root, "config.py has no INTELLIBOOKS_ROOT")
+        books_source = ast.unparse(books_root.value)
+        self.assertIn("PRACTICE_ROOT", books_source)
+        self.assertNotIn("INTELLIBILLS_ROOT", books_source)
 
 
 if __name__ == "__main__":

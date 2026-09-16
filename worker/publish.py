@@ -24,7 +24,6 @@ have made one receipt into two.
 module takes the payload it built and adds to a copy of it.
 """
 
-import base64
 import json
 import logging
 import os
@@ -48,12 +47,24 @@ class PublishError(Exception):
     """
 
 
-#: The document, base64-encoded, and what it is. **Two keys added to the
-#: sidecar's own, and their names are part of the contract with IntelliBooks
-#: Desktop**, which is written by a session that cannot see this file. They are
-#: constants here for `CLIENT_TOP_FOLDER_FIELD`'s reason: a rename that goes
-#: half done makes two products that silently stop meeting.
-IMAGE_KEY = "image_base64"
+#: Where the document is, and what it is. **Two keys added to the sidecar's
+#: own, and their names are part of the contract with Intellibills' front end**,
+#: which is written by a session that cannot see this file. They are constants
+#: here for `CLIENT_TOP_FOLDER_FIELD`'s reason: a rename that goes half done
+#: makes two products that silently stop meeting.
+#:
+#: ~~`IMAGE_KEY = "image_base64"`, the document base64-encoded.~~ **Removed
+#: 2026-09-15, section 20.6 items 1 and 2.** The item carried the picture and
+#: now carries the document's address in the archive; the front end reads the
+#: file itself. `Intellibills\\Documents\\` sits under the practice root and the
+#: front end already holds a folder handle there, so no new permission is
+#: involved. Superseded name kept rather than deleted, because the other end of
+#: this contract is a separate product and somebody will look for it.
+ARCHIVE_PATH_KEY = "archive_path"
+
+#: **Stays, and that is a decision rather than an oversight.** Section 20.6
+#: item 4: the front end uses it to tell a picture from a PDF, which it has to
+#: do before it decides how to render. Only the bytes go.
 MEDIA_TYPE_KEY = "image_media_type"
 
 #: What each accepted document is, keyed by extension.
@@ -143,7 +154,7 @@ CATEGORY_UNCONFIRMED_KEY = "category_unconfirmed"
 #: sixth key added below without joining it fails that comparison rather than
 #: passing it.
 ITEM_ONLY_KEYS = (
-    IMAGE_KEY,
+    ARCHIVE_PATH_KEY,
     MEDIA_TYPE_KEY,
     NOTES_KEY,
     DUPLICATE_OF_KEY,
@@ -184,6 +195,48 @@ def media_type_for(filename) -> str:
         ) from None
 
 
+def archive_address(document: Path) -> str:
+    """The document's address, relative to the practice root, with backslashes.
+
+    **Section 20.6 item 3, and the reason is that these records outlive this
+    machine.** `save_file()` in `worker/storage/store.py` returns an absolute
+    path and `receipts.file_path` stores it absolute, so the conversion belongs
+    here, where the address is written. The stored form is
+    `Intellibills\\Documents\\{client_id}\\{year}\\{month}\\{receipt_id}_{filename}`
+    and carries no drive letter and no user profile, which is what lets the same
+    record work on Paul's machine and on a subcontractor's Azure Virtual
+    Desktop.
+
+    **Backslashes, joined rather than taken from `str()`.** `str(Path)` gives
+    backslashes on Windows and forward slashes anywhere else, and the form is
+    part of a contract with another product rather than a property of the host.
+    `resolve_practice_path()` in `worker/resolution/service.py` is what turns
+    the value back into a file, and it states the same rule.
+
+    **A document outside the practice root is refused rather than written
+    absolute.** It has no address that would work on another machine, and
+    falling back to the absolute path would put the drive letter and the user
+    profile into the record silently, which is the one thing item 3 forbids.
+    **This is a guard rather than a behaviour change**: the single production
+    call site is handed `receipts.file_path`, which `save_file()` wrote under
+    `config.FILES_DIR`, itself under the practice root.
+
+    `config.PRACTICE_ROOT` is read at call time rather than bound at import, so
+    a test that points it somewhere is followed.
+    """
+    document = Path(document)
+    try:
+        relative = document.relative_to(config.PRACTICE_ROOT)
+    except ValueError:
+        raise PublishError(
+            f"the document at {document} is not under the practice root "
+            f"{config.PRACTICE_ROOT}, so it has no address that would work on "
+            f"another machine. Every document the pipeline archives is under "
+            f"config.FILES_DIR; one that is not got there another way."
+        ) from None
+    return "\\".join(relative.parts)
+
+
 def build_item(sidecar: dict, document: Path, extra: dict = None) -> dict:
     """The published item: the sidecar's keys, plus `extra`, plus the document.
 
@@ -196,24 +249,39 @@ def build_item(sidecar: dict, document: Path, extra: dict = None) -> dict:
     `process_extraction_result()` hands the same dict to `file_review()` as its
     `extracted_values`, so adding keys in place would change the Review file.
 
-    `extra` is merged **before** the document and its media type, so those two
-    always win. A caller passing `image_base64` would otherwise replace the
-    document with whatever it liked and the item would say it carried a PDF
-    while holding something else.
+    `extra` is merged **before** the address and the media type, so those two
+    always win. A caller passing `archive_path` would otherwise point the front
+    end at a file of its choosing while the item said it carried a PDF.
+
+    ## The item carries the address and not the picture. 2026-09-15
+
+    **Section 20.6 items 1 to 5, Paul's decisions of 2026-09-15.** It read the
+    document's bytes and put them on the item base64-encoded. It now puts the
+    document's address in the archive, and Intellibills' front end reads the
+    file itself: `Intellibills\\Documents\\` sits under the practice root and the
+    front end already holds a folder handle there, so no new permission is
+    involved.
+
+    **The existence check is explicit because the byte read was doing it.** A
+    missing document raised here, `publish_receipt()` swallowed it and wrote a
+    `publish_events` row naming the reason, and that behaviour does not change.
+    Without a check of its own there would be nothing stopping an item
+    publishing an address that points at nothing, which is worse than the
+    failure it replaced: a failed publish is recorded and a dangling address is
+    not noticed until somebody clicks it.
     """
     document = Path(document)
-    try:
-        raw = document.read_bytes()
-    except OSError as error:
+    if not document.is_file():
         raise PublishError(
-            f"the document for this receipt could not be read at {document}: "
-            f"{error}"
-        ) from error
+            f"the document for this receipt is not in the archive at "
+            f"{document}, so the item would carry an address pointing at "
+            f"nothing. The receipt itself is unaffected."
+        )
     item = dict(sidecar)
     if extra:
         item.update(extra)
     item[MEDIA_TYPE_KEY] = media_type_for(document.name)
-    item[IMAGE_KEY] = base64.b64encode(raw).decode("ascii")
+    item[ARCHIVE_PATH_KEY] = archive_address(document)
     return item
 
 
@@ -241,7 +309,11 @@ def write_item(directory: Path, receipt_id: str, item: dict) -> Path:
         # mangled by a reader that guesses the encoding. It crosses to a product
         # written by a session that cannot see this one, and a supplier name
         # coming out wrong there is a defect nobody would report. It costs a few
-        # bytes per accented character against a base64 document.
+        # bytes per accented character, against an item that is now a few
+        # hundred bytes rather than a base64 document. ~~against a base64
+        # document~~ **Struck 2026-09-15: the picture left the item, so the
+        # comparison it made no longer exists. The reasoning above is
+        # unaffected and is why this stays.**
         text = json.dumps(item, ensure_ascii=True)
         with open(partial, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)

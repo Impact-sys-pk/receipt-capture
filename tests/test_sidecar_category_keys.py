@@ -107,7 +107,21 @@ class TempEnvironment:
         return False
 
     def source_file(self, name):
-        path = self.path / name
+        """One document, in the archive rather than in a bare temp directory.
+
+        **Moved 2026-09-15, section 20.6 item 3.** `build_item()` expresses the
+        document's address relative to the practice root and refuses a document
+        it cannot address that way. `receipts.file_path` in production always
+        holds what `save_file()` wrote, which is under `config.FILES_DIR`, so a
+        fixture writing anywhere else was modelling something the pipeline
+        cannot produce. `config.FILES_DIR` is already inside the session temp
+        practice root, per `tests/live_paths.py`, and the folder named after
+        this fixture's own temp directory keeps two tests apart.
+        """
+        directory = (config.FILES_DIR / "CLIENT001" / "2026" / "09"
+                     / self.path.name)
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / name
         path.write_text("dummy", encoding="utf-8")
         return path
 

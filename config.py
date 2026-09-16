@@ -861,7 +861,23 @@ INTELLIBOOKS_ROOT = PRACTICE_ROOT / "IntelliBooks"
 
 # Where each receipt is published, per sub-steps 10f.2 and 10f.4. One folder for
 # every client: the client identity travels inside the item, per 10f.5.
-INTELLIBOOKS_PUBLISH_DIR = INTELLIBOOKS_ROOT / _publish_destination(FIRMS)
+#
+# **Under INTELLIBILLS_ROOT from 2026-09-15, section 20.6 item 6, Paul's
+# decision.** ~~INTELLIBOOKS_ROOT / _publish_destination(FIRMS)~~ The exchange
+# folder has Intellibills at both ends: the only writer anywhere is
+# `publish_receipt()` in `worker/publish.py`, and the only readers are the
+# Receipts tab and the Review queue, which are Intellibills' front end. **Both
+# ends are Intellibills, so the folder sits in Intellibills' tree.**
+#
+# **The constant keeps its name.** Renaming it is not part of this change and
+# the name is what `worker/publish.py` and six test fixtures read.
+#
+# **The two roots are two letters apart and this line now uses the other one.**
+# `tests/test_publish_destination.py` reads this assignment and holds it, and
+# that guard was written the other way round on 2026-09-09 to stop exactly this
+# substitution happening by accident. It is made deliberately here and the guard
+# is turned round with it rather than deleted.
+INTELLIBOOKS_PUBLISH_DIR = INTELLIBILLS_ROOT / _publish_destination(FIRMS)
 
 # When a copy of a document is written into the firm's client folder. F16,
 # sub-step 10f.12. Read here rather than at each use, so a bad value stops the
@@ -903,9 +919,15 @@ FILES_DIR.mkdir(parents=True, exist_ok=True)
 BACKUPS_ROOT.mkdir(parents=True, exist_ok=True)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
-# Sub-step 10f.2. Nothing else creates it: Desktop does not drain the folder
-# until stage 2, and the pipeline is its only writer, so an absent folder would
-# show up as the first publish failing rather than as a missing folder.
+# Sub-step 10f.2. Nothing else creates it: the front end does not create the
+# folder it drains, and the pipeline is its only writer, so an absent folder
+# would show up as the first publish failing rather than as a missing folder.
+#
+# **This line is also section 20.6 item 7.** It made `IntelliBooks\Incoming\`
+# and now makes `Intellibills\Incoming\`, because the constant above moved. The
+# mkdir moves with the constant rather than being a second thing to change, and
+# no import creates the old folder any more. **Deleting the live
+# `IntelliBooks\Incoming\` is Paul's and is not done here.**
 INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
 # Step 10r, for INTELLIBOOKS_PUBLISH_DIR's reason one line above. Both export
 # scripts call mkdir on their own output folder before writing, so this is not

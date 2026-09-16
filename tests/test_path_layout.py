@@ -216,8 +216,19 @@ class NothingLeftInIntelliBooksTest(unittest.TestCase):
     """
 
     #: The only constants that may sit inside IntelliBooks' folder, and why.
-    #: Both are the handoff of 18.3. Adding a name here is a design decision.
-    ALLOWED = {"INTELLIBOOKS_ROOT", "INTELLIBOOKS_PUBLISH_DIR"}
+    #: Adding a name here is a design decision.
+    #:
+    #: ~~`{"INTELLIBOOKS_ROOT", "INTELLIBOOKS_PUBLISH_DIR"}`~~ **One from
+    #: 2026-09-15, section 20.6 item 6.** The exchange folder moved into
+    #: Intellibills' tree, so `INTELLIBOOKS_PUBLISH_DIR` no longer resolves
+    #: inside IntelliBooks' folder and drops out of this sweep on its own.
+    #:
+    #: **That makes the rule stronger rather than weaker**, which is the
+    #: opposite direction to the change of 2026-09-09 recorded above: the list
+    #: is shorter, so fewer constants are excused. `INTELLIBOOKS_ROOT` stays
+    #: because `worker/client_copy.py` composes the delivery log folder from it
+    #: at call time, and because IntelliBooks' own root is IntelliBooks' own.
+    ALLOWED = {"INTELLIBOOKS_ROOT"}
 
     def test_no_unexpected_path_constant_resolves_inside_intellibooks(self):
         intellibooks = config.PRACTICE_ROOT / "IntelliBooks"
@@ -231,7 +242,7 @@ class NothingLeftInIntelliBooksTest(unittest.TestCase):
             f"these still point inside IntelliBooks' own folder: {strays}",
         )
 
-    def test_the_two_allowed_constants_are_still_there(self):
+    def test_the_allowed_constants_are_still_there(self):
         """The control, so the test above cannot pass by the constants vanishing.
 
         Without it, a rename would empty the sweep and both halves would read

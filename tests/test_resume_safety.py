@@ -69,7 +69,14 @@ class ResumeSafetyTest(unittest.TestCase):
             try:
                 repo = Repository()
                 receipt_id = "test-receipt-001"
-                file_path = temp_path / "test-receipt.pdf"
+                # In the archive, for the reason recorded in
+                # `tests/test_auto_retry_cap.py`: `build_item()` refuses a
+                # document it cannot address relative to the practice root, and
+                # `receipts.file_path` in production always holds one under
+                # `config.FILES_DIR`.
+                directory = config.FILES_DIR / "CLIENT001" / "2026" / "09"
+                directory.mkdir(parents=True, exist_ok=True)
+                file_path = directory / "test-receipt.pdf"
                 file_path.write_text("dummy", encoding="utf-8")
 
                 repo.save_receipt(

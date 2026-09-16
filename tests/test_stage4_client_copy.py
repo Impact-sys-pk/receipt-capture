@@ -1009,20 +1009,33 @@ class EveryStatusPublishesTest(unittest.TestCase):
             self.assertNotIn(publish.DUPLICATE_OF_KEY, item_for(receipt["receipt_id"]))
 
     def test_the_two_reserved_keys_cannot_be_overwritten_by_the_extra(self):
-        """`extra` is merged before the document, so the document always wins.
+        """`extra` is merged before the address, so the address always wins.
 
-        A caller passing `image_base64` would otherwise replace the document
+        ~~A caller passing `image_base64` would otherwise replace the document
         with whatever it liked, and the item would say it carried a PDF while
-        holding something else.
+        holding something else.~~ **Changed 2026-09-15, section 20.6 items 1 and
+        2.** The item carries the document's address rather than the document,
+        so a caller passing `archive_path` would point the front end at a file
+        of its choosing while the item still said it carried a PDF. **The same
+        fault, one level of indirection further out, and if anything easier to
+        miss**: a wrong address renders something plausible, where wrong bytes
+        rendered nothing.
+
+        The document is in the archive because `build_item()` refuses one it
+        cannot address relative to the practice root.
         """
-        document = Path(tempfile.mkdtemp()) / "receipt.pdf"
+        directory = config.FILES_DIR / "CLIENT001" / "2026" / "09" / "reserved"
+        directory.mkdir(parents=True, exist_ok=True)
+        document = directory / "receipt.pdf"
         document.write_bytes(DOCUMENT)
         item = publish.build_item(
             {"receipt_id": "r-1"}, document,
-            extra={publish.IMAGE_KEY: "not the document",
+            extra={publish.ARCHIVE_PATH_KEY: "not the document",
                    publish.MEDIA_TYPE_KEY: "application/nonsense",
                    publish.NOTES_KEY: ["kept"]})
-        self.assertNotEqual(item[publish.IMAGE_KEY], "not the document")
+        self.assertNotEqual(item[publish.ARCHIVE_PATH_KEY], "not the document")
+        self.assertEqual(item[publish.ARCHIVE_PATH_KEY],
+                         publish.archive_address(document))
         self.assertEqual(item[publish.MEDIA_TYPE_KEY], "application/pdf")
         self.assertEqual(item[publish.NOTES_KEY], ["kept"])
 

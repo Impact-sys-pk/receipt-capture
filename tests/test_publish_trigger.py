@@ -71,6 +71,7 @@ from resolution_fixtures import (  # noqa: E402
 )
 from worker import publish  # noqa: E402
 from worker.database.repository import Repository  # noqa: E402
+from worker.resolution.service import resolve_practice_path  # noqa: E402
 
 CLIENT = "CLIENT001"
 
@@ -160,8 +161,17 @@ class OkPublishesTest(unittest.TestCase):
             self.assertEqual(item["validation_status"], "ok")
             self.assertEqual(item["supplier"], "Apcoa Parking")
 
-    def test_the_item_carries_the_document_that_arrived(self):
-        import base64
+    def test_the_item_carries_the_address_of_the_document_that_arrived(self):
+        """~~`test_the_item_carries_the_document_that_arrived`~~ **Rewritten
+        2026-09-15, section 20.6 items 1 to 3.**
+
+        It decoded `image_base64` off the item and compared it against the bytes
+        the route was handed. The item carries the document's address now, so
+        the same question is asked one step further on: resolve the address and
+        read the file it names. **That is a stronger test than the old one**,
+        because it proves the address actually reaches the document rather than
+        proving a copy of the bytes travelled.
+        """
         with TempEnvironment():
             with_email_client(self, CLIENT)
             Routes(RecordingExtractor(OUTCOMES["ok"])).email_attachment()
@@ -170,8 +180,12 @@ class OkPublishesTest(unittest.TestCase):
             item = json.loads(
                 (config.INTELLIBOOKS_PUBLISH_DIR / f"{receipt['receipt_id']}.json")
                 .read_text(encoding="utf-8"))
-            self.assertEqual(base64.b64decode(item[publish.IMAGE_KEY]), DOCUMENT)
+            address = item[publish.ARCHIVE_PATH_KEY]
+            self.assertFalse(Path(address.replace("\\", "/")).is_absolute(),
+                             f"the address is absolute: {address!r}")
+            self.assertEqual(resolve_practice_path(address).read_bytes(), DOCUMENT)
             self.assertEqual(item[publish.MEDIA_TYPE_KEY], "application/pdf")
+            self.assertNotIn("image_base64", item)
 
     def test_the_folder_intake_route_publishes_too(self):
         # The trigger is in the shared pipeline, so it serves every route. A

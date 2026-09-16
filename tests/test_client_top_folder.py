@@ -520,5 +520,121 @@ class NoDefaultSurvivesInTheSourceTest(unittest.TestCase):
                          "the field name is a literal in more than one place")
 
 
+class MkdirMembershipTest(unittest.TestCase):
+    """Which folders `config.py` creates at import, named rather than counted.
+
+    **Paul's decision, 2026-09-14, on flag 8.4 of
+    `2026-09-12_REPORT_claude_code_exports_dir.md`.** Nothing held this.
+    `test_every_refusal_sits_above_every_mkdir` above reads the same block and
+    asks a different question, whether every refusal precedes every `mkdir`, and
+    it passes with any number of lines in the block including one. **Measured
+    rather than argued at the time: removing a `mkdir` line left all 1458 tests
+    green.** Any of the folders could have gone and nothing would have said so
+    until a first run failed on a folder that was not there.
+
+    **Two tests over one block, each with one job.** The ordering test is
+    unchanged.
+
+    ## Named, not counted, and this project has the receipts for why
+
+    A count passes when one folder is swapped for another, which is the failure
+    this exists to catch. It also goes stale silently, and on this block it has
+    done so repeatedly: **the brief for this test said "the six as they stand
+    today" and the answer was already seven when it was written.** Enumerated
+    from the syntax tree across the last twelve commits that touched
+    `config.py`: five until `8762250` on 2026-09-09, six until `ce520f7` on
+    2026-09-14, seven since. `ce520f7` is step 10r, which landed the same day
+    the brief was written.
+
+    **Four other stale counts were circulating at the same time**, each written
+    in good faith by whoever was looking at the block that week:
+    `config.py`'s own `_required_root` docstring says five, amendment 287 of
+    `2026-07-25_CONSOLE_DESIGN.md` and step 10f.4's row in
+    `2026-07-25_BUILD_STATUS.md` both say six, and
+    `2026-09-09_HANDOVER_consultant_session_19.md` says six. **None of them was
+    wrong when written and all of them were wrong by 2026-09-16.** That is what
+    a count does and what a list does not.
+
+    ## Sorted rather than ordered
+
+    The order inside the block is not load-bearing: every call passes
+    `parents=True`, so a parent listed after its child still works. Pinning the
+    order would make a harmless reorder fail for a non-reason. **Sorted rather
+    than a set**, because a set comparison hides a line duplicated.
+
+    ## The set records what is there rather than what should be
+
+    Paul's decision, and it is the reason this is one commit rather than a
+    discussion. A folder that should not be created at import is a separate
+    decision; flag it and leave it.
+    """
+
+    #: Every folder `config.py`'s module-level `mkdir` block creates, as the
+    #: expression each call is made on. **Read off the block on 2026-09-16 and
+    #: written out here by name.** `DB_PATH.parent` is an attribute rather than
+    #: a constant because the constant is the database file and the block makes
+    #: the folder holding it.
+    #:
+    #: Adding or removing a name here is a design decision and should arrive
+    #: with the `config.py` change that needs it.
+    EXPECTED = [
+        "BACKUPS_ROOT",
+        "DB_PATH.parent",
+        "EXPORTS_DIR",
+        "FILES_DIR",
+        "INTELLIBILLS_ROOT",
+        "INTELLIBOOKS_PUBLISH_DIR",
+        "LOGS_DIR",
+    ]
+
+    def setUp(self):
+        self.tree = ast.parse((REPO_ROOT / "config.py").read_text(encoding="utf-8"))
+
+    def mkdir_targets(self):
+        """What each module-level `mkdir` call is made on, off the syntax tree.
+
+        Module scope only, so a `mkdir` inside a function is not this block:
+        `acquire_lock()` calls one on the lock file's parent and it is not an
+        import-time folder. Off the tree rather than off a grep, because
+        `config.py` carries four comments mentioning `mkdir` and a text search
+        reads every one of them.
+        """
+        return [ast.unparse(node.value.func.value)
+                for node in self.tree.body
+                if isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "mkdir"]
+
+    def test_the_block_creates_exactly_these_folders(self):
+        found = sorted(self.mkdir_targets())
+        self.assertEqual(
+            found, sorted(self.EXPECTED),
+            "config.py's import-time mkdir block does not create what this "
+            "test says it creates. If a folder was added, add it to EXPECTED "
+            "and say in the commit why it is created at import. If one was "
+            "removed, check nothing depends on it existing before first use: "
+            "the whole point of this test is that removing a line used to "
+            "leave the suite green.")
+
+    def test_the_block_is_read_rather_than_this_list_being_trusted(self):
+        """The control, so the test above cannot pass by finding nothing.
+
+        Without it, a `mkdir` block that had moved out of module scope, or a
+        parser that had stopped matching the call shape, would return an empty
+        list and the comparison would be against an empty expectation only if
+        somebody had also emptied `EXPECTED`. This asserts the reader works,
+        independently of what it finds.
+        """
+        found = self.mkdir_targets()
+        self.assertTrue(found, "no module-level mkdir found; the block moved")
+        self.assertIn("INTELLIBILLS_ROOT", found,
+                      "the practice root's own folder is not created at import, "
+                      "which means the reader has broken rather than that the "
+                      "block has")
+        self.assertEqual(len(found), len(set(found)),
+                         f"a folder is created twice: {found}")
+
+
 if __name__ == "__main__":
     unittest.main()

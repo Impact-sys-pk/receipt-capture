@@ -87,7 +87,7 @@ Commit after each step.
 | 10ax | `mark_receipt_filed()` error handling in `copy_for_published_receipt()` | **BUILT, 2026-09-13, commits `247442c` and `01a8dbc`. See amendment 453.** |
 | 10ay | `_retry_failed_receipts()`'s failure handler no longer assumes no extraction row was written this attempt | **BUILT, 2026-09-13, commit `e9aab22`. See amendment 454.** |
 | 10az | The delivery-log writer: one entry per document `copy_for_published_receipt()` copies into a client's folder, written to ~~`IntelliBooks\Delivery\{CODE}.log`~~ **`IntelliBooks\Delivery\{client_id}.log`, corrected in place 2026-09-14 by amendment 463** | **BUILT, 2026-09-14, in `copy_for_published_receipt()` (`worker/client_copy.py`), commit `f9f81ec`. The moment field is `timestamp` and not amendment 456's `posted_at`, corrected in place by amendment 458. See amendment 459.** ~~OUTSTANDING. Added 2026-09-14 by amendment 456, Paul's decision. Format specified in the same amendment. Briefed in `PROMPT_claude_code_2026-09-14_delivery_log_writer.md`, held for when Claude Code reaches it. Claude Code's to build.~~ |
-| 10ba | Receipt documents: the item carries the address, the records leave the books file, 18 sub-steps. Added 2026-09-16 by amendment 500 | **OUTSTANDING** |
+| 10ba | Receipt documents: the item carries the address, the records leave the books file, 18 sub-steps. Added 2026-09-16 by amendment 500. **Seven built 2026-09-15 in `ae336b9`, eleven outstanding. Enumerated from this step's own sub-step lines and not carried: 7 plus 11 equals 18, contiguous 1 to 18, no duplicates.** | **OUTSTANDING** |
 | 10i | The pilot | **OUTSTANDING. Immediately before this step, and not before, the test estate is cleared: 17 receipt pairs and 34 files across four of the five test clients in `Clients\*\IntelliBooks\Receipts\`; five `Client_00X-books.json` files in `IntelliBooks\Books\`; 14 receipts and 11 categorisations in `receipts.db`; and the processed inbox copies under `Intellibills\Receipt Inbox\*\Processed\`. `Clients\Paul Keating\` and `Clients\She Run's It! Ldn Ltd\` are NOT test data and are not in scope. The three have to go together and in this order: clearing the receipt files without clearing the books leaves IntelliBooks showing receipts whose images are gone; clearing the books without the database leaves the pipeline's duplicate guard holding receipts that no longer exist anywhere. The consultant session tells Paul when this step is scheduled. Closed here 2026-09-13 as outstanding item 168, amendment 429.** |
 | 11 | Console schema additions | **OUTSTANDING** |
 | 12 | Load the app default chart into `coa_accounts` | **CANCELLED** |
@@ -703,17 +703,17 @@ Commit after each step.
 
 10az. **BUILT 2026-09-14.** **The delivery-log writer: one entry per document `copy_for_published_receipt()` copies into a client's folder, written to `IntelliBooks\Delivery\{client_id}.log`. Paul's decision, 2026-09-14, amendment 456, which also specified the format.** Commit `f9f81ec`, recorded by amendment 459. Claude Code. **The moment field is `timestamp` and not amendment 456's `posted_at`, corrected in place by amendment 458 after Claude Code aligned it with `receipt_events_{firm_id}.ndjson`'s own convention.** **Paragraph written 2026-09-14 by amendment 469, same reason as 10ay above.**
 
-10ba. **OUTSTANDING.** **The receipt document storage redesign.** Section 20 of `2026-07-25_CONSOLE_DESIGN.md` is the design and 20.6 holds the eighteen items this step tracks. **The substance of each item is in 20.6 and is not repeated here**: this step carries a label and a status, so the two cannot drift into two statements of one thing. Seven on the Python worker, eleven on the front end. **Added 2026-09-16 by amendment 500, because the design was settled over two days and none of it appeared in this section.**
+10ba. **OUTSTANDING. Seven of eighteen sub-steps built, eleven outstanding.** **The receipt document storage redesign.** Section 20 of `2026-07-25_CONSOLE_DESIGN.md` is the design and 20.6 holds the eighteen items this step tracks. **The substance of each item is in 20.6 and is not repeated here**: this step carries a label and a status, so the two cannot drift into two statements of one thing. Seven on the Python worker, eleven on the front end. **Added 2026-09-16 by amendment 500, because the design was settled over two days and none of it appeared in this section.**
 
-   **Intellibills, the Python worker.** 10ba.1 to 10ba.7 are built and awaiting a commit at the time of writing.
+   **Intellibills, the Python worker. All seven code changes BUILT 2026-09-15 in `ae336b9`. 10ba.7 has a second half, deleting the folder on disk, which is outstanding.** ~~10ba.1 to 10ba.7 are built and awaiting a commit at the time of writing.~~
 
-   10ba.1 **OUTSTANDING.** The item stops carrying the picture. 20.6 item 1.
-   10ba.2 **OUTSTANDING.** The item carries `archive_path`. 20.6 item 2.
-   10ba.3 **OUTSTANDING.** The absolute path the database stores is converted where the address is written. 20.6 item 3.
-   10ba.4 **OUTSTANDING.** `image_media_type` stays. 20.6 item 4.
-   10ba.5 **OUTSTANDING.** An explicit existence check replaces the one the byte read was doing. 20.6 item 5.
-   10ba.6 **OUTSTANDING.** `config.INTELLIBOOKS_PUBLISH_DIR` becomes `Intellibills\Incoming\`. 20.6 item 6.
-   10ba.7 **OUTSTANDING.** `IntelliBooks\Incoming\` is deleted. Deleting the folder on disk is Paul's. 20.6 item 7.
+   10ba.1 **BUILT 2026-09-15 in `ae336b9`.** ~~OUTSTANDING.~~ The item stops carrying the picture. 20.6 item 1.
+   10ba.2 **BUILT 2026-09-15 in `ae336b9`.** ~~OUTSTANDING.~~ The item carries `archive_path`. 20.6 item 2.
+   10ba.3 **BUILT 2026-09-15 in `ae336b9`.** ~~OUTSTANDING.~~ The absolute path the database stores is converted where the address is written. 20.6 item 3.
+   10ba.4 **BUILT 2026-09-15 in `ae336b9`.** ~~OUTSTANDING.~~ `image_media_type` stays. 20.6 item 4.
+   10ba.5 **BUILT 2026-09-15 in `ae336b9`.** ~~OUTSTANDING.~~ An explicit existence check replaces the one the byte read was doing. 20.6 item 5.
+   10ba.6 **BUILT 2026-09-15 in `ae336b9`.** ~~OUTSTANDING.~~ `config.INTELLIBOOKS_PUBLISH_DIR` becomes `Intellibills\Incoming\`. 20.6 item 6.
+   10ba.7 **THE CODE HALF IS BUILT 2026-09-15 in `ae336b9`. THE FOLDER ON DISK IS NOT DELETED AND THAT HALF IS OUTSTANDING.** ~~OUTSTANDING.~~ `IntelliBooks\Incoming\` is no longer created and nothing writes to it. 20.6 item 7. **Paul emptied it on 2026-09-16 and it is verified empty**: it held two undrained items, a `possible_duplicate` for `Client_004` and a hand-made step 10l test item, both settled on the Receipts tab and cleared by a pipeline run. **DELETE THE FOLDER WHEN 10ba.10 LANDS AND NOT BEFORE**, because until then the front end still reads it. Paul's, and he asked to be reminded here rather than in a chat.
 
    **Intellibills, the front end in `IntelliBooks-Desktop-v3.html`.**
 

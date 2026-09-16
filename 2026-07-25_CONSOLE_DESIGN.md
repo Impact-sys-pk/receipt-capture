@@ -1379,6 +1379,16 @@ Grounded in a direct read of `app.py`, `resolve_receipt.py`, `worker/database/re
 | 487 | 20.1 | **THE EXCHANGE FOLDER MOVES TO `Intellibills\Incoming\` AND `IntelliBooks\Incoming\` IS DELETED. Paul's decision, 2026-09-15.** Both ends of that exchange are Intellibills: the Python worker writes the published item and the Receipts tab and the Review queue take it out. **Enumerated rather than assumed:** one writer, `publish_receipt()` in `worker/publish.py`; five readers, being `drainInbox()`, `renderInboxCount()`, `scanReview()`, `collectAllClientReview()` and `discardReviewReceipt()`, all in `IntelliBooks-Desktop-v3.html` and all part of the Receipts tab or the Review queue. **The old folder is deleted rather than left, Paul's instruction**, because a folder that still exists and is no longer used confuses everyone who opens the tree. | **WHY IT WAS IN THE WRONG PLACE.** It was put in the reader's tree on the reasoning that the reader owns the tray. **The reader is Intellibills' front end, not IntelliBooks**, so that reasoning never applied. Nothing belonging to the books has ever touched the folder. |
 | 488 | 20.1; 20.4's naming, corrected in place | **RECEIPT RECORDS LEAVE THE BOOKS FILE. Paul's decision, 2026-09-15.** They move to `Intellibills\Receipts\{client_id}-receipts.json`, one file per client, read and written by the Receipts tab and the Review queue. **`books.receipts` is removed and `{client_id}-books.json` keeps transactions only.** Each record carries the receipt's address in the archive rather than its picture. **The receipts in the five books files today are abandoned rather than migrated**, being test data that step 10i clears immediately before the pilot. **AND 20.4'S NAMING IS CORRECTED IN THE SAME PASS, THE CONSULTANT SESSION'S ERROR.** It said `make_enriched_sidecar()` gains the address field. **It is `build_item()` in `worker/publish.py`**, which is what puts the picture on the item and is already handed the document's location. `make_enriched_sidecar()` in `worker/filing.py` does not change. | **WHY THE RECORDS MOVE.** A receipt is Intellibills' data until it is attached to a transaction or posted to the cashbook. Holding it in IntelliBooks' file from the moment it arrives put one product's data inside another's store before it had anything to do with the books, **and it is what made the exchange folder look as though it belonged to IntelliBooks**. `Client_004-books.json` is 3.0 MB, almost all of it receipt pictures. **WHY THE NAMING ERROR MATTERED.** The wrong name was carried from a note into this document without being checked against the code, which is the same fault amendment 467 records against sub-step 10d.41. A brief written from it would have sent Claude Code to a function the code comments describe as frozen. |
 | 489 | 20.6 | **THE IMPLEMENTATION GAP LIST IS ITEMISED. Seventeen items drawn against the code on 2026-09-15**, seven on the Python worker and ten on the front end, replacing a note that said the list existed and was not written down. **Three carry decisions of Paul's taken the same day.** One, an explicit existence check replaces the one the byte read was doing, in the same place and raising `PublishError` the same way, so a missing document still fails the publish and still writes its reason to `publish_events`. Two, `books.receipts` is removed outright rather than emptied, **enumerated first at 50 occurrences across 32 functions**, so a reader that was missed throws rather than showing an empty list. Three, **the drain reads the receipts file back from disk and deletes a tray file only if that receipt's id is in what it read.** | **WHY THE THIRD IS WRITTEN THIS WAY.** Item 15 is the only one in the list that could lose a receipt, and it would do so silently: the drain deletes from the tray on the strength of a flag saying a save happened, and under this design that flag can be left pointing at the books file while the receipts file is the one being written. **The first answer proposed was a test, and it was the wrong shape.** A test catches the mistake after somebody makes it. Reading the file back removes the flag altogether, so the thing being checked is the thing being protected and there is nothing left to point at the wrong file. **Designing the failure out beats guarding it, and this list holds one instance of each**: item 11 cannot be designed out, so it is guarded by removing the name and letting a missed reader throw. **THE COST WAS MEASURED RATHER THAN ASSUMED.** `Client_004-books.json` is 3,046,003 bytes and holds 17 receipts and 31 transactions; the receipts array alone is 3,000,338 bytes, so 98.5% of that file is pictures. With the pictures out and an address in, those 17 records come to 7,682 bytes. |
+| 490 | 20.2, rewritten entire | **THE LIFECYCLE IS REWRITTEN, STEP BY STEP WITH PAUL, 2026-09-16.** Nine steps become ten, and every one was put to him in old wording and new wording with each change named. **WHAT WAS WRONG.** Step 4 published into `IntelliBooks\Incoming\` and step 5 held the receipt in `books.receipts`, both superseded by amendments 487 and 488. Step 1 said a document "arrives" and was "written once to the archive", which reads as one copy for both routes and is true of only one: an email attachment is written to the archive from the message, while a Receipt Inbox document is copied there and the pair it arrived as, the document and its JSON sidecar, is moved to `Processed\`. Step 2 named a record table and a log table, neither of which exists under those names. Step 8 said the note is sent "on the pipeline's next poll", when the note is written at Post and the poll is when the worker reads it. **WHAT WAS ADDED.** What the published item is, being one `{receipt_id}.json`; that every status publishes and only `ok` is drained; the drain's read-back before it deletes; that Delete is offered only on an unattached receipt; and that deleting a transaction writes no note. **WHAT WAS PROPOSED AND DROPPED.** A separate validation step, because extraction and validation are one call writing one row. A step for the copy into `Clients\`, because it fires on publish, at Post, or never, and is not a fixed point in the sequence. A display step, because that belongs in 20.3. And a line saying a deletion clears the receipt's id off any transaction carrying it, because Delete is never offered on an attached receipt, so it cannot happen. | **WHY THIS WAS WORTH TEN EXCHANGES.** Every one of the four dropped items was the consultant session's own addition, and three of them described behaviour the code does not have. **The wrong ones were found by Paul asking what a sentence meant, not by any check.** "A document arrives ... the worker writes one copy" was the first, and it took three questions to get from that phrasing to the two routes actually differing. |
+| 491 | 20.1, 20.3 and 20.4, each corrected in place | **FIVE ERRORS FOUND BY REVIEWING SECTION 20 AGAINST THE CODE, 2026-09-16, on Paul's instruction that section 20 becomes the primary source.** **ONE.** 20.3 said the published item stops carrying `image_base64` **and `image_media_type`**. `image_media_type` stays: the front end uses it to tell a picture from a PDF before it decides how to render. 20.6 item 4 says so and Claude Code built it that way, so this section contradicted both. **TWO.** 20.1 said the receipts file is read and written by the Receipts tab **and the Review queue**. `scanReview()` reads its items out of `Intellibills\Incoming\`, because a receipt that is not `ok` is never drained; it touches the receipt records only to skip one already settled. **THREE.** 20.4 said the address follows the same rule `filed_path` already follows. **It does not.** Read on Paul's machine on 2026-09-16: all 35 `file_path` values and all 26 `filed_path` values are absolute. The rule belongs to the JSON notes the front end writes. **FOUR and FIVE.** Four places still named IntelliBooks where they meant Intellibills' front end: the working table's row, the paragraph under it, and two sentences in 20.3 about the folder handle. | **WHY THE FIRST THREE MATTER AND THE LAST TWO DO NOT LOOK AS THOUGH THEY DO.** One and two would have been read as requirements by whoever builds the front end half, and one of them contradicted a commit already written against this same section. Three was the sentence Claude Code found while building item 3, raised, and Paul agreed the day before; the document still said it. **Four and five are naming, and this project has already paid for that twice**: `INTELLIBOOKS_PUBLISH_DIR` and `INTELLIBILLS_ROOT` are two letters apart and a guard exists solely to stop them being confused. **A design document that uses the wrong one of the two is the same fault in prose.** |
+| 492 | 20.1, 20.6 items 6 and 7, and 20.7 | **SIX THINGS FOUND BY REVIEWING SECTION 20, 2026-09-16, and all six are omissions or loose wording rather than wrong statements.** **20.1 now binds the role names**: the records table is `receipts` and the logs table is `extractions`, checked in the code. The logs table's real name is narrower than its contents, an operator's correction being a row there too. **The working table is bound to nothing and that is said.** **20.1 now says where a receipt that is not `ok` waits**, which is `Intellibills\Incoming\`, because the drain takes only `ok` items and nothing else holds such a receipt. **The exchange folder is a store as well as a handover and this section did not say so.** **20.1's transaction paragraph now names `docId`**, so the reader is not left thinking `receiptId` is a transaction's only link to a document. **20.6 item 7 said the `mkdir` line goes; it moved.** Corrected against the built code. **20.6 item 6 now records that `INTELLIBOOKS_PUBLISH_DIR` keeps a name that is knowingly stale.** **20.7's table is struck entire.** | **WHY THE TABLE HAD TO GO.** It marked fourteen rows "not yet assessed" and said each changed when somebody read that subsection of section 18. **Amendment 485 says nobody reads section 18.** The two could not both stand, and the table was the one describing work that is forbidden. **AND ONE THING AGREED AND NOT DONE HERE.** 20.6 items 16 and 17 are still held by tests, which is the shape Paul rejected for item 15: a test catches the mistake after somebody makes it. **Whether either can be designed out instead is taken as its own piece of work and is not a wording change.** |
+| 493 | 20.6 items 16 and 17, rewritten; a new item 18; the item count | **TWO BUILD ITEMS ARE DESIGNED OUT RATHER THAN WATCHED BY A TEST. Paul's decision, 2026-09-16, applying to 16 and 17 the standard he set on item 15 the day before.** Item 16 had the stale-file check written twice, once per file, with a test to notice if a copy went missing; **it becomes one save function both files go through**. Item 17 had the write order stated at each call site, and `scheduleSave()` has 53 of them; **it becomes one function that writes both, always the receipts file first, and nothing else writes both**. **A new item 18 adds a source guard that nothing else writes either file, and says on its face that it is not the mitigation.** The count moves to eighteen, seven on the Python worker and eleven on the front end. | **WHY THE STANDARD IS WORTH RESTATING.** A test catches the mistake after somebody makes it. **Removing the second place removes the mistake.** Item 15 went this way on 2026-09-15, when the first answer offered was a test and Paul refused it; **16 and 17 were left in the older shape in the same pass and nobody noticed until section 20 was reviewed as a whole**. **It also makes the front end half smaller**: one save path rather than two. |
+| 494 | 20.1 | **A RECEIPT RECORD IS NOT RETIRED WHEN IT BECOMES A TRANSACTION. Paul's decision, 2026-09-16.** It stays in `Intellibills\Receipts\{client_id}-receipts.json` for the life of the client. **Size is not a reason to remove it**: a record is about 452 bytes, measured against the largest live client, so a thousand receipts is under half a megabyte. **Its figures cannot reach the accounts after that point**, because attaching copies nothing and a posted receipt has already handed its figures over, so nothing reads them again. **Retiring it would put the same thing in two places**: a Bank Transactions row resolves the receipt by its id, so with the record gone the transaction would have to carry the archive address and the supplier itself, in a second file. **The consequence is accepted**: the Receipts tab grows for the life of the client. | **WHERE THE QUESTION CAME FROM, AND IT IS THE ONLY ONE OF ITS KIND.** Section 20 said nothing about what becomes of a receipt record after Post, so as written it stayed for ever by omission rather than by decision. **Paul had section 18 read once, on his instruction, looking only for things section 20 had not considered**, and this was the first of seven. **The old section's own answer was the opposite**, that the receipts list is a staging area and the entry retires at Post, which was right when the two records were compared at Post and is not right now that nothing compares them. **A decision taken by omission is the thing this pass exists to stop.** |
+| 495 | 20.1 | **NOTHING DERIVED IS STORED ON A RECEIPT RECORD, AND AN OPERATOR EDIT CLEARS THE WORKER'S VERDICT. Paul's decisions, 2026-09-16.** Whether a receipt is attached, and whether it is ready to post, are worked out when the screen is drawn. **A stored flag has to be cleared by every path that changes anything and one of them always forgets.** `saveReceiptEdit()` writes six fields and leaves the verdict untouched, so a receipt marked `needs_review` for a missing supplier still reads `needs_review` after the supplier is typed in. **That verdict is now cleared on edit.** **Nothing is lost**: every reading is a row in the logs table, the worker's original among them. **And it is not refilled, established rather than assumed**: the only two publishers are `process_extraction_result()` and `_publish_unpublished_receipts()`, neither reachable from a correction, and `_apply_corrected_note()` publishes nothing. | **THE FIRST ANSWER WAS WRONG AND PAUL REFUSED IT.** The consultant session proposed leaving the verdict and renaming it on screen so that a stale value would read as the worker's verdict rather than the receipt's state. **Paul: that means a receipt that has been reviewed still reads Needs Review, and instead of correcting it you suggest saying it is not an error.** The pill answers one question, does this still need attention, and a verdict from before the operator touched it cannot answer it. **The reason given for keeping it, that clearing throws information away, was also wrong**: the logs table holds every reading. |
+| 496 | 20.1 | **TWO OMISSIONS FILLED, FOUND BY READING SECTION 18 ONCE ON PAUL'S INSTRUCTION, LOOKING ONLY FOR WHAT SECTION 20 HAD NOT CONSIDERED. 2026-09-16.** **ONE. The receipt record does not carry the Clients folder path**, and section 20 had not said so either way. `receipts.filed_path` is the worker's and the worker is the only writer into `Clients\`. The copy is made on a firm setting, at Post or on successful publish or never, **so a copy of that path on the record would be stale exactly at the moment it is used**, which is deleting. The delete dialogue asks instead whether the worker knows the receipt at all. **Section 18.8 says the filed path is stored on the receipt entry when it is created. It is not**, and the front end has no such field: the only three mentions of it there are comments saying the pipeline holds it. **TWO. Where the database lives**, which section 20's list of stores did not say at all: `C:\Intellibills\db\receipts.db`, outside OneDrive, logs beside it, backups into `Intellibills\Backups\`. | **WHY THE FIRST ONE IS THE SAME DECISION AS 495 IN A DIFFERENT PLACE.** Nothing goes on a receipt record that another system owns and can change without telling us. The verdict was one instance, cleared on edit; the filed path is the other, and the answer is not to hold it at all. **Both were found by asking what the record is allowed to contain rather than what it happens to contain.** |
+| 497 | 20.1 | **THE CLIENTS FOLDER COPY IS SPECIFIED IN FULL, AND TWO SMALL CONSEQUENCES OF 494 ARE WRITTEN DOWN. 2026-09-16.** Section 20 had the copy as one line, on Post or on successful publish or never. **Seven things it did not say** are now in 20.1: image only, covering the statement copy too; the document date names the folder and the filename; unposting does not withdraw the copy; a statement files by its end date only; per-firm settings decide whether it happens and where; **a delivery log at `IntelliBooks\Delivery\{client_id}.log` records each copy written**, without which a document in a client folder with no matching posted transaction cannot be explained; **and the copy is made by the worker on its next poll rather than at the moment of posting**, up to five minutes later. **And from amendment 494:** a receipt is never locked, because nothing depends on its figures before it becomes a transaction and nothing reads them after; and the receipt record and the transaction may differ, because nothing compares them. | **WHY THE POLL POINT IS MORE THAN WORDING.** "On Post" reads as the instant the operator presses Post. **Every caller of `copy_for_published_receipt()` is the worker**, so the document reaches the client folder on the next poll. A reader building against this section would otherwise expect the file to be there when the screen finishes redrawing. **AND WHY THE DELIVERY LOG BELONGS HERE AT ALL:** it is the only record of what was delivered, and step 10au's check reads it against the folder. A section describing where documents live that does not mention it is describing half the arrangement. |
+| 498 | Section 18, deleted entire; a one-paragraph retirement notice in its place | **SECTION 18 IS RETIRED. Paul's instruction, 2026-09-16.** Its 390 lines are deleted and replaced by a notice saying so. **Section 20 is the principal source, and amendments explain section 20 rather than being a source themselves.** **Counted rather than estimated before the deletion:** 53 references to section 18 lived inside its own body, 340 in the amendment record, 19 elsewhere in this document, 65 in `2026-07-25_BUILD_STATUS.md` and 3 in `CLAUDE.md`. **The 340 in the amendment record are not repointed and must not be**: each records a decision taken while section 18 said something, and rewriting them would falsify the history. **The 19, the 65 and the 3 are live cross-references and are repointed in a second pass**, one at a time, because some point at a decision that moved into section 20 and some only mention a number. | **WHY DELETED RATHER THAN STRUCK, WHICH IS THE OPPOSITE OF THIS DOCUMENT'S USUAL CONVENTION.** Superseded wording is kept so the decision trail survives. **Here the trail is the amendment record, which is untouched and holds 340 references to what the section said.** Struck text is still text: it is found by a search, quoted without the section being opened, and that is the specific fault amendments 474, 479 and 485 were each written to repair. **AND THE CONTENT IS NOT LOST.** Every decision still standing was moved into section 20 by amendments 483 to 497, and the text itself is in the git history and in `2026-07-25_CONSOLE_DESIGN.md.bak-before-498`. |
+| 499 | Six cross-references in this document's body; 20.7; section 20's opening | **THIS DOCUMENT'S OWN LIVE CROSS-REFERENCES TO SECTION 18 ARE REPOINTED, 2026-09-16.** Nineteen were counted before amendment 498 deleted the section. **Six were live direction and are repointed**: 13A's scope and its rewrite instruction now name section 20.1; 13A's placeholder note and finding 6 lose a citation that no longer resolves; the local-only clause loses its citation and keeps its sentence; and test 44's line now says section 20 needs its own tests. **Section 20's opening and 20.7 are rewritten**, because both described section 18 as under review rather than gone. **The rest are struck wording, the retirement notice, and 20.7 itself, all of which mention section 18 deliberately.** Seventeen mentions remain in the body and not one is direction. | **WHY THE SIX WERE NOT LEFT.** A citation that does not resolve costs the next session a search and teaches it to distrust the document, which is amendment 467's finding about a function name that did not exist. **A retired section is the same fault at a larger size.** **AND WHY THE STRUCK ONES STAY.** Superseded wording is kept with its reason, which is this document's convention everywhere except section 18's own body, and amendment 498 gives the reason that one was the exception. |
 
 
 ## How to use this document
@@ -1503,7 +1513,7 @@ A correction records `engine='manual_correction'` and nothing about who made it.
 
 ### 3.5 Review pair left on disk after resolution
 
-`resolve_receipt.py` has no awareness of ~~`Clients\{Name}\Review\`~~ **`Intellibills\Review\{client_id}\`**. **Struck 2026-09-02 by amendment 171.** **Review left the client folder by 18.2a and is keyed on the client id by sub-step 10d.54, so the path this defect was written against no longer exists. The defect itself is unchanged.** Every receipt ever resolved has left its image and `.review.json` behind, so IntelliBooks still shows it as needing review and completing it there files a duplicate.
+`resolve_receipt.py` has no awareness of ~~`Clients\{Name}\Review\`~~ **`Intellibills\Review\{client_id}\`**. **Struck 2026-09-02 by amendment 171.** **Review left the client folder and is keyed on the client id by sub-step 10d.54, so the path this defect was written against no longer exists. The defect itself is unchanged.** Every receipt ever resolved has left its image and `.review.json` behind, so IntelliBooks still shows it as needing review and completing it there files a duplicate.
 
 **Fix.** The resolution service removes the pair on a successful resolve or discard. Local file I/O, no IMAP involved. Log and continue if the files are already gone.
 
@@ -2520,7 +2530,7 @@ When the console resolves, it files to ~~`Clients\{Name}\Receipts\{tax year}\`~~
 
 Inserted 2026-07-29, using the same lettered convention section 16 already uses for inserted steps. It replaces the folder locking asked about in amendment 56, which is not achievable here.
 
-> **Amended 2026-07-30 by amendment 70, and this section cannot be built as written.** It is scoped to a "managed tree" at `Clients\*\_IntelliBooks\`. That folder is the client's own records inside Paul's firm's filing system and belongs to neither module, so there is no managed tree there to audit. Two consequences. **Settled 2026-07-30 by amendment 73, and this section now has one clear question and a different owner.** It asks whether the client folder matches `IntelliBooks\Delivery\{CODE}.log`, the record of every copy IntelliBooks wrote there. **It belongs to IntelliBooks, not the pipeline, and step 10b has been removed from the pipeline's build order.** That needs no cross-module reading and it puts the check where the delivery happens. ~~The scope has to be restated against whatever 18.2 settles as each module's own store.~~ **And the purpose changes**: from "is our store internally consistent" to "did everything we delivered arrive and does anything there have no business being there", which is a different question with different findings. Four of the eight findings below, numbers 3, 4, 6 and 7, exist only because a local database and a local disk can disagree, and 18.11 lists them as local-only work that does not survive the move to one store. Findings 1, 2 and 5 survive in some form because folders on disk still acquire files nobody intended. Finding 8 has already lost its only specimen, see amendment 66. **Rewrite the findings against 18.2a and 18.2b before building any of this, and brief it to the Desktop session rather than to Claude Code.**
+> **Amended 2026-07-30 by amendment 70, and this section cannot be built as written.** It is scoped to a "managed tree" at `Clients\*\_IntelliBooks\`. That folder is the client's own records inside Paul's firm's filing system and belongs to neither module, so there is no managed tree there to audit. Two consequences. **Settled 2026-07-30 by amendment 73, and this section now has one clear question and a different owner.** It asks whether the client folder matches `IntelliBooks\Delivery\{CODE}.log`, the record of every copy IntelliBooks wrote there. **It belongs to IntelliBooks, not the pipeline, and step 10b has been removed from the pipeline's build order.** That needs no cross-module reading and it puts the check where the delivery happens. ~~The scope has to be restated against whatever 18.2 settles as each module's own store.~~ **Section 18 is retired; section 20.1 is the list of stores. Amendment 499.** **And the purpose changes**: from "is our store internally consistent" to "did everything we delivered arrive and does anything there have no business being there", which is a different question with different findings. Four of the eight findings below, numbers 3, 4, 6 and 7, exist only because a local database and a local disk can disagree, and they are local-only work that does not survive the move to one store. Findings 1, 2 and 5 survive in some form because folders on disk still acquire files nobody intended. Finding 8 has already lost its only specimen, see amendment 66. **Rewrite the findings against section 20.1 before building any of this, and brief it to the Desktop session rather than to Claude Code.** ~~against 18.2a and 18.2b~~ **Repointed 2026-09-16 by amendment 499.**
 
 ### 13A.1 What it is for
 
@@ -2541,7 +2551,7 @@ It also does not run on every poll. Walking every client's receipt folders acros
 
 ### 13A.3 The checks
 
-~~Against the managed tree only, meaning `Clients\*\_IntelliBooks\` and its **five** subfolders per amendments 55 and 65.~~ ~~and its four subfolders per amendment 55~~ **Both scopings are superseded, by amendment 70 and then by amendment 73. The scope is now `Clients\{name}\` compared against ~~`IntelliBooks\Delivery\{CODE}.log`~~ **`IntelliBooks\Delivery\{client_id}.log`, corrected in place 2026-09-14 by amendment 463: the log Claude Code built at step 10az is keyed on `client_id`, and the client code was abolished at sub-step 10d.67**, and the owner is IntelliBooks.** The folder names in the findings below are placeholders from the abandoned scheme; read them against 18.2a. Anything elsewhere in a client folder is the client's or another tool's and is none of this system's business.
+~~Against the managed tree only, meaning `Clients\*\_IntelliBooks\` and its **five** subfolders per amendments 55 and 65.~~ ~~and its four subfolders per amendment 55~~ **Both scopings are superseded, by amendment 70 and then by amendment 73. The scope is now `Clients\{name}\` compared against ~~`IntelliBooks\Delivery\{CODE}.log`~~ **`IntelliBooks\Delivery\{client_id}.log`, corrected in place 2026-09-14 by amendment 463: the log Claude Code built at step 10az is keyed on `client_id`, and the client code was abolished at sub-step 10d.67**, and the owner is IntelliBooks.** The folder names in the findings below are placeholders from the abandoned scheme; read them against section 20.1. Anything elsewhere in a client folder is the client's or another tool's and is none of this system's business.
 
 | # | Finding | Rule |
 |---|---|---|
@@ -2550,7 +2560,7 @@ It also does not run on every poll. Walking every client's receipt folders acros
 | 3 | `sidecar_unknown_to_db` | A filed sidecar carrying a `receipt_id` with no row in `receipts`. Something filed outside the pipeline. |
 | 4 | `filed_path_missing` | A receipt row with `filed_path` set and nothing at that path. The reverse of 3, and the more serious direction: the database asserts a document exists and it does not. |
 | 5 | `conflict_copy` | Any name in the managed tree matching OneDrive's conflict shapes, `*-DESKTOP-*`, `*-LAPTOP-*`, `* (1)` through `* (9)`, or `*-Copy`. |
-| 6 | `review_pair_orphaned` | A ~~`_Review\`~~ **`Intellibills\Review\{client_id}\`, by 18.2a and amendment 170** pair whose `receipt_id` has no row, or has a row whose status is not one of the review statuses. |
+| 6 | `review_pair_orphaned` | A ~~`_Review\`~~ **`Intellibills\Review\{client_id}\`, by amendment 170** pair whose `receipt_id` has no row, or has a row whose status is not one of the review statuses. |
 | 7 | `review_pair_missing` | A receipt in `needs_review` or `possible_duplicate` with no pair on disk. The operator is told to look at something that is not there. |
 | 8 | `books_file_unregistered` | A `*-books.json` in `IntelliBooks\Books\` with no matching client in `clients.csv`. Desktop's territory rather than the pipeline's, but the pipeline can see it and it is the same class of fault. `PKPH-books.json` was found this way, **and was deleted on 2026-07-30 once Desktop's own check had named it, so this finding has no live specimen and must be covered by a fixture.** See amendment 66. |
 
@@ -2699,7 +2709,7 @@ Syntax check with `python -m py_compile`, verify imports, then functional tests.
 **Deferred live tests, added 2026-07-29. Paul has asked for these at an appropriate time rather than now, so they are recorded here rather than left in a chat.**
 
 43. **File a receipt with its figures left unreconciled**, rather than corrected before filing. Confirms the branch test 41 did not exercise: the extraction row is written `validation_status="ok"` because a human decided, carrying an extra note reading `filed by decision in Desktop despite: gross mismatch: ...`. Costs one Review item and one OpenAI call. Determinate from the code, so this test confirms rather than discovers. **Moved 2026-07-29 to after the reset at 10c**: 17.5 already requires a fresh fixture and one confirmed clean cycle once the database is empty, so the same Review item and the same single call can serve both, and this test then runs against a clean slate rather than adding a receipt that is about to be deleted.
-44. ~~**Change D's confirm box**, once the IntelliBooks session has built it. Post a receipt whose figures do not reconcile and confirm the box appears; decline and confirm no transaction was created; accept and confirm the transaction carries the gross and the VAT. Then post a receipt with **no net at all** and confirm it goes through silently, because that is the common case and the one a careless implementation breaks. No OpenAI cost: this is done against receipts already in the books.~~ **Cancelled 2026-07-30 with change D, amendment 68.** Test 44 was actually run on 2026-07-30 before the cancellation, against the real Canva receipt in `TEST2`, and the confirm box behaved as specified including printing a negative implied net. It is recorded here as run and then discarded, because the behaviour it proved is being removed. Section 18 needs its own tests and they are not yet written.
+44. ~~**Change D's confirm box**, once the IntelliBooks session has built it. Post a receipt whose figures do not reconcile and confirm the box appears; decline and confirm no transaction was created; accept and confirm the transaction carries the gross and the VAT. Then post a receipt with **no net at all** and confirm it goes through silently, because that is the common case and the one a careless implementation breaks. No OpenAI cost: this is done against receipts already in the books.~~ **Cancelled 2026-07-30 with change D, amendment 68.** Test 44 was actually run on 2026-07-30 before the cancellation, against the real Canva receipt in `TEST2`, and the confirm box behaved as specified including printing a negative implied net. It is recorded here as run and then discarded, because the behaviour it proved is being removed. Section 20 needs its own tests and they are not yet written. ~~Section 18 needs its own tests~~ **Repointed 2026-09-16 by amendment 499.**
 45. **The blank category at posting**, only once the question at 17.4 is decided. Recorded now so the test is not invented from scratch later.
 46. **The reconciliation check against the current state**, before anything is cleared at 10c. It must find `PKPH-books.json` as unregistered and any conflict copies. It will **not** see the 23 ghost receipts, which are books entries rather than files, and that limit is worth stating in the report so nobody reads a clean receipts result as meaning the books are clean. **A run that reports nothing is a failed test, not a clean bill of health.** Then run it after each stage of the reset, which is how 17.5's before-and-after requirement is satisfied.
 
@@ -2716,396 +2726,13 @@ built and reference every step now living in the other file.
 
 ---
 
-## 18. Receipt and transaction integrity
+## 18. Retired
 
-> **UNDER REVIEW, 2026-09-15, amendment 483. Do not take anything below as settled and do not add to it.**
->
-> This section is to be rewritten in full. Parts of it have been superseded by amendments 474 to 482 and by section 20. **Where section 20, Where receipt documents live, covers the same ground, section 20 is the authority.** Anything here that section 20 lacks is moved across as it is found, and this section is retired when nothing is left in it. 20.7 carries the migration table.
+**Section 18, Receipt and transaction integrity, is retired entire. Paul's instruction, 2026-09-16.** Section 20, Where receipt documents live, is the principal source. **Amendments explain section 20; they are not a source in their own right.** Where section 20 does not answer a question, it is put to Paul.
 
-Added 2026-07-30. This section replaces Desktop change D, which is cancelled. It is the outcome of one long working session with Paul and it supersedes several earlier decisions, each named where it occurs.
+**The text is deleted rather than struck**, because struck text is still text and a session searching finds it. It is in the git history and in `2026-07-25_CONSOLE_DESIGN.md.bak-before-498`. **Every decision it carried that still stands was moved into section 20 between 2026-09-15 and 2026-09-16**, by amendments 483 to 497.
 
-Read 18.1 before anything else. Most of what follows is a consequence of it, and several earlier decisions in this document were wrong because that principle had not been stated.
-
-### 18.1 The principle
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-**We record the transaction. The receipt is evidence of it.**
-
-One exception: a receipt posted to the cashbook is the **source** of a transaction rather than evidence about one that already exists. That exception is why the two checks in 18.5 are not the same check.
-
-Two consequences that decide most of this section:
-
-- A receipt's figures are not an accounting record. They are what a document was read to say. They may be wrong while the transaction is right, and in a real practice they often will be.
-- Once a transaction exists, the receipt's job is to be **findable and viewable**, not to be compared. The image is the evidence. The extracted figures were a means of getting to the transaction and have no standing afterwards.
-
-### 18.2 The three stores, and who owns what
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-There are three copies of every receipt document and each has a different owner. This is deliberate and it is the correction of a design in which one folder was doing two jobs.
-
-**The receipts app is named Intellibills**, decided 2026-07-30. Amendment 72. `CLAUDE.md`'s terminology section changes with it.
-
-| Store | Owner | Purpose |
-|---|---|---|
-| `Intellibills\Documents\{CODE}\{year}\{month}\{receipt id}_{filename}` ~~`{year}\{month}\{day}\`~~ ~~`Intellibills\data\files\...`~~ | Intellibills | **The archive of record.** Every document it ever processed, including rejects and duplicates, as originals rather than reductions. Already exists as `data\files\` inside the repository: 96 files, 13 MB. Moves to the practice root, see 18.2a. Folder name corrected by amendment 76; the word `data` is used on neither side. **Shape settled by amendment 77: `{CODE}\{year}\{month}\`, which is what the code already does.** |
-| `IntelliBooks\Attachments\{CODE}\{year}\{month}\{receipt id}_{original filename}` | IntelliBooks | The evidence attached to a transaction. ~~`{CODE}\{year}\`~~ Aligned to the same shape as the archive by amendment 77. Today this is base64 inside `{CODE}-books.json`, which is the right principle in the wrong shape. |
-| `Clients\{name}\...` | **Neither module. Intellitax.** | Intellitax's own filing structure, which it has chosen to expose on a client portal. **Not the client's folder and not a safety net.** See 18.2b. |
-
-**Both module stores use the same shape, `{CODE}\{year}\{month}\`, and the date is the date of arrival rather than the document date**, so a path never changes when an invoice date is corrected. `save_file()` at `worker/storage/store.py:20` already uses `datetime.now()` for exactly that reason. Amendment 77.
-
-**The third row is the important one and it corrects amendments 55 and 65.** Those amendments treated `Clients\{name}\` as a managed tree belonging to this system and proposed namespacing it as `_IntelliBooks\`. That is backwards, and the reason is Paul's, recorded because I had it wrong first: **the archive of record is Intellibills', and Intellitax has access to it under contract and can retrieve any image at any time.** So `Clients\` is not the client's records and not a fallback. It is Intellitax's filing structure, and exposing it on a portal is Intellitax's own decision which another firm need not make. See amendment 70.
-
-### 18.2a The practice root
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-Three top-level folders, one per owner. **No underscores and no namespacing**, because once each module has its own folder there is nothing left to mark.
-
-**The tree below is the common arrangement, not a constraint. Added 2026-08-21 by amendment 151.** `Clients\` is drawn inside the practice root because that is where Intellitax's own is, and **F17 records the client top folder as an absolute name and path which need not sit here at all.** A firm that already files clients on another share keeps them there. `IntelliBooks\` and `Intellibills\` are ours and do sit under the practice root.
-
-**Redrawn 2026-09-04 from the folders themselves. Every `{CODE}` in the old version was wrong, and
-so were four of its file names. The old drawing is kept below it.**
-
-```
-{practice root}\
-├── Clients\                      Intellitax's filing structure. Client-facing documents only.
-│   └── {client_folder_name}\           the record's folder name, never the display name, 10d.14
-│       ├── IntelliBooks\               amendment 170. Four children and no more
-│       │   ├── Receipts\{tax year}\        written by the pipeline and by IntelliBooks
-│       │   ├── Statements\{tax year}\{platform}\
-│       │   ├── HMRC Summaries\
-│       │   └── Handover Pack\
-│       └── (the firm's own: engagement letters, correspondence, anything else)
-├── IntelliBooks\                 IntelliBooks only
-│   ├── App\                            the app and IntelliBooks\App\Docs\
-│   ├── Books\{client_id}-books.json
-│   ├── Charts\                         its copy of the published chart bundle
-│   ├── Backups\
-│   ├── Attachments\{client_id}\{year}\   PLANNED, see 18.2b
-│   ├── Delivery\{client_id}.log         PLANNED, one per client, see 18.2b
-│   └── Incoming\                       PLANNED, what Intellibills pushes to, per 18.3   ~~Inbox\~~ renamed by amendment 280
-└── Intellibills\                 Intellibills only. Documents, not the database: see below.
-    ├── Documents\{client_id}\{year}\{month}\  the archive of record, amendments 77 and 10d.53
-    ├── Receipt Inbox\{client folder}\      and a Processed\ inside each, per 3.13
-    ├── Review\{client_id}\                 out of the client folder, 10d.54
-    ├── Resolutions\                        with processed\ and failed\, per 12.3
-    ├── Charts\                             the pipeline's copy of the bundle
-    ├── Backups\                            where backup_db() writes
-    ├── PhoneApp\                           the Netlify deploy folder
-    ├── clients.json
-    ├── firms.json
-    └── pipeline-status.json
-        ~~pipeline.lock~~   **moved 2026-09-07 to C:\Intellibills\pipeline.lock, amendment 248**
-```
-
-**And the database is not in either tree.** `C:\Intellibills\db\receipts.db`, with the logs beside
-it in `C:\Intellibills\logs\`, both outside OneDrive because sync corrupts a live SQLite file.
-**The pipeline lock is there too, `C:\Intellibills\pipeline.lock`, added 2026-09-07 by amendment
-248.** It is written and deleted on every start and stop, so it is process state rather than a
-document, which is the same test that put the other two here.
-
-*The drawing this replaced, kept rather than deleted:* `Clients\{Client Name}\Receipts\{tax year}\`
-with no `IntelliBooks\` level; `Books\{CODE}-books.json`; `IntelliBooks-Practice.json`;
-`Documents\{CODE}\`; `Receipt Inbox\{CODE}\`; `Review\{CODE}\`; `clients.csv`; `firms.csv`.
-
-**Three things about it worth stating.**
-
-**`Review\` leaves the client folder.** A receipt awaiting a human is work in progress, not a client-facing document, and it has no business on a portal. `Statements\` stays, because a statement is a document the client is entitled to see.
-
-**Everything currently loose in `IntelliBooks\` moves to `Intellibills\`.** `clients.csv`, `firms.csv`, `pipeline-status.json`, ~~`pipeline.lock`,~~ `Receipt Inbox` and `Resolutions` are all Intellibills' and sit under `IntelliBooks\` only by accident. **`pipeline.lock` struck 2026-09-07 by amendment 248: it did move here, and it has since moved on to `C:\Intellibills\`.**
-
-**The database does not go into OneDrive, and this is not a preference.** Decided 2026-07-30 against Paul's first instinct, on evidence. `worker/database/schema.py:7` runs `PRAGMA journal_mode=WAL`, so `receipts.db` has companion `-wal` and `-shm` files that must stay consistent with the main file, and the pipeline holds it open and writes on every poll. OneDrive syncs files independently and copies them while open. SQLite's own corruption guide names journal files being moved, renamed or deleted as a route to a corrupt database, and there are documented cases of a sync client's error loop driving runaway WAL growth. The audit trail is the one thing here with no second copy. **So the live database sits outside any synced folder, and `repo.backup_db()` writes its backups into OneDrive.** A backup is a closed consistent copy, so syncing that is safe and gives off-machine protection without the risk. The document store is fine in OneDrive: those files are write-once and never held open.
-
-**Two roots, and they must not share a folder name.** ~~`Intellibills\data\files\` in OneDrive and `C:\Intellibills\data\receipts.db` locally.~~ **Corrected 2026-07-31, flagged by the consultant session and it was right:** as first drawn, `Intellibills\data\` named two different folders on two different drives, which is a path anyone would misread. So the word `data` is not used on either side.
-
-> **This date went wrong three times before it went right, and the sequence is kept because two of the three are instructive.**
->
-> **First it read `2026-07-30`**, carried from amendment 72. Wrong: Paul wrote 30 July throughout a session that had already crossed into 31 July.
->
-> **Then the consultant session changed it to `2026-07-31`. That was correct**, and the evidence is below.
->
-> **Then the same session changed it again to `2026-08-01`, and that was the real error.** It had noticed, correctly, that the calendar date was by then 1 August, and applied that to a note recording when a flag was raised rather than when the correction was typed. **A blanket redating of its own earlier work followed, which made right things wrong.** Reverted here and in amendments 75 and 76.
->
-> **The evidence, since none of this should rest on anyone's recollection.** `ac2d1be`, the commit carrying section 18 and amendments 65 to 74, is authored `2026-07-31 15:38:54 +0100`. The consultant session that raised the flag began at `2026-07-31 15:54:25 +0100` and took its verification copy of the database at `2026-07-31 15:55:08 +0100`. So the flag, and the reset plan that carries it, are 31 July. That session then ran past midnight, which is why amendment 77 and everything after it are 1 August.
->
-> **And the reason the middle two could not be settled from git: the consultant session committed nothing.** Amendments 75 and 76 exist only as edits to a working file, so their dates rest on the session's start timestamp rather than on an author date. **Had they been committed as they were written, the question could not have arisen.** That is the argument for the commit cadence in `CLAUDE.md` restated as a fact rather than as a preference.
-
-| | Path | Contents |
-|---|---|---|
-| **In OneDrive**, under the practice root | `Intellibills\Documents\{CODE}\{year}\{month}\{receipt id}_{filename}` | Every document Intellibills ever processed. Write-once, never held open, safe to sync. Shape settled by amendment 77: client code first, and no day level. |
-| **Local, outside any synced folder** | `C:\Intellibills\db\receipts.db` | The live database and its `-wal` and `-shm` companions. |
-| **In OneDrive**, under the practice root | `Intellibills\Backups\` | Where `backup_db()` writes. Closed consistent copies, safe to sync. |
-
-**And the constants must stop sharing a parent, which is the real cause of the confusion.** `config.py` today has `DATA_DIR = BASE_DIR / "data"`, then `FILES_DIR = DATA_DIR / "files"` and `DB_PATH = DATA_DIR / "receipts.db"`. **`DATA_DIR` must go**, not merely be repointed, because while it exists somebody will derive one path from the other and put the database back into OneDrive by accident. In its place: `FILES_DIR` derived from the practice root, `DB_PATH` derived from a new local root constant with an environment override of its own, mirroring how `ONEDRIVE_ROOT` already works, and a backup path derived from the practice root. Three independent constants, no shared parent.
-
-**Note also that `BACKUPS_ROOT` currently resolves to `IntelliBooks\Backups`.** Under 18.2a that folder belongs to IntelliBooks, so the pipeline's database backups need their own path rather than borrowing it.
-
-**`DATA_DIR` has a third consumer, and it means four constants rather than three.** Found 2026-07-31 by reading the file rather than the prose, which is the second time in two days that has found the real fault. `worker/logging_setup.py:50` returns `config.DATA_DIR / filename`, and `:69` creates the folder. **So `DATA_DIR` today parents three unrelated things: the document store, the live database, and the four process log files** `run.log`, `resolve.log`, `discard.log` and `console.log`, per `ENTRY_POINT_LOGS` at `worker/logging_setup.py:39`. Only `run.log` exists on disk today, 43 KB. Removing `DATA_DIR` leaves the logs with no home, and none of the three paths in the table above is the right one for them: they are neither documents, nor the database, nor backups.
-
-~~**Where the process logs go is open**~~ **SETTLED, AND IN TWO PARTS. The process logs went to `C:\Intellibills\logs\` with `runs.ndjson`, which is what `config.LOGS_DIR` and `config.RUNS_LOG` read today, so the one-letter-apart pair below no longer exists. And on 2026-09-12 Paul decided the second half, outstanding item 37: exports leave the repository for `Intellibills\Exports\`, scheduled at section 16's new step 10r, amendment 359.** ~~and it is entangled with the question of whether `logs\` and `exports\` stay in the repository.~~ **A trap worth naming before anyone chooses:** the repository already has `logs\`, holding `runs.ndjson` at 415 KB and two `receipt_events_*.ndjson`, while `data\` holds `run.log`. **Two log locations, and `logs\runs.ndjson` and `data\run.log` are one letter apart.** Both are gitignored. Putting the process logs into `LOGS_DIR` would give one log location and remove that, but it moves a file the console's intake panel at 8.6 will read, so it is a decision rather than tidying.
-
-**And the change is wider than `config.py`.** Seven test files patch `config.DATA_DIR` by name: `tests/resolution_fixtures.py`, `tests/test_extraction_details.py`, `tests/test_logging_setup.py`, `tests/test_resolve_receipt_ordering.py`, `tests/test_resolve_receipt_zero_and_types.py`, `tests/test_review_pair_cleanup.py` and `tests/test_sidecar_category_keys.py`. `tests/resolution_fixtures.py:59` derives `FILES_DIR` from `DATA_DIR`, which is the shared parent reproduced in the fixture. **`tests/test_logging_setup.py` exists to catch a test writing into the live logs** and must be updated deliberately rather than made to pass.
-
-### 18.2b The copy into `Clients\`, and who writes it
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-~~**IntelliBooks writes it, at Post. Intellibills never writes into `Clients\` at all.**~~
-
-**Corrected 2026-08-21 by amendment 122, on Paul's ruling, and this sentence was stale from 2026-08-18 rather than wrong when written.** **Intellibills writes it. It is Intellibills' own function, with two triggers set per firm: on successful publish, or at Post, or never.** Amendment 106 decided that on 2026-08-18 and section 6 of `2026-08-18_BOUNDARY_two_products.md` carries the reasoning: no transaction, no ledger, no category and no VAT are involved, so filing a document into the firm's client folder is a document function. What is cancelled is writing **on arrival**, which is what `file_receipt()` does today. **Standalone Intellibills can only offer the publish trigger; the combined product offers either.** Scheduled at step 10f.
-
-> **CLOSED 2026-09-09 by amendment 298. Check 1 passed in both clauses, stage 4 is complete, and this whole freeze is spent: `file_receipt()` no longer exists and the other two frozen functions are ordinary code again. The paragraph below is kept as written because it is the record of what the freeze was.** ~~**Not yet true, and deliberately so. Amendment 75, 2026-07-31.**~~ Until 18.3's inbox handoff is built and passes the six-check acceptance test, Intellibills **continues** to write a filed receipt and its sidecar into ~~`Clients\{client name}\Receipts\{tax year}\`~~ **`Clients\{client_folder_name}\IntelliBooks\Receipts\{tax year}\` once sub-step 10a.2 has run, and `Clients\{client name}\Receipts\{tax year}\` until then**, because that folder is today the only route a receipt has from capture into the books and 18.3's replacement does not exist. **`get_client_directory()`, `file_receipt()` and `make_enriched_sidecar()` are frozen for the duration and are out of scope for every 18.2b and 18.3 change.** The close condition, the frozen list and the reasoning are in section 0.5 of `C:\LastingImpact\receipt_capture\2026-07-31_PLAN_reset_and_restructure.md`. ~~The simplification below is deferred, not cancelled.~~ **Corrected 2026-08-21 by amendment 134: it is cancelled, not deferred.** The simplification below is struck through by amendment 122, because Intellibills keeps `get_client_directory()`, the client folder layout and the tax-year determination. **What this freeze still defers is the trigger**, being the move from writing on arrival to writing on a successful publish.
->
-> **The freeze is narrowed for step 10d only, 2026-08-20, amendment 113.** Step 10d has to change where the client folder name comes from, and that is a change to `get_client_directory()`, which this freeze covers. **The freeze exists to protect the only working route from capture into the books, and changing the source of a folder name does not touch whether the write happens**, so the protection is intact. Stated exactly so no session has to interpret it:
->
-> - **`get_client_directory()` at `worker/filing.py:64` may change the source of the folder name to `client_folder_name`, and may change nothing else.**
-> - **`file_receipt()` may change the corresponding parameter name and may change nothing else.** Its filename convention, its sidecar write and the fact that it writes on arrival are all unchanged.
-> - **`make_enriched_sidecar()` is not touched by step 10d at all** and stays frozen entire.
-> - **`normalise_client_name()` at `worker/filing.py:40` is deleted.** It has no callers anywhere in the 23 production Python files, established by grep with the output printed, so deleting it changes no behaviour. It is named here because it sits in the frozen file.
->
-> **Everything else in this freeze stands until 18.3's handoff passes its acceptance test.**
-
-Paul's reasoning, and it decides the timing: a folder fed from capture shows everything that arrived, duplicates and misfires included, and a client looking at that on a portal sees a dump of files. **What the client should see is the result of the work.** Posting is the point at which a document has been accepted into the accounts, so that is when the copy is made. It also happens to be the moment IntelliBooks already has the document in hand, per 18.6, so it costs one write and nothing extra to fetch.
-
-~~**The consequence is a large simplification.** Intellibills loses `get_client_directory()`, the client folder layout, and the tax-year determination it needed for filing. Most of what steps 10a and 10c existed to do goes with it.~~ **Struck through 2026-08-21 by amendment 122. Third of four places this claim was made and the second I missed.** Intellibills keeps all three, because it is still the writer. Sub-step 10d.14 repoints `get_client_directory()`; step 10a's config constants stand; the tax year is still needed to name the folder, per the rule below that the document date names it. **What the ruling simplifies is the trigger, not the function:** one writer gated on a successful publish, instead of a write on every arrival.
-
-| Rule | Detail |
-|---|---|
-| **Image only** | No data file beside it. The sidecar existed to carry figures between the two modules, and 18.3 replaces that. The copy is a document for a person and a portal, so nothing needs to parse it. This removes the pairing convention, the two tolerated sidecar shapes and the filename fallback from `Clients\` entirely. **AND IT COVERS THE STATEMENT COPY, NOT ONLY THE RECEIPT COPY. Paul's decision 2026-09-10, amendment 316.** This row was written about receipts, but its reasoning names neither: a statement copy in `Clients\` is the same kind of thing for the same two readers. `file_statement()` stopped writing the data file beside it the same day. **Data files already on disk are left where they are**, not deleted and not swept. |
-| **The document date names both the folder and the filename** | `2023-07-07_canva_10.99.jpg`, which is what the existing convention already produces. Not the transaction date, which is when the money moved and can fall in a different tax year. |
-| **Unposting does not withdraw the copy** | Files appearing and disappearing on a client portal is worse than a file slightly ahead of the books. Written once, never withdrawn, and a repost does not duplicate it. |
-| **A delivery log explains the orphans that creates** | `IntelliBooks\Delivery\{CODE}.log`, one file per client, recording each copy written: the document, the path, the time, and the transaction it was written for. Without it a file in a client folder with no matching posted transaction is unexplainable. |
-| **Per-firm settings, in MVP** | Whether the copy happens at all; the path to the top folder; ~~and whether entities sit at the same level as the contact or beneath it~~ **struck 2026-08-21 by amendment 138, because amendment 135 deleted the contact layer and there is nothing left for entities to sit at the same level as.** `Clients\` is the firm's structure and the product does not dictate it. |
-| **Written synchronously** | No queue. Posting fifty transactions writes fifty files. If that becomes slow it is dealt with then, and it stops being an issue on the cloud version. Note that a queue could only be drained by IntelliBooks itself, since it has no background process. |
-| **Statements** | A statement PDF carries a start and an end date. **The end date names the tax year folder, and only that folder.** A period running 1 March to 30 April straddles 5 April; it files once, by its end date, in the new tax year. **Settled 2026-09-12 by amendment 351, Paul's decision on outstanding item 34.** ~~**Open:** a period running 1 March to 30 April straddles 5 April, and whether such a statement appears in both years is not decided.~~ |
-
-**And it gives section 13A its purpose back, which amendment 70 had left in doubt.** The question becomes: does the client folder match IntelliBooks' delivery log? That is answerable, it needs no cross-module reading, and **it belongs to IntelliBooks rather than to the pipeline.** Step 10b therefore leaves the pipeline's build order. Intellibills may still want a smaller check of its own archive against its own database.
-
-### 18.2c Data relationships, and referencing between the two stores
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-**A client with several entities is not supported and nothing is designed to keep it open. Deleted 2026-08-21 by amendment 135, on Paul's instruction.** He had asked whether it was possible, after looking at a US product that does it, and the answer came back as a design with three rules protecting it. ~~Paul is not asking for this now. It is recorded so that nothing built rules it out.~~
-
-**It is handled by hand.** One client is one set of books, one folder, one books file and one VAT registration. Where a cost is genuinely shared between two clients, the treatment is the one Paul has already given as the accounting authority: **the supply was made to one entity, so the input tax and the deduction belong there, and the ordinary treatment is that one entity holds the invoice and recharges the other.** Splitting **within** one client across categories is the normal case and that is 18.4's split, which is unaffected.
-
-**One rule from the deleted material stays, because it came from somewhere else and step 10d rests on it. Never derive a client from a folder path. Always from a stored id.** From amendment 44, where two registries held different names for one client and it worked only because Windows filenames are case-insensitive. `2026-08-03_NOTE_chart_of_accounts_for_paul.md` cites it for a collision that differs only by case, and **sub-step 10d.11 is built on it**: `scan_inbox()` stops taking the client from the inbox folder name and reads `client_id` out of the item's sidecar.
-
-**One client can already receive receipts from more than one email address**, and it works by accident rather than by design. `load_clients()` at `config.py:71` builds `clients_by_email` from every row that has an email and `clients_by_code` from every row that has a code. Two rows differing **only** in the email column give two email entries pointing at identical client data, and the code index is written twice with the same value. `resolve_client_info()` at `worker/database/repository.py:57` is the only consumer of the email index, and nothing anywhere enumerates it as a client list, so a two-address client does not appear twice.
-
-**Two conditions on that, both of which belong in `CLAUDE.md`.** The rows must be identical apart from the email, because the code index takes whichever loaded last while the email index keeps both, so a mismatched `business_type` would depend on which address a receipt came from. And **it looks exactly like the defect amendment 49 fixed**, where one `client_id` was given to two genuinely different clients. A duplicate-id check added to guard against that would break multi-address clients. The test is whether the other columns match, not whether the id repeats.
-
-**Why the old arrangement caused so much trouble.** The client folder was simultaneously the firm's filing system and the interchange between the two modules. Almost every difficulty this document records about sidecars, folder scanning, two tolerated file shapes and disk-versus-database disagreement comes from that double duty.
-
-~~**Three rules that keep the stores independent.**~~ **ALL THREE ARE STRUCK, 2026-09-15, by amendments 476, 477 and 478, each on Paul's decision. WHAT REMAINS FROM THIS BLOCK IS ONE RULE, FROM AMENDMENT 476: INTELLIBILLS MAY HOLD NO REFERENCE INTO INTELLIBOOKS' STORE. The three are kept below, struck and numbered as they were, because five places in this document cite them by number. 18.2c's other rule, never derive a client from a folder path, is the surviving one from amendment 44 and is further up this section, untouched.**
-
-1. ~~**Copy at handoff, never reference afterwards.** A copy taken once is safe. A path held for ever is a dependency: move the folder and it breaks, and OneDrive can make the file unavailable or place a conflict copy beside it.~~ **STRUCK ENTIRE 2026-09-15 BY AMENDMENT 476, Paul's decision. The rule it states runs one way and not both, and the direction that needs a rule is the other one: INTELLIBILLS MAY HOLD NO REFERENCE INTO INTELLIBOOKS' STORE. IntelliBooks holding a reference into Intellibills' store breaks nothing, because section 3 of `2026-08-18_BOUNDARY_two_products.md` lets IntelliBooks depend on Intellibills for anything. The struck reason was also wrong on its own terms: `IntelliBooks\Books\{client_id}-books.json` sits on the same OneDrive as the archive it warned about, so every risk it names applies to the books file more heavily, that file being about 3 MB and rewritten on every save where an archived document is about 135 KB and never touched again. THE NUMBERING DOES NOT MOVE. This stays rule 1, struck. Rule 2 stays rule 2 and rule 3 stays rule 3, because five places in this document cite them by number and amendment 474 has just finished repairing exactly that kind of drift.**
-2. ~~**Each copy must stand alone.** If IntelliBooks keeps a reduced image and later needs the full document for a client query, it will reach into the pipeline's store and the coupling returns through the back door.~~ **STRUCK ENTIRE 2026-09-15 BY AMENDMENT 477, Paul's decision, in the same pass as rule 1. Its whole reason was that reaching into the pipeline's store is a coupling to be avoided, and amendment 476 settled that it is not: section 3 of `2026-08-18_BOUNDARY_two_products.md` lets IntelliBooks depend on Intellibills for anything. With that gone the rule has nothing left holding it up. IntelliBooks may keep a reduced image for display and fetch the full document from `Intellibills\Documents\` when one is needed. NOTHING REPLACES IT. THE NUMBERING DOES NOT MOVE: this stays rule 2, struck, and rule 3 keeps its number. FIVE PLACES IN THIS DOCUMENT CITE THIS RULE AND THEY ARE ENUMERATED IN AMENDMENT 477 RATHER THAN LEFT TO BE FOUND.**
-3. ~~**Never build anything that expects the two module stores to hold the same set.** They will not. The pipeline holds everything it processed; IntelliBooks holds only what became evidence for a transaction. That is correct behaviour, not drift, and a completeness report across both would report false problems for ever.~~ **STRUCK ENTIRE 2026-09-15 BY AMENDMENT 478, Paul's decision, completing the set. NOTHING REPLACES IT. Its premise is false and was checked in code rather than reasoned: `worker/extraction_pipeline.py:522` calls `publish_receipt()` outside the `ok` branch, widened on 2026-09-09 by amendment 293, so `failed`, `needs_review` and `possible_duplicate` all reach IntelliBooks and the two stores hold near enough the same set. A completeness report across the two is therefore permitted. IT IS NOT SCHEDULED AND MAY NOT BE NEEDED: see amendment 478.**
-
-~~**What is not lost by forbidding cross-reading.**~~ **REWRITTEN 2026-09-15 BY AMENDMENT 479, because cross-reading is no longer forbidden in both directions. It is forbidden in one: Intellibills may hold no reference into IntelliBooks' store, per amendment 476. What that one-way rule does not cost.** "Is every captured receipt accounted for?" is answerable inside the pipeline alone, from what it captured and the one-way status message in 18.3. That is what earns the existing resolution-note mechanism its place rather than making it redundant.
-
-**Cost, stated so it is a decision and not a surprise.** Three copies of every document. At the measured average of 135 KB that is about 400 KB a receipt. On AWS at S3 Standard rates the two cloud copies cost pence per firm per month and transfer out costs a fraction of a penny per view. The cost in this system is extraction, not storage.
-
-### 18.3 The handoff: push, not pull
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-> **None of this is built. Amendment 75, 2026-07-31.** ~~`IntelliBooks\Inbox\`~~ **`IntelliBooks\Incoming\`, renamed 2026-09-08 by amendment 280 before the folder existed** appears in 18.2a's tree and in neither codebase. **Corrected 2026-09-08 by amendment 280: that was established from the exact string literal `"Inbox"`, which is zero occurrences and is true. The substring occurs 13 times across `app.py`, `config.py`, `worker\` and `IntelliBooks-Desktop-v3.html`, every one of them `Receipt Inbox` or `importToInbox`, so `Intellibills\Receipt Inbox\` was always there and the evidence line did not say so.** Until it exists and passes the six-check acceptance test in section 0.5.1 of `C:\LastingImpact\receipt_capture\2026-07-31_PLAN_reset_and_restructure.md`, the interim in that section holds and the pull that exists today continues.
-
-The pipeline **publishes**. It will eventually have three destinations, and IntelliBooks is one of them with no privileges:
-
-1. A third-party accounting system through an API, creating a bill payable or a spend transaction. Much later.
-2. A CSV. Much later.
-3. IntelliBooks, internal.
-
-**Push in all three cases**, so publishing is one step in the pipeline with three adapters behind it. This is how Dext and Hubdoc are built: one document, several publishing destinations, and the tool records that it published. If the internal case were a pull, the pipeline would have two mechanisms and IntelliBooks would be a special case, and the pipeline would not know what had been taken without a second message coming back.
-
-**It also means IntelliBooks stops needing to know anything about the pipeline's storage, folder layout or file naming.** Today Desktop knows all three, plus two sidecar formats. That knowledge is the coupling.
-
-**One complication, and the way round it.** IntelliBooks is a browser app that exists only while it is open, so nothing can call into it and a literal push is impossible until it is a service. Until then the pipeline pushes into an **inbox that IntelliBooks owns and drains**. That is a push with a queue in front of it, and it is not the same as Desktop scanning the pipeline's folders, which is a pull and is what exists now.
-
-**The difference is who owns the location.** Today Desktop reaches into a folder the pipeline fills. Under this, the pipeline reaches into a folder Desktop owns. The same files move; the direction of knowledge reverses. When IntelliBooks becomes a service the inbox becomes an API endpoint and the internal adapter looks exactly like the third-party one.
-
-### 18.4 VAT treatment
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-**The rate is primary where there is no document.** A bank line categorised by a rule has no evidence behind it, so the rate is the only basis for its VAT.
-
-**Where the rate comes from. Rewritten 2026-09-04 by amendment 213, Paul's decision.** A category
-carries a **VAT category**, not a percentage. A separate **VAT rate table** holds the percentage and
-the date it applies from. A transaction's rate is **`Auto` or one of the rates**, and **`Auto` means
-that account's VAT category resolved through the rate table at the date of the transaction**. A
-choice made when categorising beats Auto and sticks. **The resolved percentage is written onto the
-transaction when it is posted**, so a later change to the table or to the account moves nothing that
-is posted.
-
-~~A category carries a **default rate**. A transaction rule may carry one. A choice made when
-categorising beats both. The rate is **derived from the category and then stored on the transaction**,
-so changing a category's default later does not rewrite the rate on transactions already posted.~~
-**Superseded.** The old rule stored the percentage the moment a category was chosen, which cannot
-express a rate that changes by date, and there have been three such changes in six years.
-
-**Rate values. Rewritten 2026-09-04 by amendment 213.** The chart holds a **VAT category**:
-`Standard`, `Reduced`, `Zero-rated`, `Exempt`, `Outside scope`, and `Not set`. **Narrowed 2026-09-04
-by amendment 214: no account is assigned a temporary relief category, now or as part of this work.**
-~~plus one category per temporary sector relief.~~ The special rates live in the table so they can be
-**picked on a transaction** when a supply needs one, and an account could be assigned one in future if
-that ever became necessary. **Zero-rated, exempt and outside scope all produce nil VAT and are not the same
-thing**, so they stay distinct. **Zero-rated is in the rate table, because 0% is a rate. Exempt and
-Outside scope are not in the table**, because they have no percentage and no dates. Blank is not zero.
-~~`20%`, `5%`, `0% zero-rated`, `Exempt`, `Outside scope`, `Not set`.~~ **The percentages leave the
-chart and live in the table.**
-
-**A default rate is all a category can carry, and this is not a nicety.** Many ordinary categories span two or three treatments: motor expenses covers fuel at 20%, road tax outside the scope and insurance exempt; travel covers zero-rated rail and 20% parking; subsistence covers hot food at 20% and cold at 0%; utilities covers 20% and 5%; rent is exempt unless the landlord has opted to tax. So the rate must be overridable at the transaction, and where one document genuinely carries two rates the answer is 18.4's split, not a second rate on one line.
-
-**Split transaction.** A simple split, as every other package has: one transaction becomes several lines, each with its own category, rate, VAT and amount, and the lines must sum to the original amount so the bank still balances. Not only for VAT: it is the general answer to one payment covering several things. **BUILT 2026-09-11 as sub-step 10g.4, and four things were decided in the building. Amendment 326.** **ONE TRANSACTION CARRYING LINES**, Paul's decision over the alternative of turning one bank line into several transactions, so the Bank Transactions tab keeps showing what the statement shows. **POSTING IS WHOLE**, his decision too: the lines only exist together. **EACH LINE HAS A MONEY OUT OR MONEY IN SELECT AND A POSITIVE AMOUNT**, the vocabulary the Add Transaction window already uses, so no minus sign is typed. **AND EACH LINE'S VAT IS CHECKED AGAINST ITS OWN CATEGORY** by 18.5a's one-sided rule: below the rate is ordinary and is not reported, because separating a part-rated payment is what a split is for, and above it cannot be right and is said.
-
-**A VAT amount cannot exist without a rate.** An uncategorised transaction therefore has neither.
-
-**Columns on Bank Transactions:** VAT %, VAT and Net, alongside the existing amount. Net is derived. Where the VAT amount does not agree with the rate, **the VAT amount is shown in a different colour**.
-
-**Tolerance is one penny**, replacing `_VAT_TOLERANCE = 0.02`.
-
-**The system alerts. It never prevents.** This is not a VAT compliance system, and it matches how Xero and QuickBooks behave: both allow the calculated VAT on a purchase document to be overridden. VAT reconciliation happens before each return, which is where checking belongs.
-
-**"Material" is deliberately not defined.** The system alerts and the operator decides. Two things follow. There is no threshold to argue about, and there is no number in the code that will be wrong for some invoices.
-
-**Why no threshold could be defended anyway.** HMRC permits a supplier to calculate VAT by invoice total, by line or by unit, so a legitimate rounding difference accumulates with the number of separately rounded lines. An invoice with a hundred lines can differ from a calculation on the total by almost 50p. So a fixed tolerance is wrong for a long invoice and useless on a short one, and the receipt data does not record line count. See VAT Notice 700 paragraphs 10.4.2 and 17.5, and Notice 700/45 paragraph 3.3.
-
-**And never silently force VAT to the expected percentage.** Where an invoice's VAT is materially wrong, HMRC's remedy is to obtain a replacement invoice and to include the VAT shown in the meantime. Recalculating it silently would record something the document does not say. VAT that was not legally due is not deductible merely because it appears on an invoice, per VAT Input Tax Manual VIT63100, but that is a matter for the operator and the supplier, not for the software.
-
-### 18.5 The two checks
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-**Attach carries nothing and checks nothing.** `attachReceipt()` currently copies the receipt's VAT and its category onto the transaction. Both stop. A category present on the receipt and absent from the transaction is a difference to be reported, not a value to be copied. There is no check on Attach, because attaching is provisional.
-
-#### 18.5a The Receipt Post to Cashbook check
-
-**This is the check that matters, because here the receipt is the source.** Its figures become the transaction's amount, VAT and date, so they are confirmed before anything is written.
-
-It is **not a comparison**. There is no second record to compare against. It is a confirmation of what is about to be written, with anything doubtful flagged.
-
-**What it shows.** Date, supplier, gross which becomes the amount, VAT, the category, the rate that category carries, and the resulting net.
-
-**One case where posting is not possible:** no category. A VAT amount cannot exist without a rate, the rate comes from the category, so there is nothing to write. This closes amendment 53's open question by construction rather than as a separate policy.
-
-**THE WINDOW IS EDITABLE AND THE ALERTS ARE GRADED. Added 2026-09-11 by amendment 325, from Paul using it.** Date, supplier, gross, category and VAT are all boxes and the rate and net follow as they are typed. **The edits change the TRANSACTION ONLY**, Paul's decision: the receipt keeps the figures the pipeline read, which 18.6 says have no standing once a transaction exists. **A View Receipt button opens the document beside it.** **Red is something that cannot be right; amber is something worth looking at the receipt for.** **AND THE VAT TEST IS ONE-SIDED, which the first version got wrong.** VAT can be any amount BELOW what the category's rate applied to the gross allows, and none above it. Paul's RingGo receipt of 30 October 2020 is the case: parking session £3.60 at 0%, two text messages £0.17 plus VAT £0.03, total £3.80, VAT £0.03, and the first version called £0.03 a disagreement with 20% of £3.80. **No line items are needed to get this right.** **Everything else is an alert and the operator posts anyway**, per 18.4. Chiefly: the receipt's VAT disagreeing with what the category's rate implies, and net plus VAT coming to less than gross, which is normal on a mixed-rate receipt and is stated rather than dressed up as a fault.
-
-~~A block where VAT exceeds gross.~~ **Considered and rejected 2026-07-30.** The argument for it was that a negative implied net describes no purchase. The argument against, which won: a block prevents recording the document you actually hold, which contradicts the HMRC position above, and the system is not a compliance gate. It may return later; it is not in this build.
-
-~~An alert where the receipt carries no VAT and the category's rate is above zero.~~ **Dropped 2026-07-30.** A supplier who is not VAT registered charges no VAT and the category is still Motor expenses at 20%, so it would fire on ordinary receipts. The same false-positive trap as the fixed tolerance.
-
-#### 18.5b The Difference check, and why it is now small. **CANCELLED 2026-09-11 BY PAUL, amendment 324. Kept as written because it is the record of what was designed and why it was dropped, and because 18.5a's own shape rests on the distinction it draws.**
-
-**It runs on Post**, meaning `postTxn()` and Post Selected, not `postReceiptToCashbook()`. Post is the moment a transaction is settled, and 14's own conclusion put the gate on the transaction rather than on the receipt.
-
-It compares the transaction against the receipt across **the fields genuinely common to both**: date, amount against gross, VAT, category, and supplier against the bank description. It **reports only what disagrees and asserts nothing about the rest.** A tick against a field the system cannot really vouch for, such as a loose supplier-name match, is a claim it should not make.
-
-**But it is worth much less than a day's design suggested, and that is recorded rather than hidden.** Paul's own example decides it: a receipt read as `T5 Short Stay` net £8.00, VAT £1.33 against an APCOA Parking transaction of £8.00 is a correct match with a wrong extraction. In a real practice that will be common. The check would then fire on correct matches, telling the operator about a disagreement they have already overruled. And the ability to attach a receipt manually where no match was found, which Paul is adding, removes any basis for the system to second-guess the pairing at all.
-
-**So the Difference check is informational only, it never holds anything up on its own, and it must not be built before 18.5a.** ~~One residual case may justify it and is not yet resolved: where the app found the match itself rather than the operator choosing it, a disagreement on the amount may mean the match is wrong. That depends on what `refreshMatches()` already requires of the amounts, which has not been read.~~
-
-**Read 2026-08-21, and the residual case is a different field from the one named above. Amendment 127.** `matchScore()` at `IntelliBooks-Desktop-v3.html:1272` reads `if(Math.abs(Math.abs(t.amount)-rGross(r))>0.005)return -1;`, so **an app-found match cannot disagree on the amount by more than half a penny**, which is tighter than 18.4's penny. That case cannot arise. **What the same function does allow is a match with no supplier agreement at all:** any date within 21 days, plus 30 for each supplier word of three characters or more found in the bank description, with no minimum, so at 21 days with zero matching words it scores 58 and still wins if nothing scores higher. **If 18.5b is built, that is the case it is for**, and it is the field Paul's own APCOA example says it will misfire on.
-
-### 18.6 What IntelliBooks keeps after Post
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-**The image and the identity of the document. Not the figures.**
-
-The transaction shows that a receipt is attached and lets you view it. It does not present the receipt's net, VAT and gross as though they were part of the accounts. Nothing to compare, nothing to confuse, nothing to correct, and no question of one module editing another's records.
-
-**Which is how other packages work**, and it is the anomaly in what exists today. `books.receipts` is a persistent, editable collection inside the ledger file that stays editable after the transaction exists. No mainstream package does that. In QuickBooks a matched receipt becomes a permanent attachment to the transaction; Dext and Hubdoc publish to Xero with the document attached and keep their own record on their own side.
-
-**So the receipts list is a staging area.** Items awaiting a decision, and nothing in it is part of the books. The decision is either that this becomes a new transaction, or that it belongs to an existing bank line. At Post the transaction takes the confirmed figures, the image and the document's identity are attached, and the staging entry retires.
-
-**Two things this removes.**
-
-**Locking a receipt is unnecessary.** Before Post nothing depends on the receipt, so editing it harms nothing, subject to the red-flag alerts in 18.4. After Post there is nothing to edit because it is no longer a separate record. Option 1, chosen earlier the same day, is superseded by this: see amendment 69.
-
-**The two copies can no longer disagree**, because after Post there is only one. Write-back is not needed and neither is divergence detection.
-
-**The divergence that exists today, as evidence that this is real rather than theoretical.** For receipt `be7d656c`, the data file at `Clients\Test 2\Receipts\2023-24\2023-07-07_canva_10.99-2.jpg.json` reads net £10.99, VAT null, gross £10.99. The books row for the same receipt reads VAT £52.00. `saveReceiptEdit()` writes six fields with no guard of any kind, and `ingestReceiptFiles()` skips any receipt already in the books, so the row is never refreshed. An editable cache with no refresh and no write-back. It is test data and step 10c clears it; do not build a repair.
-
-### 18.7 Bulk behaviour
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-**Bulk categorisation is restricted to transactions not yet categorised.** Nothing to overwrite, no combinations to group, no warning to word. Recategorising happens one at a time through the transaction detail window, which opens where there are critical field differences. Correcting fifty wrong categories is fifty visits, which is real and rare, and a one-combination rule can be added later without undoing anything.
-
-**Bulk post on the bank side.** Post the clean ones, hold the rest, mark the held rows. The message reads:
-
-> Posted 18 of 23. The other 5 differ from their receipts. Press Check on those rows.
-
-A held transaction is posted individually only, and it may stay held indefinitely. Post happens once, so there is no repeated nagging and **no acceptance record is needed**.
-
-**Bulk post of receipts to the cashbook** offers only receipts that pass 18.5a and carry a category. A receipt with an unresolved problem simply never becomes eligible, so the bulk action is never where judgement happens.
-
-**Nothing is stored that could go stale.** Readiness and the difference marker are worked out when the screen is drawn. There is no confirmed flag, because editing and confirming happen in the same window, so typing a figure and saving **is** the act of looking at it. ~~That sentence is about readiness and the difference marker. Step 10l's CATEGORY confirmation is a deliberate exception to it, added 2026-09-12 by amendment 334: that one IS stored, on the books receipt entry, because the receipt it was confirmed on has left the inbox by the time the pill would be drawn again, so there is nothing left to derive it from.~~ **STRUCK THE SAME DAY BY AMENDMENT 335, and 18.7 stands as it was written. There is no exception: step 10l's category confirmation stores nothing either.** The struck sentence was wrong about where the pill is drawn. This follows the same rule as everywhere else in this document: a stored flag has to be cleared by every path that changes anything, and one of them always forgets. `saveReceiptEdit()` leaving `validation` reading `ok` after the figures were changed is that fault in the wild.
-
-### 18.8 Receipts view and marker
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-- The Receipts tab defaults to **Not attached**.
-- The thumbnail is dropped from the books entry on Attach. The image is a lossy 1,400px JPEG re-encode of a file already on disk, and it is 97 to 100 per cent of every books file. ~~Dropping it requires 18.2c's second rule to be honoured, or the app will reach for the original.~~ **STRUCK 2026-09-15 BY AMENDMENT 477. Rule 2 is struck, so the app reaching for the original is what the design now expects rather than what it forbids. Dropping the thumbnail needs nothing beyond the record naming the receipt id and the archive path being composable from it. The struck sentence is shown as amendment 474 left it: as written it read "18.2's second rule", and that section number was wrong.**
-- The filed path is stored on the receipt entry when it is created.
-- **The difference marker gets its own column, shown only where there is a difference**, using a recognised symbol rather than a word. Delete becomes a recognised symbol at the same time.
-- A receipt can be attached manually where no match was found.
-
-### 18.9 What this cancels
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-| Cancelled | Replaced by |
-|---|---|
-| Desktop change D, the reconciliation warning at posting. Amendments 52, 54 and 64. | This section. The warning as specified rested on `net + VAT = gross` being a validity test. It is not; it is a single-rate test, and it fails on ordinary mixed-rate receipts. |
-| Amendment 53's open question on a blank category at posting. | 18.5a. It cannot be blank, because a blank category means no rate and a VAT amount cannot exist without one. |
-| Amendment 55, and amendment 65's extension of it to `_Statements`: the `_IntelliBooks` client folder namespace. | 18.2a. See amendments 70 and 72. There is nothing left to namespace. |
-| Intellibills writing into `Clients\` **on every arrival**, which is what `file_receipt()` does today. ~~at all~~ | ~~18.2b. IntelliBooks writes that copy, at Post, and amendment 73 records why.~~ **Amended 2026-08-18, amendment 106: the copy is Intellibills' own function, with two triggers set per firm, on successful publish or at Post.** What is cancelled is writing on arrival; what replaces it is **one writer, gated on a successful publish**, so nothing that failed validation, needed review or was flagged a possible duplicate reaches a client folder. |
-| Step 10b, the reconciliation check as a pipeline deliverable. | 18.2b and amendment 73. Section 13A becomes IntelliBooks' work. |
-| `data\files\` inside the repository, and `receipts.db` beside it. | 18.2a. The document store moves to `Intellibills\Documents\`; the live database moves to `C:\Intellibills\db\`, **out** of any synced folder; its backups go to `Intellibills\Backups\` in OneDrive. ~~The document store moves to `Intellibills\data\files\`.~~ Corrected by amendment 76. |
-| Section 14 bullet 5, the receipt-versus-rule category arbitration. | Deleted 2026-07-30, amendment 67. The difference is shown and the operator decides. |
-| `_VAT_TOLERANCE = 0.02`. | One penny, 18.4. |
-| 18.5b, the Difference check at Post, and sub-step 10g.8 with it. **Added 2026-09-11, amendment 324.** | Nothing. **Paul's decision: pressing Post is the decision, so a check at that moment has nothing to add.** 18.5a stands and is unaffected: there the receipt is the source of the figures rather than evidence about a transaction that already exists, which is 18.1's one exception. |
-| `fileReviewReceipt()` writing an image and a sidecar into `Clients\{client name}\Receipts\{tax year}\` when a review item is filed. **Added 2026-08-18: this table did not name it, so the cancellation above was incomplete and there were two writers rather than one.** | Amendment 106. A completed review item reaches the client folder by the same single route as any other receipt. |
-| The Review queue reading, **deleting** and writing in the pipeline's own folders, `Intellibills\Review\{CODE}\` and `Intellibills\Resolutions\`. **Added 2026-08-18: three filesystem operations across a module boundary, none of which a cloud IntelliBooks could perform.** | Amendment 106. Review items are published to the inbox marked as needing review; completion and discard return as resolution notes. The queue stays on screen where it is. |
-| `client_code` as a field, in `clients.csv`, in `IntelliBooks-Practice.json` as `code`, and on the `receipts` table. **Added 2026-08-18.** | Amendment 105. One `client_id`, system generated and unchangeable, plus `client_name` for display, `client_folder_name` for the one folder, and `capture_token` for the capture link. |
-
-### 18.10 Postponed, and Paul has said not for long
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-- ~~**Categories in receipts and transactions.** This also decides whether category appears in the Difference check at all.~~ **Closed 2026-09-12 by item 35: `attachReceipt()` stops copying a receipt's category and VAT onto the transaction it attaches to, amendment 360. The Difference check itself no longer exists to decide anything for, cancelled 2026-09-11 by amendment 324. Flagged and corrected in this pass, per outstanding item 127, amendment 414.**
-- ~~**Extending `chart_of_accounts_DRAFT.csv`.** It was "not blocking". It now is: it is the shared vocabulary and the VAT treatment has to hang off it.~~ **Closed 2026-08-17, amendment 96, and not by extending anything.** That file was never a chart of accounts, only the distinct codes and names that happened to be in one PHV driver's supplier mappings. A 122-account master was built from scratch at `IntelliCharts\COA_MASTER_v1.csv`, and **IntelliBooks becomes a consumer of it on the same footing as Xero rather than being the shared vocabulary itself.** The VAT treatment hangs off the master's `vat_treatment` and `vat_recoverability` columns. The sentence above records what was built on 2026-08-17 and is kept as written, per amendment 82; `COA_MASTER_v1.csv` has since been superseded by `COA_MASTER_v2.xlsx` and moved to `IntelliCharts\Cockups\`. Amendment 173. **One thing is not closed and it is new:** account `4200` has an income type on an expense box and `exportHMRC()` gets the sign wrong. Amendment 97.
-- ~~**Whether a filed receipt ever gets a correction route.** Under 18.6 the question changes shape, because a receipt is editable while it is waiting. What remains is whether a figure recorded wrongly by the pipeline can ever be corrected in the pipeline's own record.~~ **Closed 2026-09-06 by amendment 235, Paul's decision: it does, through a `corrected` resolution note. Step 10k. This was item 36 of the outstanding list, now closed.**
-
-### 18.11 What is local-only and will be discarded
-
-**UNDER REVIEW, 2026-09-15. See section 20.**
-
-Recorded so nobody mistakes it for durable work. **Anything that keeps two local stores honest** is a cost of building locally and will not survive the move to one store behind a service: the sidecar as a message format and its two tolerated shapes, the folder scan, divergence detection, write-back, the client folder namespacing, and four of section 13A's eight findings.
-
-**F17, the client top folder, is NOT on this list, and it is named here because a session reading this section would reasonably assume a Windows path belongs on it. Added 2026-09-07 by amendment 261 on Paul's correction, and the consultant session had it wrong first.** The reason is 18.2's third row: **the client folder belongs to neither module. It is the firm's own filing structure.** It is not our storage moving to a service, so it does not move with our storage. **Paul, 2026-09-07: a firm on the cloud version may well still choose to file into a top folder of their own, locally.** So the path is a durable setting rather than a local address for something we own.
-
-**What that raises, and it is a question for `2026-09-01_DESIGN_cloud_multi_firm.md` rather than for this document.** A service running on AWS cannot reach a folder on a customer's own machine by itself, so a firm wanting that copy needs something running on their side to receive it. Recorded there on 2026-09-07 as its ninth constraint.
-
-**What IS local only is the browser folder grant at 10e.15**, because a service has no folder dialogue. The grant goes; the setting it verifies stays.
-
-**Updated 2026-07-30.** Three items leave that list, because the decisions of 30 July removed the work rather than deferring it. **The client folder namespacing is gone entirely**, since `Clients\` is now Intellitax's structure with per-firm settings and nothing to namespace. **The sidecar in `Clients\` is gone**, because that copy is image only. **And the pipeline's client folder handling is gone**, because Intellibills no longer writes there. What remains local-only is narrower and mostly the interchange: the push into a folder that stands in for an API endpoint, per 18.3, and whatever remains of disk-versus-record checking.
-
-**Two of the three that left rejoin it for a stated period. Amendment 75, 2026-07-31.** The sidecar as a message format, and the pipeline's client folder handling, both survive as long as the interim in section 0.5 of `C:\LastingImpact\receipt_capture\2026-07-31_PLAN_reset_and_restructure.md` holds, because they are the interchange and its replacement is unbuilt. They are still local-only and still first to be cut; they are simply not gone yet. The client folder namespacing is gone for good and does not return.
-
-**One item joins the list.** The synchronous write of the client copy at Post, 18.2b, is a local constraint. On the cloud version it is a queued job and the question does not arise.
-
-**Anything about how a transaction is formed and what VAT treatment it carries transfers untouched.** That is all of 18.4, all of 18.5a, the split, and the checks at the point a transaction comes into existence.
-
-If work has to be cut, cut from the first list.
+**The amendment record still cites section 18 in 340 places and those are not repointed.** Each is a record of a decision taken while section 18 said something, and rewriting them would falsify the history.
 
 ## 19. Fields written and not read
 
@@ -3141,9 +2768,9 @@ Both written on every cycle by `app.py`'s `_write_pipeline_status()`, from `repo
 
 ## 20. Where receipt documents live
 
-**Added 2026-09-15 by amendment 483, on Paul's instruction. Where this section and section 18 cover the same ground, this section is the authority.** Section 18 is under review and is to be rewritten; see the note at the head of this document and at the head of section 18.
+**Added 2026-09-15 by amendment 483, on Paul's instruction. This is the principal source for where receipt documents live.** ~~Where this section and section 18 cover the same ground, this section is the authority. Section 18 is under review and is to be rewritten.~~ **Superseded 2026-09-16 by amendment 498: section 18 is retired entire.**
 
-**SECTION 18 IS NOT CONSULTED AND IS NOT CITED. Paul's instruction, 2026-09-15, amendment 485.** This design is being made from first principles. Section 18 is not opened, not quoted, and never used as justification for a decision. **Where a question arises that this section does not answer, it is put to Paul.** Nothing in section 18 is authority for anything.
+**THIS SECTION IS THE PRINCIPAL SOURCE. Paul's instruction, 2026-09-16.** **The amendment record explains this section; it is not a source in its own right.** **Where a question arises that this section does not answer, it is put to Paul.** ~~Section 18 is not consulted and is not cited, amendment 485.~~ **Superseded by amendment 498: section 18 is retired entire and there is nothing left to consult.**
 
 **Verified against the code and not against any document describing the code.** `worker/storage/store.py`, `worker/publish.py`, `worker/filing.py`, `config.py` and `IntelliBooks-Desktop-v3.html` were each read directly on 2026-09-15.
 
@@ -3157,19 +2784,62 @@ Both written on every cycle by `app.py`'s `_write_pipeline_status()`, from `repo
 |---|---|---|
 | The record table | Document | Holds the archive path and the document's status |
 | The log table | Reading of a document | Tagged by machine or by operator. Never updated once written. An operator's correction writes a row here, the same as an automatic read does |
-| The working table | Document awaiting a decision | Reflects the last item published to IntelliBooks |
+| The working table | Document awaiting a decision | Reflects the last item published to Intellibills' front end |
 
-**The working table does not follow live edits made inside IntelliBooks.** The two systems share no live database, so a correction made inside IntelliBooks cannot appear there in real time. The final decision moves that table when it comes back on the pipeline's next poll. The poll is every five minutes, `POLL_INTERVAL_SECONDS = 300` in `config.py`, and every mention of the next poll in this section means that same cycle.
+**The working table does not follow live edits made inside IntelliBooks.** The worker and the front end share no live database, so a correction made in the front end cannot appear there in real time.
 
-**Intellibills' receipt records.** `Intellibills\Receipts\{client_id}-receipts.json`, one file per client. It holds the receipt records the Receipts tab and the Review queue read and write, and it carries each receipt's address in the archive rather than its picture. Every view of a document, thumbnail or full, reads the file live from the archive at that address. The image is never embedded, so nothing is later dropped, because nothing was copied in.
+**Where the database itself lives, and it is in neither tree.** `C:\Intellibills\db\receipts.db`, deliberately outside OneDrive: a file two processes write and a sync client rewrites underneath them is how a database is corrupted. Its logs sit beside it at `C:\Intellibills\logs\`. **Its backups do go to OneDrive**, at `Intellibills\Backups\`. Read in `config.py`: `DB_PATH` at line 234 and `LOGS_DIR` at 235, both off `UNSYNCED_ROOT`, and `BACKUPS_ROOT` at 187 off `INTELLIBILLS_ROOT`.
+
+**The two role names bind to real tables, checked in the code on 2026-09-16.** The records table is `receipts` and the logs table is `extractions`, both in `receipts.db`. **The logs table's real name is narrower than its contents**: an operator's correction is a row there too, carrying `manual_correction` in its `engine` column, written at five sites in `worker/resolution/service.py`. Nothing updates a row in it; `worker/database/repository.py:1158` records that the one function which did was removed for doing it. **The working table is not bound to any table and has not been checked.** The final decision moves that table when it comes back on the pipeline's next poll. The poll is every five minutes, `POLL_INTERVAL_SECONDS = 300` in `config.py`, and every mention of the next poll in this section means that same cycle.
+
+**Intellibills' receipt records.** `Intellibills\Receipts\{client_id}-receipts.json`, one file per client. It holds the receipt records the Receipts tab reads and writes, and it carries each receipt's address in the archive rather than its picture. ~~and the Review queue~~ **Corrected 2026-09-16 by amendment 491: the Review queue does not read this file.** `scanReview()` reads its items out of `Intellibills\Incoming\`, because a receipt that is not `ok` is never drained. It reads the receipt records only to skip one already settled by the other route. Every view of a document, thumbnail or full, reads the file live from the archive at that address. The image is never embedded, so nothing is later dropped, because nothing was copied in.
 
 **A receipt is Intellibills' data until it becomes a transaction. Paul's decision, 2026-09-15.** It becomes IntelliBooks' business only when it is attached to a transaction or posted to the cashbook. `books.receipts` is removed and `{client_id}-books.json` keeps transactions only.
 
+**A receipt is never locked.** Before it becomes a transaction nothing depends on its figures. After, nothing reads them. There is nothing to protect and no state to manage.
+
+**The receipt record and the transaction can differ, and it does not matter.** Nothing compares them, and the receipt's figures have no standing on the accounts once the transaction exists.
+
+**The receipt record does not carry the Clients folder path. Paul's decision, 2026-09-16.** `receipts.filed_path` is the worker's, and the worker is the only writer into `Clients\`. The copy is made on a firm setting, at Post or on successful publish or never, so it can appear after the front end last looked. **A copy of that path on the record would be stale exactly when it is used**, which is the moment of deleting. The delete dialogue therefore asks whether the worker knows the receipt at all, and the worker decides on its next run whether there is a copy to remove.
+
+**Nothing derived is stored on a receipt record. Paul's decision, 2026-09-16.** A record holds what was read or decided: the receipt's id, client, supplier, date, net, VAT, gross, category, source, the archive address, and the worker's verdict on what it read. **Anything that can be worked out when the screen is drawn is worked out then**, including whether the receipt is attached, which is a membership test over the transactions, and whether it is ready to post.
+
+**The reason, and it has already happened here.** A stored flag has to be cleared by every path that changes anything, and one of them always forgets. `saveReceiptEdit()` writes six fields, being supplier, date, net, VAT, gross and category, and leaves the verdict exactly as the worker set it.
+
+**So an operator edit clears the verdict, and it is not refilled. Paul's decision, 2026-09-16.** A receipt marked `needs_review` for a missing supplier must not still read `needs_review` after the supplier has been typed in. **Nothing is lost by clearing it**: every reading is a row in the logs table, the worker's original among them, with its reason and its time.
+
+**It is not refilled, and that is established rather than assumed.** Only two places publish, `process_extraction_result()` in `worker/extraction_pipeline.py` and `_publish_unpublished_receipts()` in `app.py`, and neither is reachable from a correction: the first is the poll reading a document for the first time and the second sweeps receipts never published. `_apply_corrected_note()` writes a row in the logs table and publishes nothing. **So the verdict travels one way, once.**
+
+**What the front end may say for itself is what it can see**, being an amount that is missing or a category that is not set. It does not recompute the worker's verdict, because that would put one set of validation rules in two codebases.
+
+**A receipt record is not retired when it becomes a transaction. Paul's decision, 2026-09-16.** It stays in `Intellibills\Receipts\{client_id}-receipts.json` for the life of the client.
+
+**Size is not a reason to remove it.** A record is about 452 bytes, measured against the largest live client. A thousand receipts is under half a megabyte.
+
+**Its figures cannot reach the accounts after that point.** Attaching copies nothing across, and a receipt posted to the cashbook has already handed its figures to the transaction, so nothing reads the receipt's net, VAT or gross again. It stays editable and that costs nothing, because there is no longer anything comparing the two.
+
+**Retiring it would put the same thing in two places.** A Bank Transactions row shows "Receipt attached" and a View button by looking the receipt up by its id. With the record gone the transaction would have to carry the archive address and the supplier itself, in a second file.
+
+**The consequence, accepted rather than discovered later:** the Receipts tab shows every receipt for the life of the client. It defaults to Not attached and filters by tax year, so it stays usable, and the list grows.
+
 **The receipts in the five books files today are abandoned, not migrated. Paul's decision, 2026-09-15.** They are test data, and step 10i clears the receipt files and the database together immediately before the pilot, so both sides start empty on the same day.
 
-**The transaction file.** IntelliBooks. The `transactions` array in `{client_id}-books.json`. Each transaction carries its own status, new or posted, and a `receiptId`.
+**The transaction file.** IntelliBooks. The `transactions` array in `{client_id}-books.json`. Each transaction carries its own status, new or posted, and a `receiptId`. **A transaction may instead carry `docId`, `docName` and `docAt`**, which is a document attached from the Bank Transactions tab by `attachDocument()`. That document is written into `Intellibills\Attached\`, never appears in the receipt records, and is not a receipt.
 
 **The Clients folder.** `Clients\{client_folder_name}\IntelliBooks\Receipts\{tax year}\`, owned by neither module. It is Intellitax's own filing structure, presented through the client portal. Written only by Intellibills, on a firm setting: on Post, on successful publish, or never. Corresponds to `receipts.filed_path`. Deleting a receipt that already has a Clients folder copy delivered does not touch the archive. It optionally removes the Clients folder copy, by the operator's choice made at the point of deletion, actioned on the pipeline's next poll.
+
+**The Clients folder copy, in full.**
+
+- **Image only.** No data file beside it. This covers the statement copy as well as the receipt copy.
+- **The document date names both the folder and the filename.** Not the transaction date, which is when the money moved and can fall in a different tax year.
+- **Unposting does not withdraw the copy.** Written once, never withdrawn, and a repost does not duplicate it. A document appearing and disappearing on a client portal is worse than one slightly ahead of the books.
+- **A statement files by its end date, and only by its end date**, even where the period straddles 5 April.
+- **Per-firm settings decide whether the copy happens at all, and the path to the top folder.** `Clients\` is the firm's own structure and the product does not dictate it.
+- **A delivery log records each copy written**, at `IntelliBooks\Delivery\{client_id}.log`, one per client, composed in `_delivery_log_path()` in `worker/client_copy.py`. Without it a document sitting in a client folder with no matching posted transaction cannot be explained.
+- **The copy is made by the worker on its next poll, not at the moment of posting.** `copy_for_published_receipt()` is in `worker/client_copy.py` and every caller is the worker, so the copy appears up to five minutes after Post rather than as you press it.
+
+
+**Where a receipt that is not `ok` waits.** It stays in `Intellibills\Incoming\`. The drain takes only `ok` items, so a `needs_review`, `failed` or `possible_duplicate` receipt has no record anywhere on the front end side until the Review queue settles it. **The exchange folder is that receipt's store as well as the handover.**
 
 **The exchange folder.** `Intellibills\Incoming\`. Intellibills' Python worker writes each published item into it, and Intellibills' front end, being the Receipts tab and the Review queue, takes them out. **Both ends are Intellibills, so the folder sits in Intellibills' tree. Paul's decision, 2026-09-15.** **Enumerated rather than assumed:** the only writer anywhere is `publish_receipt()` in `worker/publish.py`; the only readers are `drainInbox()`, `renderInboxCount()`, `scanReview()`, `collectAllClientReview()` and `discardReviewReceipt()`, all in `IntelliBooks-Desktop-v3.html` and all part of the Receipts tab or the Review queue. Nothing belonging to the books touches it.
 
@@ -3177,24 +2847,36 @@ Both written on every cycle by `app.py`'s `_write_pipeline_status()`, from `repo
 
 ### 20.2 The lifecycle, receipt to posted transaction
 
-1. A document arrives, by email or folder intake, and is written once to the archive by `save_file()` or `save_inbox_file()`.
-2. Its record is created in the record table, and its first reading is written to the log table.
-3. Extraction runs and is logged. Any operator correction, wherever it happens, is also logged.
-4. The item is published into `IntelliBooks\Incoming\`.
-5. IntelliBooks picks the item up and holds its own copy in `books.receipts`, keyed to the archive path.
-6. The operator works the receipt by one of two routes. Route A, `confirmPostToCashbook()` and `postReceiptToCashbook()`: post it directly to the cashbook, creating a new transaction and copying the category and VAT onto it. Route B, `attachReceipt()`: attach it as evidence to an existing transaction, arising from bank statement import or matching, copying no figures. Both routes converge at the same posting step.
-7. Posting, `postTxn()`, has one meaning: signing off a transaction, whether that transaction already existed or was created in the same act from a receipt. A receipt is never itself posted. Only a transaction is.
-8. Posting calls `reportAttachedAfterPost()`, which sends a note back to Intellibills on the pipeline's next poll, whichever route was taken.
-9. The operator may instead delete the receipt. Delete is the operator-facing verb. The note sent to Intellibills records the outcome as `discarded`, and carries the operator's choice of whether to also remove a Clients folder copy already delivered. The archive copy is never touched by a deletion, either way.
+**Rewritten 2026-09-16, amendment 490, step by step with Paul.** It is the only lifecycle in this document. Where a step names a table by role, 20.1 binds that role to the table in the database.
 
-**Unposting or deleting a transaction** (`unpostTxn()`, `deleteTxn()`) affects only the transaction. It remains in the Transactions tab, marked unposted, or it is removed. The Receipts tab and the record table are unaffected either way.
+1. A document reaches Intellibills one of two ways: as an email attachment, or as a document placed in `Intellibills\Receipt Inbox\{client folder}\` with a JSON sidecar beside it.
+
+2. The worker writes the document into the archive at `Intellibills\Documents\{client_id}\{year}\{month}\{receipt_id}_{filename}`, where it is never changed once written. An email attachment is written there straight from the message by `save_file()`. A document from the Receipt Inbox is copied there by `save_inbox_file()`, and the pair it arrived as, the document and its JSON sidecar, is moved into `Processed\` inside that client's inbox folder.
+
+3. The worker inserts one row in the records table, holding the archive address of the document and its status, which starts as `pending`.
+
+4. Extraction runs and what it read is validated. Both go into one new row in the logs table, the figures and the validation outcome together, and the same outcome is set as the receipt's status on its records row: `ok`, `needs_review`, `failed` or `possible_duplicate`. The logs table is never overwritten: a later reading, whether by the machine or by an operator correcting it, is another row, and the newest row is the receipt's current figures.
+
+5. The worker publishes the item: one JSON file named `{receipt_id}.json`, written into `Intellibills\Incoming\`, holding the receipt's details and the address of the document in the archive. Every status is published, not only `ok`.
+
+6. Intellibills' front end, the Receipts tab, drains `Intellibills\Incoming\`. For each `{receipt_id}.json` it reads, an `ok` receipt becomes a row in `Intellibills\Receipts\{client_id}-receipts.json`, carrying the archive address. The other three statuses are left in the folder for the Review queue. The front end saves `Intellibills\Receipts\{client_id}-receipts.json`, reads it back, and deletes a `{receipt_id}.json` only if that receipt's id is in what it read.
+
+7. The operator works the receipt by one of two routes. Route A, `confirmPostToCashbook()` and `postReceiptToCashbook()`: post it directly to the cashbook, creating a new transaction and copying the category and VAT onto it. Route B, `attachReceipt()`: attach it as evidence to an existing transaction, arising from bank statement import or matching, copying no figures. Both routes converge at the same posting step.
+
+8. Posting, `postTxn()`, has one meaning: signing off a transaction, whether that transaction already existed or was created in the same act from a receipt. A receipt is never itself posted. Only a transaction is.
+
+9. Posting calls `reportAttachedAfterPost()`, whichever route was taken. It writes one JSON note, named `{receipt_id}_{milliseconds}.json`, into `Intellibills\Resolutions\`, carrying the action `attached`. The worker reads it on its next run, at most five minutes later, updates the receipt's record and moves the note aside.
+
+10. The operator may instead delete the receipt. Delete is the operator-facing verb, and it is offered only on a receipt that is not attached. The front end removes the receipt's row from `Intellibills\Receipts\{client_id}-receipts.json` and writes a JSON note into `Intellibills\Resolutions\` recording the outcome as `discarded` and carrying the operator's choice of whether to also remove a Clients folder copy already delivered. The worker reads that note on its next run. The document in the archive, written at step 2, is never touched by a deletion, either way.
+
+**Unposting or deleting a transaction** (`unpostTxn()`, `deleteTxn()`) affects only the transaction. Unposted, it stays on the Bank Transactions tab marked new. Deleted, it is removed from `{client_id}-books.json`. The receipt's row in `Intellibills\Receipts\{client_id}-receipts.json` and its row in the records table are unaffected either way, and no note is written to `Intellibills\Resolutions\`.
 
 ### 20.3 What changes from what is built today
 
 - The receipt thumbnail on the Receipts tab is replaced by a type pill, computed synchronously with no file read, styled like the existing status pills. Clicking it triggers an on-demand, asynchronous read of the file from the archive, using the same three-call pattern (`getFileHandle`, `.getFile()`, `URL.createObjectURL`) already used for PDFs today.
-- The published item stops carrying `image_base64` and `image_media_type` and carries the archive path instead, now that IntelliBooks may read the archive directly. This follows from dropping the base64 image and is not a separate decision.
+- The published item stops carrying `image_base64` and carries the archive address instead, now that Intellibills' front end reads the archive directly. ~~and `image_media_type`~~ **Corrected 2026-09-16 by amendment 491: `image_media_type` stays.** The front end uses it to tell a picture from a PDF before it decides how to render, so it cannot wait to read the file. Only the bytes go. This follows from dropping the base64 image and is not a separate decision.
 - PDF viewing, which today falls back to reading from the Clients folder copy, targets the archive directly instead, for the same reason.
-- **No new grant is needed** for IntelliBooks to read the archive directly. Its single folder handle, `rootHandle`, is already requested at the practice root with `showDirectoryPicker({mode:"readwrite"})`, and `Intellibills\Documents\` sits under that root. IntelliBooks already has read and write reach into the archive today. This design is the first thing to use it.
+- **No new grant is needed** for the front end to read the archive directly. Its single folder handle, `rootHandle`, is already requested at the practice root with `showDirectoryPicker({mode:"readwrite"})`, and `Intellibills\Documents\` sits under that root. The front end already has read and write reach into the archive today. This design is the first thing to use it.
 
 ### 20.4 The address on the published item
 
@@ -3202,7 +2884,7 @@ Both written on every cycle by `app.py`'s `_write_pipeline_status()`, from `repo
 
 ~~`make_enriched_sidecar()` gains a field... IntelliBooks reads that field.~~ **Corrected 2026-09-15 by amendment 488, the consultant session's error.** `make_enriched_sidecar()` in `worker/filing.py` builds the receipt's details and does not change. The picture is put on the item by `build_item()`, which is already handed the document's location, so the address replaces the picture in the same place. The reader is the Receipts tab, which is Intellibills' front end.
 
-**The address is stored relative to the practice root, with backslashes**, the same rule `filed_path` already follows: `resolve_practice_path()` at `worker/resolution/service.py:643` states it and joins the value to `config.PRACTICE_ROOT` when the file is wanted. So the stored form is `Intellibills\Documents\{client_id}\{year}\{month}\{receipt_id}_{filename}` and no machine's user profile appears in any stored record. This is what lets the same records work on Paul's machine and on a subcontractor's Azure Virtual Desktop.
+**The address is stored relative to the practice root, with backslashes**, ~~the same rule `filed_path` already follows~~ **Corrected 2026-09-16 by amendment 491: the rule `resolve_practice_path()` states, which the JSON notes the front end writes follow. The database follows no such rule.** Read on Paul's machine on 2026-09-16: all 35 `file_path` values and all 26 `filed_path` values are absolute, carrying the full `C:\Users\PDK7\...` prefix. Converting is work the publisher does rather than a form it inherits: `resolve_practice_path()` at `worker/resolution/service.py:643` states it and joins the value to `config.PRACTICE_ROOT` when the file is wanted. So the stored form is `Intellibills\Documents\{client_id}\{year}\{month}\{receipt_id}_{filename}` and no machine's user profile appears in any stored record. This is what lets the same records work on Paul's machine and on a subcontractor's Azure Virtual Desktop.
 
 **Why the field rather than deriving it.** Deriving puts the same path composition in two codebases that cannot see each other, worked by sessions that cannot see each other. The day the archive layout changes, the Python worker moves and the front end does not, and every stored address points at nothing with no error raised. The field costs one key on the published item and leaves the layout known in one place.
 
@@ -3216,7 +2898,7 @@ VAT treatment, bulk actions (`bulkPost`, `bulkCashbook`), the Receipts view "Att
 
 ### 20.6 What has to be built
 
-**Seventeen items, drawn against the code on 2026-09-15 and itemised here rather than left as a note.** Seven on the Python worker, ten on the front end.
+**Eighteen items, drawn against the code on 2026-09-15 and itemised here rather than left as a note.** Seven on the Python worker, eleven on the front end. ~~Seventeen items ... ten on the front end.~~ **Amendment 493 designed two of them out and added one.**
 
 **Intellibills, the Python worker**
 
@@ -3225,8 +2907,8 @@ VAT treatment, bulk actions (`bulkPost`, `bulkCashbook`), the Receipts view "Att
 3. `build_item()` converts the path. `save_file()` in `worker/storage/store.py` returns an absolute path and `receipts.file_path` stores it absolute.
 4. `image_media_type` stays. The front end needs it to tell a picture from a PDF.
 5. **An explicit existence check replaces the one the byte read was doing, in the same place and raising `PublishError` the same way. Paul's decision, 2026-09-15.** A document that is missing still fails the publish and still writes its reason to `publish_events`.
-6. `config.INTELLIBOOKS_PUBLISH_DIR` becomes `Intellibills\Incoming\`.
-7. `IntelliBooks\Incoming\` is deleted and its `mkdir` line goes with it.
+6. `config.INTELLIBOOKS_PUBLISH_DIR` becomes `Intellibills\Incoming\`. **The constant keeps its name and the name is knowingly stale**: it now points into Intellibills' tree. Renaming it was not in the brief and is not scheduled. **Recorded here so the next reader is not misled by it**, and because `INTELLIBOOKS_PUBLISH_DIR` and `INTELLIBILLS_ROOT` are two letters apart and a test exists solely to stop them being confused.
+7. `IntelliBooks\Incoming\` is deleted. ~~and its `mkdir` line goes with it~~ **Corrected 2026-09-16: the line moved rather than went.** `config.INTELLIBOOKS_PUBLISH_DIR` is re-pointed and the one `mkdir` on it now creates `Intellibills\Incoming\`. Nothing creates `IntelliBooks\Incoming\` any more. Deleting the folder on disk is Paul's.
 
 **Intellibills, the front end in `IntelliBooks-Desktop-v3.html`**
 
@@ -3238,31 +2920,17 @@ VAT treatment, bulk actions (`bulkPost`, `bulkCashbook`), the Receipts view "Att
 13. Viewing reads the archive at the stored address.
 14. The Review queue rows do the same.
 15. **The drain reads the receipts file back from disk and deletes a tray file only if that receipt's id is in what it read. Paul's decision, 2026-09-15.** No flag and no modification marker decides the delete, so there is nothing that can be left pointing at the wrong file. If the save did not land, the id is not there and the tray file stays. **Measured cost: the receipts for the largest live client come to 7,682 bytes with the pictures out and an address in, about 452 bytes a receipt, so this is a few-kilobyte read once per drain.**
-16. Each file carries its own stale-file guard, the one `saveBooks()` has today. Held by a test that changes each file underneath the app in turn and asserts that file refuses to save and the other is not written.
-17. Where an operation writes both files, the receipts file is written first. A failure after it leaves a receipt with no transaction, which is reposted. The other order leaves a transaction pointing at a receipt record that does not exist. Held by a test that fails the books file's save and asserts the receipt record is intact.
+16. **One save function carries the stale-file check, and both files go through it.** It takes the file's handle, the modification time recorded at load, and the object to write, and it refuses and says so when the file has moved underneath the app. **There is one copy of the comparison, so it cannot be present for one file and absent for the other.** ~~Each file carries its own stale-file guard, the one `saveBooks()` has today. Held by a test that changes each file underneath the app in turn.~~ **Struck 2026-09-16 by amendment 493: that was two copies of one check with a test to notice if one went missing.**
+17. **One function writes both files, always the receipts file first, and it is the only thing that writes both.** A failure after the receipts file is written leaves a receipt with no transaction, which is reposted. The other order leaves a transaction pointing at a receipt record that does not exist, and nothing on screen can repair that. **The 53 places that ask for a save do not choose an order, because they do not do the writing.** ~~Where an operation writes both files, the receipts file is written first. Held by a test that fails the books file's save.~~ **Struck 2026-09-16 by amendment 493: the rule lived at every call site.**
+18. **A source guard holds that nothing outside those two functions writes `{client_id}-books.json` or `Intellibills\Receipts\{client_id}-receipts.json`.** **This is not the mitigation for 16 or 17.** The mitigation is that there is one place. The guard is what stops a second place being added beside it later.
 
-### 20.7 What section 18 still holds, and the state of each part
+### 20.7 Section 18
 
-**This table is the test of whether section 18 is finished with. Section 18 retires when no row says still to do.** A row is assessed only when its subsection has been read in full against this section. "Not yet assessed" means exactly that, and no claim is made here about what those subsections contain.
+**Section 18 is retired entire, 2026-09-16, amendment 498.** Its text is deleted. This section is the principal source.
 
-| Subsection of 18 | State |
-|---|---|
-| 18.1 The principle | Not yet assessed |
-| 18.2 The three stores, and who owns what | **Partly superseded.** 20.1 restates the stores. 18.2's table row for IntelliBooks' own store, which names `IntelliBooks\Attachments\` and base64 inside the books file, is superseded by 20.1. The rest of 18.2 is not yet assessed |
-| 18.2a The practice root | Not yet assessed |
-| 18.2b The copy into `Clients\`, and who writes it | **Partly superseded.** 20.1's Clients folder paragraph is the authority on who writes that copy and on what a deletion does to it. The rest is not yet assessed |
-| 18.2c Data relationships, and referencing between the two stores | Not yet assessed. All three numbered rules in it were struck on 2026-09-15 by amendments 476, 477 and 478 |
-| 18.3 The handoff: push, not pull | Not yet assessed |
-| 18.4 VAT treatment | Not yet assessed |
-| 18.5 The two checks | Not yet assessed |
-| 18.6 What IntelliBooks keeps after Post | Not yet assessed |
-| 18.7 Bulk behaviour | Not yet assessed |
-| 18.8 Receipts view and marker | Not yet assessed |
-| 18.9 What this cancels | Not yet assessed |
-| 18.10 Postponed, and Paul has said not for long | Not yet assessed |
-| 18.11 What is local-only and will be discarded | Not yet assessed |
+**The amendment record still cites section 18 in 340 places and those are not repointed.** Each records a decision taken while section 18 said something, and rewriting them would falsify the history. **They are history, not direction.**
 
-**One thing recorded now so it is not met as a surprise.** Retiring section 18 needs every citation of it repointed, in this document, in `CLAUDE.md` and in `2026-07-25_BUILD_STATUS.md`. Those citations have not been counted and no estimate of them is offered here.
+**The live cross-references are repointed rather than left.** Counted before the work: 19 elsewhere in this document, 65 in `2026-07-25_BUILD_STATUS.md`, 3 in `CLAUDE.md`. This document's own are done, by amendment 499. The other two files follow.
 
 ### 20.8 Confidence
 

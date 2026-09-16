@@ -33,9 +33,15 @@ that nobody has seen fail is the case `CLAUDE.md` calls a check that has stopped
 
 ## The decision inside it, which is Paul's and is already taken
 
-**The set is the six as they stand today.** This test records what is there rather than proposing
-what should be. If you think a folder in that block should not be created at import, flag it and
-leave it: that is a separate decision and not this commit.
+**The set is whatever `config.py`'s mkdir block holds when you write the test.** This test records
+what is there rather than proposing what should be. If you think a folder in that block should not be
+created at import, flag it and leave it: that is a separate decision and not this commit.
+
+**The set moved on 2026-09-16 and this brief was written before it did.** ~~The set is the six as
+they stand today.~~ `PROMPT_claude_code_2026-09-15_publish_the_address_not_the_picture.md` re-points
+`INTELLIBOOKS_PUBLISH_DIR` at `Intellibills\Incoming\` and removes the line that created
+`IntelliBooks\Incoming\`. **Read the block and pin what is actually in it.** Do not take the number
+six from this brief.
 
 ## Evidence expected
 

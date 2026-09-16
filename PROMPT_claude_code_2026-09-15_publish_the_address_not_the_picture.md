@@ -28,9 +28,13 @@ document's bytes and puts them on the item. Both stop.
 
 **2. The item carries the document's address instead.** One new key.
 
-**3. The address is relative to the practice root, with backslashes.** That is the form `filed_path`
-already uses, and `resolve_practice_path()` in `worker/resolution/service.py` states the rule and
-resolves it. The stored value must therefore be
+**3. The address is relative to the practice root, with backslashes.** ~~That is the form
+`filed_path` already uses~~ **Corrected 2026-09-16, and it was the consultant session's error, which
+you caught.** The rule is the one `resolve_practice_path()` in `worker/resolution/service.py` states
+and resolves, and the JSON notes the front end writes follow it. **The database does not.** Read on
+Paul's machine on 2026-09-16: all 35 `file_path` values and all 26 `filed_path` values are absolute,
+carrying the full `C:\Users\PDK7\...` prefix. So the conversion is work the publisher does rather
+than a form it inherits. The stored value must therefore be
 `Intellibills\Documents\{client_id}\{year}\{month}\{receipt_id}_{filename}` and must contain no
 drive letter and no user profile. **This is what lets the same records work on another machine, for
 example a subcontractor on an Azure Virtual Desktop.**

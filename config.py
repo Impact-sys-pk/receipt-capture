@@ -43,11 +43,21 @@ def _required_root(variable: str) -> Path:
     combined message makes a person check the variable that was already right.
 
     **The check is the definition, so it cannot run after the folders are made.**
-    The mkdir block below builds five directories from these two roots at import,
-    and until 2026-09-06 this module carried one machine's own folders as the
-    defaults, so a bare `import config` anywhere else built that person's folder
-    tree on that disk. It happened twice, on 29 July and on 2026-09-03, both
-    times from the Linux sandbox, and it is the fourth trap in CLAUDE.md.
+    The mkdir block below builds the folders this module's constants name, from
+    these two roots, at import, and until 2026-09-06 this module carried one
+    machine's own folders as the defaults, so a bare `import config` anywhere
+    else built that person's folder tree on that disk. It happened twice, on
+    29 July and on 2026-09-03, both times from the Linux sandbox, and it is the
+    fourth trap in CLAUDE.md.
+
+    ~~builds five directories from these two roots~~ **Corrected 2026-09-16.**
+    The count was right when written and wrong by the time anybody read it: the
+    block held five until 2026-09-09, six until 2026-09-14 and seven after,
+    counted from this file's own syntax tree across the commits that touched it.
+    **A sentence about a set states what the set is for rather than how many
+    members it has**, which is the same rule `tests/test_client_top_folder.py`'s
+    `MkdirMembershipTest` applies to the block itself: that test names them, and
+    it is the place to look for the list.
 
     Which is why absoluteness is the test and not a nicety. A Windows path string
     has no leading separator on Linux, so Path(...).is_absolute() is False there:

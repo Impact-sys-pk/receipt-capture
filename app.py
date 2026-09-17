@@ -175,6 +175,42 @@ def _worst_outcome_folder(outcomes) -> str | None:
     return None
 
 
+def _move_email(uid, folder: str, stats: dict) -> bool:
+    r"""Move one email out of INBOX, and count it when it does not go.
+
+    **The one caller of `move_email_to_folder()`.** Paul's decision of
+    2026-09-16. That function returns True or False and logs a warning rather
+    than raising, which is honest; **all five call sites discarded the answer as
+    a bare expression statement**, so a failed move was silent and the only
+    trace was one warning in `run.log` that nothing counted.
+
+    **What a failed move now causes:** the email stays in INBOX, this run's
+    `email_moves_failed` goes up by one and reaches `runs.ndjson` through
+    `_log_run()`, and the next run tries the move again.
+
+    **One helper rather than five treatments**, which is the rule
+    `extract_with_transient_retry()` already follows and which
+    `tests/test_email_move_failures.py` asserts on the source: no unwrapped call
+    remains and the number of wrapped ones is stated, so a sixth call site is a
+    decision rather than an accident. Five explicit treatments would be correct
+    today and silently wrong at the sixth.
+
+    **It does not log the failure again.** `move_email_to_folder()` already logs
+    each one with the uid and the folder; what was missing is the run's own
+    account of itself, and a second line per failure would only double the
+    noise.
+
+    The bool is returned for a caller that wants it. **No current caller does**,
+    and that is deliberate: every one of the five either continues or ends its
+    branch, and there is nothing useful to do differently in the moment. The
+    counting is the response.
+    """
+    moved = move_email_to_folder(uid, folder)
+    if not moved:
+        stats["email_moves_failed"] = stats.get("email_moves_failed", 0) + 1
+    return moved
+
+
 def _count_review_items(repo: Repository | None) -> int:
     """Count receipts a human has to make a decision about.
 
@@ -1450,6 +1486,12 @@ def process_once():
         # making a reader guess whether the count was nought or the code old.
         "attached_recorded": 0,
         "attached_failed": 0,
+        # Paul's decision of 2026-09-16. Counted by `_move_email()`, which is
+        # the one caller of `move_email_to_folder()`. Stated here for the same
+        # reason as every key above: a run with no failed moves reports nought
+        # rather than omitting the field and leaving a reader to guess whether
+        # the count was nought or the code too old to have one.
+        "email_moves_failed": 0,
     }
 
     try:
@@ -1552,7 +1594,7 @@ def process_once():
                     # 128 created receipt_events_UNATTRIBUTED.ndjson for exactly this.
                     _log_receipt(str(uuid.uuid4()), message_id, None, "unknown_sender",
                                  firm_id=config.UNATTRIBUTED_FIRM_ID, run_id=run_id)
-                    move_email_to_folder(uid, "INBOX.Unknown Sender")
+                    _move_email(uid, "INBOX.Unknown Sender", stats)
                     continue
 
                 # Process embedded images like normal attachments
@@ -1709,33 +1751,59 @@ def process_once():
                 # INBOX.Duplicates, or the outcome is one the table does not name.
                 outcome_folder = _worst_outcome_folder(email_outcomes)
                 if outcome_folder:
-                    move_email_to_folder(uid, outcome_folder)
+                    _move_email(uid, outcome_folder, stats)
                 continue
 
-            # No attachments and no embedded images - send alert
-            # Skip if we've already sent an alert for this email
+            # No attachments and no embedded images - send alert, then move.
+            #
+            # **The alert happens once and the move happens every time.** Paul's
+            # decision of 2026-09-16.
+            #
+            # ~~`if repo.has_alert_been_sent(...): continue`~~ **That `continue`
+            # was above the move**, so an email whose move failed was passed
+            # over before the move was reached on every run afterwards: never
+            # re-alerted, which is right, and never re-moved, which is not. It
+            # sat in INBOX with one log line a poll and nothing counted it.
+            # `move_email_to_folder()` returns False and logs rather than
+            # raising, so nothing upstream noticed either.
+            #
+            # **The retry cannot misfire.** That function copies, flags
+            # `\Deleted` and expunges, so a second move of a uid that has gone
+            # has nothing to copy and returns False; and an email that moved is
+            # not in INBOX, so `fetch_emails_without_attachments()` never offers
+            # it again. **Only an email still in INBOX can be retried**, which is
+            # exactly the failed case.
+            #
+            # **The cost, accepted rather than discovered**: a move that keeps
+            # failing, say because the folder has been renamed, now retries every
+            # run and logs every time. Noisier than silence, and silence is what
+            # produced an email nobody knew about.
+            #
+            # **Written as if/else rather than a second move call**, so there is
+            # one call site here and not two. The guard in
+            # `tests/test_email_move_failures.py` states how many there are.
             if repo.has_alert_been_sent(message_id, "no_attachment"):
-                logger.info(f"alert already sent for {message_id}, skipping")
-                continue
+                logger.info(
+                    f"alert already sent for {message_id}, retrying the move")
+            else:
+                # Resolve sender to firm
+                client_id, firm_id, _client_folder = repo.resolve_client_info(email_from)
 
-            # Resolve sender to firm
-            client_id, firm_id, _client_folder = repo.resolve_client_info(email_from)
+                # Get firm name
+                firm_name = config.FIRMS.get(firm_id, {}).get("name", firm_id)
 
-            # Get firm name
-            firm_name = config.FIRMS.get(firm_id, {}).get("name", firm_id)
+                # Extract email address (handle "Name <email>" format)
+                recipient_email = email_from
+                if "<" in email_from and ">" in email_from:
+                    recipient_email = email_from.split("<")[1].split(">")[0].strip()
 
-            # Extract email address (handle "Name <email>" format)
-            recipient_email = email_from
-            if "<" in email_from and ">" in email_from:
-                recipient_email = email_from.split("<")[1].split(">")[0].strip()
+                # Send alert
+                if send_no_attachment_alert(recipient_email, firm_name):
+                    repo.record_alert_sent(message_id, "no_attachment", recipient_email, firm_name)
+                    stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
 
-            # Send alert
-            if send_no_attachment_alert(recipient_email, firm_name):
-                repo.record_alert_sent(message_id, "no_attachment", recipient_email, firm_name)
-                stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
-
-            # Move email to "No Attachments" folder
-            move_email_to_folder(uid, "INBOX.No Attachments")
+            # Move email to "No Attachments" folder. Reached on both branches.
+            _move_email(uid, "INBOX.No Attachments", stats)
 
         messages = fetch_new_messages()
         stats["messages_found"] = len(messages)
@@ -2042,7 +2110,7 @@ def process_once():
                 # uuid because no receipt exists for them either.
                 _log_receipt(str(uuid.uuid4()), message_id, None, "unknown_sender",
                              firm_id=config.UNATTRIBUTED_FIRM_ID, run_id=run_id)
-                move_email_to_folder(uid, "INBOX.Unknown Sender")
+                _move_email(uid, "INBOX.Unknown Sender", stats)
                 continue
 
             # Sub-step 10f.33. One email, one outcome, decided after the loop
@@ -2181,7 +2249,7 @@ def process_once():
             # so every attachment reaches the same answer.
             outcome_folder = _worst_outcome_folder(email_outcomes)
             if outcome_folder:
-                move_email_to_folder(uid, outcome_folder)
+                _move_email(uid, outcome_folder, stats)
 
     except Exception as exc:
         errors = exc

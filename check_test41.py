@@ -35,12 +35,17 @@ def main() -> None:
         print(f"    status  {row['status']}")
         print(f"    filed   {row['filed_path'] or '(not filed)'}")
 
+        # `, rowid DESC` breaks a tie, so this walkthrough check agrees with the
+        # pipeline, the capture report and the export about which attempt
+        # describes a receipt. Paul's decision of 2026-09-16. This script was
+        # the fifth latest-attempt pick and was not in the brief that named
+        # four; it was found by enumerating them from the syntax tree.
         latest = conn.execute(
             """
             SELECT engine, supplier_name, invoice_date, net_amount, vat_amount,
                    gross_amount, currency, validation_status, validation_notes
             FROM extractions WHERE receipt_id = ?
-            ORDER BY extracted_at DESC LIMIT 1
+            ORDER BY extracted_at DESC, rowid DESC LIMIT 1
             """,
             (row["receipt_id"],),
         ).fetchone()

@@ -25,7 +25,15 @@ for receipt in c.execute("SELECT * FROM receipts ORDER BY created_at DESC"):
     print(f"  Created: {london_time.stamp(receipt['created_at'])}")
 
     extraction = c.execute(
-        "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",
+        # `, rowid DESC` breaks a tie, so this agrees with `capture_report.py`,
+        # `export_bookkeeping.py` and the repository about which attempt
+        # describes a receipt. Paul's decision of 2026-09-16: every
+        # latest-attempt pick in the repository answers the question the same
+        # way. `extractions` is an ordinary rowid table, so the later-written
+        # row wins, which is the only thing "latest" can mean once the
+        # timestamps are equal. See `tests/test_latest_attempt_tiebreak.py`.
+        "SELECT * FROM extractions WHERE receipt_id = ? "
+        "ORDER BY extracted_at DESC, rowid DESC LIMIT 1",
         (receipt['receipt_id'],)
     ).fetchone()
 

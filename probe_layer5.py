@@ -43,6 +43,27 @@ def latest_extractions():
     The newest extraction per receipt by `extracted_at`, which is the row the
     pipeline would have categorised from. Opened read-only on config.DB_PATH:
     never a hardcoded path, per CLAUDE.md's Testing section.
+
+    ## The shape changed on 2026-09-16, and a tiebreak would not have fixed it
+
+    ~~`WHERE e.extracted_at = (SELECT MAX(e2.extracted_at) ...) OR
+    e.extraction_id IS NULL`~~ **That matched on the value rather than picking a
+    row**, so two attempts sharing an `extracted_at` both satisfied it and the
+    receipt came back **twice**. Every other latest-attempt pick in the
+    repository fails a tie by choosing arbitrarily; this one failed it by
+    double-counting, and `main()` prints `receipts: {len(rows)}` and then runs
+    the classifier once per row. **A probe that double-counts is a probe that
+    will be believed**, and this one costs an OpenAI call per row.
+
+    **It now joins on `extraction_id`**, the primary key, so at most one
+    extraction can match, ordered `extracted_at DESC, rowid DESC` like
+    `capture_report.py` and `export_bookkeeping.py`. Paul's decision of
+    2026-09-16.
+
+    **The `OR e.extraction_id IS NULL` is gone and nothing was lost.** It existed
+    to keep a receipt with no extraction in the result; the LEFT JOIN does that
+    on its own once the join is on a key that simply fails to match.
+    `tests/test_latest_attempt_tiebreak.py` holds that case.
     """
     if not config.DB_PATH.exists():
         sys.exit(f"no database at {config.DB_PATH}")
@@ -53,12 +74,12 @@ def latest_extractions():
         SELECT r.receipt_id, r.client_id, r.status, r.filename,
                e.supplier_name, e.gross_amount, e.extracted_at, e.line_items
         FROM receipts r
-        LEFT JOIN extractions e ON e.receipt_id = r.receipt_id
-        WHERE e.extracted_at = (
-            SELECT MAX(e2.extracted_at) FROM extractions e2
-            WHERE e2.receipt_id = r.receipt_id
+        LEFT JOIN extractions e ON e.extraction_id = (
+            SELECT extraction_id FROM extractions
+            WHERE receipt_id = r.receipt_id
+            ORDER BY extracted_at DESC, rowid DESC
+            LIMIT 1
         )
-        OR e.extraction_id IS NULL
         ORDER BY r.created_at
         """
     ).fetchall()

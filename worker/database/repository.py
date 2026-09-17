@@ -370,8 +370,28 @@ class Repository:
         return row[0] if row else None
 
     def get_extraction_for_receipt(self, receipt_id: str) -> Optional[dict]:
+        """The attempt that describes this receipt now, or None.
+
+        `extractions` is append-only, so a receipt can have several and the
+        latest is the one that describes it.
+
+        **Ordered on `extracted_at` and then `rowid`.** Paul's decision of
+        2026-09-16: every latest-attempt pick in this repository answers the
+        question the same way, and this is `capture_report.py`'s and
+        `export_bookkeeping.py`'s ordering. Two writes for one receipt inside a
+        microsecond tie on `extracted_at`, and the later-written row is the
+        later attempt in the only sense left once the timestamps are equal.
+        `extractions` has a TEXT primary key and no `WITHOUT ROWID`, so it is an
+        ordinary rowid table and nothing deletes from it, which is what makes
+        the rowid monotonic. `tests/test_latest_attempt_tiebreak.py`.
+
+        **This is the one the pipeline reads**, so of the five picks corrected
+        that day it is the one where disagreeing would change what is filed
+        rather than what is printed.
+        """
         row = self._conn.execute(
-            "SELECT * FROM extractions WHERE receipt_id = ? ORDER BY extracted_at DESC LIMIT 1",
+            "SELECT * FROM extractions WHERE receipt_id = ? "
+            "ORDER BY extracted_at DESC, rowid DESC LIMIT 1",
             (receipt_id,)
         ).fetchone()
         return dict(row) if row else None
@@ -903,6 +923,13 @@ class Repository:
         The caller should use acquire_receipt_lock() to atomically claim each receipt, which respects
         the stale-lock recovery window. This query just avoids pre-filtering them out.
 
+        **Both subqueries order on `e2.extracted_at` and then `e2.rowid`.**
+        Paul's decision of 2026-09-16. On two attempts sharing an `extracted_at`
+        the two rows can carry different `pipeline_version` values, so without
+        the tiebreak "is this receipt up to date" was answered arbitrarily, and
+        the wrong answer costs a real OpenAI call rather than a wrong line of
+        output. `tests/test_latest_attempt_tiebreak.py`.
+
         Args:
             current_version: Current git short-hash (pipeline version)
             stale_lock_cutoff: datetime cutoff; locks older than this are considered abandoned
@@ -915,9 +942,9 @@ class Repository:
             WHERE r.status IN ('failed', 'needs_review')
               AND (r.locked_at IS NULL OR r.locked_at < ?)
               AND (
-                (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) IS NULL
+                (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC, e2.rowid DESC LIMIT 1) IS NULL
                 OR
-                (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC LIMIT 1) != ?
+                (SELECT e2.pipeline_version FROM extractions e2 WHERE e2.receipt_id = r.receipt_id ORDER BY e2.extracted_at DESC, e2.rowid DESC LIMIT 1) != ?
               )
             GROUP BY r.receipt_id
             ORDER BY r.created_at ASC

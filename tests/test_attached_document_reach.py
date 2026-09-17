@@ -299,17 +299,40 @@ class TheStatusFilterIsRealTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Item 2: the filename fallback excludes an attached document, at the caller
+# Item 2: what is left of the filename fallback
 # ---------------------------------------------------------------------------
 
 class TheFilenameFallbackTest(unittest.TestCase):
-    r"""A back-feed note with no receipt id cannot match an attached document.
+    r"""~~A back-feed note with no receipt id cannot match an attached
+    document.~~ **The fallback it guarded is gone, 2026-09-17, Paul's
+    decision.**
 
-    **The exclusion is in the caller and not in the query.**
-    `find_receipts_by_filename()`'s docstring says it returns every match and
-    that refusing an ambiguous one is the caller's problem rather than its own
-    to guess at. A status filter in the query would make a general-purpose
-    lookup carry one caller's rule.
+    `parse_resolution_note()` now refuses a note with no `receipt_id`, and
+    `_receipt_for_note()` looks a receipt up by that id and by nothing else, so
+    there is no filename match left for an attached document to be excluded
+    from. `tests/test_note_requires_receipt_id.py` holds the new behaviour,
+    including a guard on the source that the fallback has not come back.
+
+    **The exclusion this class was written for was amendment 345, Paul's
+    decision of 2026-09-12, and it is five days old.** It is recorded here
+    rather than deleted silently: it was correct, it was never wrong, and what
+    removed it was the discovery that the path it guarded could not run.
+
+    **Four tests went with it**, named so a reader of git history is not left
+    wondering whether they were lost or retired:
+
+    - `test_a_note_with_no_receipt_id_does_not_match_an_attached_document`
+    - `test_it_still_matches_an_ordinary_receipt`
+    - `test_the_ambiguity_refusal_still_fires_on_two_real_candidates`
+    - `test_two_candidates_where_one_is_attached_is_a_match_and_not_a_refusal`
+
+    Each of the four built a note with `"receipt_id": None`, which
+    `parse_resolution_note()` now refuses, so none of them could be kept even
+    in a weakened form: their fixture is a note the contract no longer admits.
+
+    **Two tests stay, because their subject does.**
+    `find_receipts_by_filename()` still exists and still has its contract, and a
+    note carrying an id still finds its receipt whatever that receipt's status.
     """
 
     FILENAME = "bank-line-invoice.pdf"
@@ -332,65 +355,18 @@ class TheFilenameFallbackTest(unittest.TestCase):
             firm_id="FIRM001", client_id="CLIENT001", source="email")
         self.repo.update_receipt_status(receipt_id, status)
 
-    def _note(self):
-        return parse_resolution_note({
-            "schema": 1,
-            "receipt_id": None,
-            "client_id": "CLIENT001",
-            "action": "filed",
-            "resolved_by": "desktop",
-            "resolved_at": "2026-09-12T11:00:00.000Z",
-            "original_review_files": [self.FILENAME, self.FILENAME + ".review.json"],
-            "values": {"supplier_name": "X", "gross_amount": 1.0,
-                       "invoice_date": "2026-09-01"},
-            "filed_path": r"Clients\X\IntelliBooks\Receipts\2026-27\x.pdf",
-        })
-
     def test_the_lookup_itself_is_left_alone_and_still_returns_everything(self):
-        """The method keeps its contract. This is what makes the exclusion a
-        caller's rule rather than a change to a general-purpose query."""
+        """The method keeps its contract, and keeps it now that its one
+        production caller has gone.
+
+        **It has no production caller as of 2026-09-17**, which is reported as a
+        finding rather than acted on: whether the method goes too is Paul's.
+        Until that is decided, this is what says it still does what it says.
+        """
         self._receipt("r-attached", config.BANK_ATTACHMENT_STATUS)
         found = self.repo.find_receipts_by_filename(self.FILENAME)
         self.assertEqual(len(found), 1,
                          "find_receipts_by_filename() has grown a status filter")
-
-    def test_a_note_with_no_receipt_id_does_not_match_an_attached_document(self):
-        self._receipt("r-attached", config.BANK_ATTACHMENT_STATUS)
-        self.assertIsNone(_receipt_for_note(self.repo, self._note()))
-
-    def test_it_still_matches_an_ordinary_receipt(self):
-        """The control. Without it the test above would pass on a fallback that
-        matched nothing at all."""
-        self._receipt("r-ok", "ok")
-        found = _receipt_for_note(self.repo, self._note())
-        self.assertIsNotNone(found)
-        self.assertEqual(found["receipt_id"], "r-ok")
-
-    def test_the_ambiguity_refusal_still_fires_on_two_real_candidates(self):
-        self._receipt("r-one", "ok")
-        self._receipt("r-two", "needs_review")
-        with self.assertLogs("worker.resolution.service", level="ERROR") as caught:
-            self.assertIsNone(_receipt_for_note(self.repo, self._note()))
-        self.assertIn("ambiguous", "\n".join(caught.output))
-
-    def test_two_candidates_where_one_is_attached_is_a_match_and_not_a_refusal(self):
-        """**The behaviour change the brief asks to be worked out and reported.**
-
-        Before, this was two candidates and a refusal. Now the attached document
-        is not a candidate at all, so it is one candidate and a match.
-
-        **That is right rather than a loosening.** The refusal exists because
-        two receipts can share an original filename and the note cannot say
-        which it means. An attached document was never one of the things the
-        note could mean: it came from the books rather than from capture and has
-        no review sidecar for a note to have come from. Removing a non-candidate
-        does not resolve an ambiguity; it shows there was never one.
-        """
-        self._receipt("r-attached", config.BANK_ATTACHMENT_STATUS)
-        self._receipt("r-real", "ok")
-        found = _receipt_for_note(self.repo, self._note())
-        self.assertIsNotNone(found, "the only real candidate was refused")
-        self.assertEqual(found["receipt_id"], "r-real")
 
     def test_a_note_carrying_a_receipt_id_is_unaffected(self):
         """The fallback is the only path this touches. A note that names its

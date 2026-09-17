@@ -329,7 +329,12 @@ class ResolutionNote:
     """A parsed, normalised back-feed note. Design document 12.2."""
     action: str                             # 'filed' | 'discarded'
     resolved_at: str
-    receipt_id: Optional[str] = None        # may be null; then match on filenames
+    # **Required by `parse_resolution_note()` from 2026-09-17**, so a parsed
+    # note always carries one. ~~may be null; then match on filenames~~ The
+    # `Optional` stays because the dataclass gives it a default and because a
+    # note built by hand in a test need not have one; what changed is that no
+    # note reaching the pipeline can be without it.
+    receipt_id: Optional[str] = None
     client_id: Optional[str] = None
     resolved_by: Optional[str] = None
     values: Dict[str, Any] = field(default_factory=dict)
@@ -340,13 +345,24 @@ class ResolutionNote:
     # 10f.14: with it, "Desktop filed this at that path"; without it, "these are
     # the corrected values, settle this receipt". See `parse_resolution_note()`.
     filed_path: Optional[str] = None
-    # Read by `_receipt_for_note()` as the fallback that finds a receipt when the
-    # note carries no `receipt_id`, matching each basename against
-    # `receipts.filename`. **Desktop now sends the INBOX item, `{receipt_id}.json`,
-    # rather than the review pair**, and that never matches an original
-    # attachment name, so the fallback no longer works for a Desktop note.
-    # Flagged in `2026-09-09_REPORT_claude_code_desktop_note.md`; harmless today
-    # because `fileReviewReceipt()` always sends `receipt_id`.
+    # **Carried and validated, and read by nothing that finds a receipt.**
+    #
+    # ~~Read by `_receipt_for_note()` as the fallback that finds a receipt when
+    # the note carries no `receipt_id`, matching each basename against
+    # `receipts.filename`.~~ **That fallback is gone, 2026-09-17, Paul's
+    # decision**, and the comment above is why: Desktop sends the INBOX item,
+    # `{receipt_id}.json`, rather than the review pair, and that never equals an
+    # original attachment name, so the fallback could not have matched a Desktop
+    # note even when it was reached. Flagged in
+    # `2026-09-09_REPORT_claude_code_desktop_note.md` and left here unacted for
+    # eight days, during which step 10aw was scheduled to fix a suffix problem in
+    # a code path that could not run.
+    #
+    # **It stays in the contract.** Retiring it was considered by Paul on
+    # 2026-09-17 and decided against for now. It is still refused when it is not
+    # a list of strings, and `apply_resolution_note()` still names it in the
+    # message a `not_found` writes, which is where it earns its place: it is what
+    # a person has to go on when a note fails.
     original_review_files: List[str] = field(default_factory=list)
     reason: Optional[str] = None
     # 11.3's opt-in tick, carried at the top level of the note rather than inside
@@ -441,6 +457,24 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     if not resolved_at:
         raise ResolutionNoteError("'resolved_at' is required: it is the idempotency key")
 
+    # **Required from 2026-09-17, Paul's decision.** It was optional, and a note
+    # without one was matched by walking `original_review_files` against
+    # `receipts.filename`. That fallback is gone, so the id is now the only thing
+    # that says which receipt a note is about, and a note without one cannot be
+    # applied at all.
+    #
+    # **Refused here rather than later.** Without this it failed further in, as
+    # `outcome: not_found` with "no receipt matched by id or by review filename",
+    # which names two ways of matching when only one exists. The person reading
+    # the `.error.txt` in `Resolutions\failed\` is deciding whether the pipeline
+    # or Desktop is at fault, and that message pointed at both.
+    receipt_id = _note_text(raw, "receipt_id")
+    if not receipt_id:
+        raise ResolutionNoteError(
+            "'receipt_id' is required: it is the only thing that says which "
+            "receipt this note is about"
+        )
+
     review_files = raw.get("original_review_files") or []
     if not isinstance(review_files, list) or not all(isinstance(f, str) for f in review_files):
         raise ResolutionNoteError("'original_review_files' must be a list of filenames")
@@ -455,7 +489,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     note = ResolutionNote(
         action=action,
         resolved_at=resolved_at,
-        receipt_id=_note_text(raw, "receipt_id"),
+        receipt_id=receipt_id,
         client_id=_note_text(raw, "client_id"),
         resolved_by=_note_text(raw, "resolved_by"),
         original_review_files=list(review_files),
@@ -1866,12 +1900,35 @@ def _note_already_applied(repo, receipt_id: str, resolved_at: str) -> Optional[D
 
 
 def _receipt_for_note(repo, note: ResolutionNote) -> Optional[Dict[str, Any]]:
-    """12.3 step 2. By receipt_id, else by matching the review filenames.
+    r"""12.3 step 2. By `receipt_id`, and by nothing else.
 
-    The filename fallback is case-insensitive because the two tools case names
-    differently: Desktop leaves a supplier as typed and the pipeline lowercases it.
-    An ambiguous match is not a match, the same rule `_find_review_sidecar()`
-    applies, because two receipts can share an original filename.
+    **The filename fallback is gone, 2026-09-17, Paul's decision.**
+    `parse_resolution_note()` now refuses a note without a `receipt_id`, so this
+    is reached only with one.
+
+    ~~By receipt_id, else by matching the review filenames. The filename fallback
+    is case-insensitive because the two tools case names differently. An
+    ambiguous match is not a match.~~
+
+    **Why removing it is not a judgement call.** It was reached only when
+    `note.receipt_id` was falsy, and no producer sends a note without one:
+    IntelliBooks Desktop is the only writer into `Intellibills\Resolutions\`, the
+    pipeline reads that folder and never writes into it, and Desktop's two
+    writers that send `original_review_files` take the id from a Review row built
+    by a function that skips any tray item without one. **And if it had run it
+    could not have matched**: `original_review_files` carries the tray item's
+    name, `{receipt_id}.json`, and `receipts.filename` holds the document's
+    original filename, so the two can never be equal. Flagged on 2026-09-09 in
+    `2026-09-09_REPORT_claude_code_desktop_note.md`.
+
+    **What went with it, so neither is looked for later.** The loop over
+    `original_review_files`, both `repo.find_receipts_by_filename()` calls, the
+    bank-attachment exclusion inside that loop, and the ambiguity guard after it.
+    **The bank-attachment exclusion was amendment 345, Paul's decision of
+    2026-09-12**, and it guarded a path that is now unreachable rather than
+    merely unused; it is recorded here because deleting a five-day-old decision
+    silently would be worse than the decision going stale.
+    `find_receipts_by_filename()` itself is untouched and keeps its contract.
 
     The note's `client_id` and `client.name` are deliberately not used to find
     anything. The note's client field was `client_code` until sub-step 10d.60 and
@@ -1880,52 +1937,11 @@ def _receipt_for_note(repo, note: ResolutionNote) -> Optional[Dict[str, Any]]:
     the client would turn a mis-keyed note into a wrong receipt rather than into
     no receipt. See the 12.4 amendment of 2026-07-28.
     """
-    if note.receipt_id:
-        return repo.get_receipt(note.receipt_id)
-
-    candidates: Dict[str, Dict[str, Any]] = {}
-    for review_file in note.original_review_files:
-        name = Path(review_file.replace("\\", "/")).name
-        if name.lower().endswith(".review.json"):
-            continue
-        for receipt in repo.find_receipts_by_filename(name):
-            # **An attached document is not something a back-feed note can be
-            # about. Amendment 345, Paul's decision of 2026-09-12.** It came
-            # from the books rather than from capture and it has no review
-            # sidecar for a note to have come from, so it is not a candidate
-            # and never was.
-            #
-            # **The exclusion is here and not in the query**, deliberately.
-            # `find_receipts_by_filename()`'s docstring says it returns every
-            # match and that refusing an ambiguous one is the caller's problem
-            # rather than its own to guess at. A status filter in the query
-            # would make a general-purpose lookup carry this one caller's rule.
-            #
-            # **The ambiguity guard below is unchanged.** Two real candidates is
-            # still not a match. Where excluding an attached document leaves
-            # one, that is a match rather than a refusal, and that is right:
-            # removing something that was never a candidate does not resolve an
-            # ambiguity, it shows there was not one.
-            if receipt.get("status") == config.BANK_ATTACHMENT_STATUS:
-                logger.info(
-                    "receipt %s matches %s by filename and is a document "
-                    "attached to a bank line, so it is not a candidate for a "
-                    "back-feed note", receipt["receipt_id"], name)
-                continue
-            candidates[receipt["receipt_id"]] = receipt
-
-    if len(candidates) == 1:
-        receipt = next(iter(candidates.values()))
-        logger.info(
-            f"note matched receipt {receipt['receipt_id']} on filename, it carried no receipt_id"
-        )
-        return receipt
-    if len(candidates) > 1:
-        logger.error(
-            f"{len(candidates)} receipts match {note.original_review_files}; an ambiguous "
-            "match is not a match, so the note is not applied"
-        )
-    return None
+    if not note.receipt_id:
+        # Unreachable through `parse_resolution_note()`, which refuses such a
+        # note. Kept so a note built by hand cannot put None into a query.
+        return None
+    return repo.get_receipt(note.receipt_id)
 
 
 @dataclass
@@ -2823,7 +2839,13 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
                 f"No receipt matches this note (receipt_id={parsed.receipt_id!r}, "
                 f"review files={parsed.original_review_files})."
             ),
-            error_detail="no receipt matched by id or by review filename",
+            # ~~"no receipt matched by id or by review filename"~~ **Paul chose
+            # this wording, 2026-09-17.** The old one named two ways of matching
+            # and there is only one: the filename fallback went the same day.
+            # The person reading this in `Resolutions\failed\` is deciding
+            # whether the pipeline or Desktop is at fault, and a reason naming a
+            # path that does not exist sends them looking for it.
+            error_detail="no receipt matched this id",
         )
 
     receipt_id = receipt["receipt_id"]

@@ -622,9 +622,21 @@ class UnknownReceiptTest(BackfeedTestCase):
             self.assertIn(note.name, self.note_names("failed"))
             self.assertEqual(self.note_names("processed"), [])
 
-    def test_a_null_receipt_id_is_matched_on_the_review_filenames(self):
-        # 12.2: receipt_id may be null if the review sidecar lacked one, and then
-        # original_review_files is used for a filename match.
+    def test_a_null_receipt_id_is_refused_by_the_contract(self):
+        r"""~~12.2: receipt_id may be null if the review sidecar lacked one, and
+        then original_review_files is used for a filename match.~~
+
+        **Paul's decision of 2026-09-17: a note with no `receipt_id` is
+        refused.** The filename fallback is gone, so there is nothing left for a
+        null id to fall back to.
+
+        **The fixture still makes the fallback findable**, `R-1.PDF` against a
+        receipt whose filename is `r-1.pdf`, which is what this test was
+        originally about: the two tools case names differently. Keeping it is
+        what stops this from passing on a note that would not have matched
+        anyway. Against the code of 2026-09-16 this note resolved and the
+        receipt went to `ok`.
+        """
         with TempEnvironment() as env:
             self.seed_desktop_filed(env)
             note = self.write_note(
@@ -637,15 +649,32 @@ class UnknownReceiptTest(BackfeedTestCase):
 
             consume_notes()
 
-            self.assertIn(note.name, self.note_names("processed"),
-                          "matched case-insensitively: the two tools case names differently")
+            self.assertIn(note.name, self.note_names("failed"))
+            self.assertEqual(self.note_names("processed"), [])
+            error = (config.RESOLUTIONS_DIR / "failed"
+                     / (note.name + ".error.txt")).read_text(encoding="utf-8")
+            self.assertIn("receipt_id", error)
             repo = Repository()
             try:
-                self.assertEqual(repo.get_receipt("r-1")["status"], "ok")
+                self.assertEqual(repo.get_receipt("r-1")["status"], "needs_review",
+                                 "the refused note changed the receipt anyway")
             finally:
                 repo.close()
 
-    def test_an_ambiguous_filename_match_is_not_a_match(self):
+    def test_two_receipts_sharing_a_filename_no_longer_matter(self):
+        r"""~~An ambiguous filename match is not a match.~~
+
+        **There is no filename match to be ambiguous, from 2026-09-17.** The
+        note is refused for having no `receipt_id` before anything looks at a
+        filename, so the second receipt in this fixture changes nothing.
+
+        **It is kept with its fixture rather than deleted** because the fixture
+        is the one that used to reach the ambiguity guard, and a reader
+        wondering what happened to that guard finds the answer here. Note that
+        against the old code this test also ended in `failed\`, for a different
+        reason, so the assertion below is checked against the `.error.txt`
+        rather than against the folder alone.
+        """
         with TempEnvironment() as env:
             self.seed_desktop_filed(env, receipt_id="r-1")
             repo = Repository()
@@ -664,6 +693,12 @@ class UnknownReceiptTest(BackfeedTestCase):
             consume_notes()
 
             self.assertIn(note.name, self.note_names("failed"))
+            error = (config.RESOLUTIONS_DIR / "failed"
+                     / (note.name + ".error.txt")).read_text(encoding="utf-8")
+            self.assertIn("receipt_id", error,
+                          "it failed for some other reason, so this test is no "
+                          "longer about what its name says")
+            self.assertNotIn("ambiguous", error.lower())
 
 
 class CategoryLookupTest(BackfeedTestCase):

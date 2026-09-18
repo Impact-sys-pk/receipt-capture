@@ -1722,14 +1722,14 @@ def _delete_the_client_copy(receipt_id: str, filed_path: str) -> Dict[str, Any]:
                 "receipt %s was discarded and the operator asked for its "
                 "client folder copy to go: deleted %s and its data file %s. "
                 "The document store still holds the archive of record, per "
-                "18.2a",
+                "section 20.1",
                 receipt_id, result.path, result.sidecar_path)
         elif result.sidecar_outcome == REMOVAL_ALREADY_GONE:
             logger.info(
                 "receipt %s was discarded and the operator asked for its "
                 "client folder copy to go: deleted %s, and it had no data "
                 "file beside it. The document store still holds the archive "
-                "of record, per 18.2a",
+                "of record, per section 20.1",
                 receipt_id, result.path)
         else:
             # REFUSED or FAILED on the data file alone. The document is already
@@ -1738,7 +1738,7 @@ def _delete_the_client_copy(receipt_id: str, filed_path: str) -> Dict[str, Any]:
             logger.info(
                 "receipt %s was discarded and the operator asked for its "
                 "client folder copy to go: deleted %s. The document store "
-                "still holds the archive of record, per 18.2a",
+                "still holds the archive of record, per section 20.1",
                 receipt_id, result.path)
             logger.error(
                 "the data file beside receipt %s's client folder copy was not "

@@ -669,7 +669,8 @@ def copy_for_published_receipt(
     if filed_path:
         logger.info(
             "receipt %s already has a client folder copy at %s, so none is "
-            "written: a copy is made once and never withdrawn, per 18.2b",
+            "written: a copy is made once and never withdrawn, "
+            "per section 20.1",
             receipt_id, filed_path)
         return None
 

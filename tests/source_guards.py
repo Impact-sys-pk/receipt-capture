@@ -21,6 +21,8 @@ the pipeline.
 from __future__ import annotations
 
 import ast
+import re
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -129,3 +131,69 @@ def string_constants_equal_to(tree, wanted: str) -> list[int]:
     form and it reads a comment that happens to contain quotation marks.
     """
     return [lineno for value, lineno in string_constants(tree) if value == wanted]
+
+
+#: The attribute names of the logging methods, `logging`'s own set.
+_LOG_METHODS = ("debug", "info", "warning", "warn", "error", "exception",
+                "critical", "log")
+
+#: A call whose text is `logger.info`, `logging.warning`, `self.logger.error`
+#: or `log.debug`. The receiver has to be a logger, which is what keeps
+#: `parser.error()` out: argparse's method has the same name and a different
+#: meaning, and this project calls it five times.
+_LOG_CALL = re.compile(
+    r"^(.*\.)?log(ger|ging)?\.(" + "|".join(_LOG_METHODS) + r")$")
+
+
+def tracked_production_files(repo_root: Path = REPO_ROOT) -> list[Path]:
+    r"""Every production Python file git tracks. Tests excluded.
+
+    `.history\` is excluded by construction, being gitignored, which
+    `CLAUDE.md`'s sixth trap requires: it holds a dated copy of every file ever
+    edited, so an enumeration that includes it reports names that no longer
+    exist anywhere live.
+
+    **A file git does not yet track is invisible here**, which is
+    `CLAUDE.md`'s note on running the suite again after a commit that adds a
+    production file. The alternative, walking the working tree, would sweep
+    `.venv\` and `.history\` and is worse.
+    """
+    listed = subprocess.run(
+        ["git", "ls-files", "*.py"], cwd=repo_root,
+        capture_output=True, text=True, check=True).stdout.split()
+    return [repo_root / name for name in listed
+            if not name.startswith("tests/")]
+
+
+def person_facing_messages(tree):
+    """Every string a running process puts in front of a person, with its line.
+
+    **The set is the string arguments of logging calls and of `raise`
+    statements**, and nothing else. A log line reaches Paul in `run.log` or
+    `resolve.log`; an exception message reaches him in a traceback he has to
+    act on. **A comment or a docstring reaches a reader of the source**, who
+    has the file open and can see for themselves, so it is not here.
+
+    **f-strings are covered**, because a `JoinedStr`'s literal halves are
+    `Constant` nodes and `ast.walk()` reaches them. That matters: the one
+    person-facing citation in `config.py` is inside an f-string, and a guard
+    built only around plain literals would pass it.
+
+    **A docstring inside a raised expression is not a thing**, so no docstring
+    filter is needed here, unlike `string_constants()`.
+
+    Yields `(text, lineno)`, deduplicated per node so a string reached by two
+    walks is counted once.
+    """
+    seen = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if not _LOG_CALL.match(ast.unparse(node.func)):
+                continue
+        elif not isinstance(node, ast.Raise):
+            continue
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Constant) and isinstance(sub.value, str)
+                    and id(sub) not in seen):
+                seen.add(id(sub))
+                yield sub.value, sub.lineno

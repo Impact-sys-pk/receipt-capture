@@ -806,7 +806,7 @@ def _client_copy_trigger(firms: dict) -> str:
             f"{', '.join(repr(v) for v in CLIENT_COPY_TRIGGERS)}. It read "
             f"{value!r}. There is no default: a trigger the pipeline does not "
             f"understand, read as one it does, writes a document into a client "
-            f"folder, and section 18.2b says a copy is never withdrawn. The "
+            f"folder, and section 20.1 says a copy is never withdrawn. The "
             f"case is exact. {where}"
         )
     return value

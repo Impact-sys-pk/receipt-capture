@@ -271,24 +271,43 @@ class TempReport:
             "DB_PATH": config.DB_PATH,
             "REVIEW_ROOT": config.REVIEW_ROOT,
             "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
+            # Step 10ai. The report now lands in the client's own folder, so the
+            # tree it writes into is `CLIENTS_ROOT` and not an export folder.
+            # ~~`capture_report.OUTPUT_DIR` was monkeypatched here~~ and there is
+            # no such constant any more: the path is per client and composed at
+            # call time by `output_dir_for()`, so redirecting the root is what
+            # redirects it, which is how `TempEnvironment` has always done it.
+            "CLIENTS_ROOT": config.CLIENTS_ROOT,
         }
         config.DB_PATH = self.path / "receipts.db"
         config.REVIEW_ROOT = self.path / "Review"
+        config.CLIENTS_ROOT = self.path / "Clients"
         config.CLIENTS_BY_ID = {
+            # **`client_folder_name` is what composes the path and
+            # `client_name` is display only**, and they are deliberately
+            # DIFFERENT here. Equal values would let a path built from the wrong
+            # one pass, which is the mutation step 10ai's brief calls the one
+            # that matters.
             CLIENT: {"client_id": CLIENT, "client_name": "Test Client",
+                     "client_folder_name": "Test Client Folder",
                      "firm_id": FIRM, "trade": "PHV_DRIVER"},
         }
-        self.output = self.path / "exports"
-        self._saved_output = capture_report.OUTPUT_DIR
-        capture_report.OUTPUT_DIR = self.output
         self.repo = Repository()
         return self
+
+    @property
+    def output(self):
+        """Where this fixture's one client's reports land.
+
+        A property rather than a folder made in `__enter__`, because the command
+        creates it and one test asserts that it does.
+        """
+        return capture_report.output_dir_for("Test Client Folder")
 
     def __exit__(self, *exc):
         self.repo.close()
         for name, value in self._saved.items():
             setattr(config, name, value)
-        capture_report.OUTPUT_DIR = self._saved_output
         self._temp.cleanup()
         return False
 
@@ -782,7 +801,13 @@ class ReadsOnlyTest(unittest.TestCase):
             self.assertEqual(
                 len(new), 1,
                 f"one new file was expected, the report itself. Got: {new}")
-            self.assertTrue(new[0].startswith("exports"), new)
+            # ~~`new[0].startswith("exports")`~~ **Step 10ai: the report goes
+            # into the client's own folder.** The claim is the same one, that
+            # the single new file is the report and it is where the report is
+            # supposed to be; only where that is has moved.
+            self.assertTrue(new[0].startswith("Clients"), new)
+            self.assertIn("Test Client Folder", new[0])
+            self.assertIn(capture_report.CLIENT_REPORTS_FOLDER_NAME, new[0])
 
     def test_the_database_file_is_byte_identical_afterwards(self):
         with TempReport() as env:
@@ -830,24 +855,104 @@ class ReadsOnlyTest(unittest.TestCase):
             env.run(["--client", CLIENT, "--from", "2026-09-01", "--to", "2026-09-11"])
             self.assertEqual(len(sorted(env.output.glob("*.txt"))), 2)
 
-    def test_the_output_folder_is_not_the_client_folder(self):
-        r"""18.2b's single writer is untouched: nothing new appears in `Clients\`.
+    def test_the_output_folder_is_the_client_folder(self):
+        r"""~~18.2b's single writer is untouched: nothing new appears in
+        `Clients\`.~~ **Step 10ai reverses that, Paul's decision.**
 
-        **The second assertion moved at step 10r, amendment 359.** ~~the parent
-        is `config.BASE_DIR`~~ Paul's decision of 2026-09-12 took exports out of
-        the repository and into `Intellibills\Exports\`, so the anchor is
-        `config.EXPORTS_DIR`. **The subject of this test did not move**: it is
-        that a capture report is not written into a client's folder, and that is
-        what the first assertion says. The second says the folder is the one
-        constant that owns it rather than a path composed here, which is the
-        same claim it always made about a different constant.
+        **The previous version of this test said what had to be argued with, and
+        this is the argument.** Its docstring read: "Step 10ai will move this
+        again, into the client's own folder, and when it does the first
+        assertion is the one that has to be argued with rather than edited."
+        `assertNotIn("Clients", ...)` was that assertion. The reasoning behind it
+        was that a capture report is not a client-facing document; Paul reversed
+        exactly that on 2026-09-18, having been shown the portal conflict first.
+        `output_dir_for()` carries the whole of it.
 
-        **Step 10ai will move this again**, into the client's own folder, and
-        when it does the first assertion is the one that has to be argued with
-        rather than edited.
+        **What did not move is the second assertion's claim**, which has now
+        survived three anchors: `config.BASE_DIR`, then `config.EXPORTS_DIR`, now
+        `config.CLIENTS_ROOT` through `get_client_directory()`. The path is
+        derived from a config constant rather than composed here or taken from
+        the working directory.
+
+        ~~`self.assertEqual(capture_report.OUTPUT_DIR, config.EXPORTS_DIR)`~~
+        There is no module-level output constant any more: the folder depends on
+        the client, so it is a function of one.
         """
-        self.assertNotIn("Clients", capture_report.OUTPUT_DIR.parts)
-        self.assertEqual(capture_report.OUTPUT_DIR, config.EXPORTS_DIR)
+        with TempReport():
+            directory = capture_report.output_dir_for("Test Client Folder")
+            self.assertIn("Clients", directory.parts)
+            self.assertTrue(
+                str(directory).startswith(str(config.CLIENTS_ROOT)),
+                f"{directory} is not under config.CLIENTS_ROOT")
+            self.assertEqual(
+                directory,
+                config.CLIENTS_ROOT / "Test Client Folder"
+                / config.CLIENT_INTELLIBOOKS_FOLDER_NAME
+                / capture_report.CLIENT_REPORTS_FOLDER_NAME)
+
+    def test_the_folder_is_the_shape_receipts_and_statements_use(self):
+        r"""What step 10ai means by "matching where receipts and statements
+        already live", asserted rather than described.
+
+        Both are `get_client_directory()` joined to a named kind folder. This is
+        the same join with the same first half, so the three sit side by side.
+        """
+        from worker.filing import get_client_directory
+
+        with TempReport():
+            client = get_client_directory("Test Client Folder")
+            self.assertEqual(
+                capture_report.output_dir_for("Test Client Folder").parent,
+                client,
+                "the reports folder is not a sibling of Receipts and "
+                "Statements")
+        self.assertEqual(
+            sorted([config.CLIENT_RECEIPTS_FOLDER_NAME,
+                    config.CLIENT_STATEMENTS_FOLDER_NAME,
+                    capture_report.CLIENT_REPORTS_FOLDER_NAME]),
+            ["Receipts", "Reports", "Statements"])
+
+    def test_the_folder_name_comes_off_client_folder_name_and_not_client_name(self):
+        r"""**The mutation the brief calls the one that matters.**
+
+        Composing from `client_name` passes for every client whose two names
+        happen to match, and the fixture's do not: `Test Client` against
+        `Test Client Folder`. `get_client_directory()` carries the rule and
+        sub-step 10d.13 carries what breaking it cost, four receipts filed into
+        a `TESTST` folder with nothing on screen. The live registry has a real
+        case: `Client_001` displays as `Vat Sole Trader` and its folder is
+        `TEST`.
+
+        **It drives the whole command, and the first version did not.** That one
+        called `output_dir_for()` with the right value and asserted the value
+        came back, which is trivially true: the field is read in `main()`, so
+        mutating that read could not reach the test written for it. The
+        mutation run is what showed it, and the five tests that did catch it
+        were the fixture ones running the real command. **A test named for a
+        case it cannot see is worse than no test**, because the name says the
+        case is covered.
+        """
+        with TempReport() as env:
+            record = config.CLIENTS_BY_ID[CLIENT]
+            self.assertNotEqual(
+                record["client_name"], record["client_folder_name"],
+                "the fixture cannot tell the two names apart")
+
+            env.receipt("r-1", arrived="2026-09-08T09:00:00+00:00")
+            code, out = env.run(["--client", CLIENT,
+                                 "--from", "2026-09-01", "--to", "2026-09-11"])
+            self.assertEqual(code, 0, out)
+
+            landed = sorted(config.CLIENTS_ROOT.rglob("capture-report_*.txt"))
+            self.assertEqual(len(landed), 1, landed)
+            self.assertIn(record["client_folder_name"], landed[0].parts)
+            self.assertNotIn(
+                record["client_name"], landed[0].parts,
+                "the path was composed from the display name, which is freely "
+                "editable and need not match the folder")
+            self.assertFalse(
+                (config.CLIENTS_ROOT / record["client_name"]).exists(),
+                "a folder named after the display name was created")
 
     def test_main_makes_the_console_safe_before_it_prints(self):
         """`resolve_receipt.py`'s lesson: the crash lands after the work is done.
@@ -941,15 +1046,93 @@ class CommandTest(unittest.TestCase):
             self.assertIn(capture_report.NO_DOCUMENT_DATE_HEADING, out)
 
     def test_a_client_not_in_the_registry_is_still_reported_on(self):
-        r"""`UNKNOWN` holds receipts and is on no record in `clients.json`."""
+        r"""`UNKNOWN` holds receipts and is on no record in `clients.json`.
+
+        **The report still renders and still prints**, which is the half that
+        did not change and the reason the print in `main()` comes before the
+        folder is worked out. `render()` handles the missing record
+        deliberately, putting `CLIENT_NOT_IN_REGISTRY` in the heading.
+
+        ~~`self.assertEqual(code, 0, out)`~~ **Step 10ai, decision 1: with no
+        record there is no `client_folder_name` and so nowhere to write the
+        file.** It is refused rather than sent somewhere else, and the exit code
+        says so. The three tests below are the other halves.
+        """
         with TempReport() as env:
             env.receipt("stray", arrived="2026-09-08T09:00:00+00:00",
                         client_id=config.UNKNOWN_CLIENT_ID)
             code, out = env.run(["--client", config.UNKNOWN_CLIENT_ID,
                                  "--from", "2026-09-01", "--to", "2026-09-11"])
-            self.assertEqual(code, 0, out)
+            self.assertEqual(code, 1, out)
             self.assertIn("stray", out)
             self.assertIn(capture_report.CLIENT_NOT_IN_REGISTRY, out)
+
+    def test_a_client_not_in_the_registry_gets_no_file_anywhere(self):
+        r"""**Refused, not written somewhere else.** Step 10ai, decision 1.
+
+        A fallback to the old export folder would be a second place reports
+        live, findable only by knowing the rule. Sub-step 10d.13 is what a quiet
+        fallback costs: four receipts filed into a `TESTST` folder with nothing
+        on screen. `_client_folder_name()` in `app.py` returns None for exactly
+        this case and its callers refuse; this is the same treatment.
+
+        **Two places are swept and the second is the one that matters.** The
+        temp tree catches a file written into this client's folder. But the
+        fallback being refused is the OLD home, `config.EXPORTS_DIR`, which
+        `tests/live_paths.py` redirects to the session temp root and NOT into
+        `env.path`: sweeping `env.path` alone passed against the old code by
+        looking in the wrong place, because the file was written, just not where
+        the test was looking. Found by re-taking the red and reading which tests
+        did not fail.
+        """
+        with TempReport() as env:
+            env.receipt("stray", arrived="2026-09-08T09:00:00+00:00",
+                        client_id=config.UNKNOWN_CLIENT_ID)
+            env.repo.close()
+            before = tree_snapshot(env.path)
+            exports_before = sorted(config.EXPORTS_DIR.glob("capture-report_*"))
+
+            env.run(["--client", config.UNKNOWN_CLIENT_ID,
+                     "--from", "2026-09-01", "--to", "2026-09-11"])
+
+            new = sorted(set(tree_snapshot(env.path)) - set(before)
+                         - {"receipts.db-wal", "receipts.db-shm"})
+            self.assertEqual(new, [], f"something was written: {new}")
+            self.assertEqual(
+                sorted(config.EXPORTS_DIR.glob("capture-report_*")),
+                exports_before,
+                "a report for a client the registry does not know fell back to "
+                "the old export folder, which is the second home this refusal "
+                "exists to prevent")
+
+    def test_the_refusal_says_which_client_and_which_file_to_fix(self):
+        """A message an operator can act on without reading this source."""
+        with TempReport() as env:
+            env.receipt("stray", arrived="2026-09-08T09:00:00+00:00",
+                        client_id=config.UNKNOWN_CLIENT_ID)
+            _code, out = env.run(["--client", config.UNKNOWN_CLIENT_ID,
+                                  "--from", "2026-09-01", "--to", "2026-09-11"])
+            self.assertIn(config.UNKNOWN_CLIENT_ID, out)
+            self.assertIn("client_folder_name", out)
+            self.assertIn(config.CLIENTS_JSON.name, out)
+
+    def test_the_client_folder_is_created_when_it_does_not_exist(self):
+        r"""Step 10ai, decision 2: created rather than refused.
+
+        That is what `file_statement()` and `write_client_copy()` both do before
+        filing into a client folder. Refusing here would make the report the one
+        thing needing a folder made by hand first.
+        """
+        with TempReport() as env:
+            env.receipt("r-1", arrived="2026-09-08T09:00:00+00:00")
+            self.assertFalse(env.output.exists(),
+                             "the fixture already made the folder, so this "
+                             "test cannot tell that the command does")
+            code, out = env.run(["--client", CLIENT,
+                                 "--from", "2026-09-01", "--to", "2026-09-11"])
+            self.assertEqual(code, 0, out)
+            self.assertTrue(env.output.is_dir())
+            self.assertEqual(len(sorted(env.output.glob("*.txt"))), 1)
 
 
 if __name__ == "__main__":

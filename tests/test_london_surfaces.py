@@ -428,33 +428,51 @@ class ExportPathTest(unittest.TestCase):
             "a path relative to the working directory is back. It scatters an "
             f"exports\\ wherever the shell is standing: {relative}")
 
-    def test_it_writes_where_capture_report_writes(self):
-        """The two export scripts write to one folder, resolved rather than spelled.
+    def test_its_output_folder_is_one_whole_config_constant(self):
+        """~~The two export scripts write to one folder.~~ **They no longer do,
+        and that is step 10ai, Paul's decision of 2026-09-18.**
 
-        **Rewritten at step 10r, amendment 359, and it is stronger than what it
-        replaces.** ~~`f"config.BASE_DIR / {capture_report.OUTPUT_DIR.name!r}"`~~
-        That compared this script's SOURCE TEXT against the other's folder NAME,
-        so it agreed whenever both ended in the same word, and it would have
-        gone on passing had one script moved to a different root while keeping
-        the name `exports`. This resolves the name against `config` and compares
-        the two folders themselves, so it fails if they part company for any
-        reason. It also survives the constant being renamed, which the old form
-        did not.
+        `capture_report.py` moved into the client's own folder and this script
+        did not move at all: it writes one whole-database CSV across every
+        client and every firm, with no client filter, so there is no client to
+        file it with. **The two scripts genuinely have different homes now**, so
+        the old assertion is not edited to a new pairing; it is dropped, because
+        pairing them was the claim.
+
+        ~~`self.assertEqual(resolved, capture_report.OUTPUT_DIR, ...)`~~ There is
+        no `capture_report.OUTPUT_DIR` to compare against any more. Its folder
+        depends on the client, so it is a function of one.
+
+        **What survives is the half that was always the real subject**, and it
+        has now outlived two rewrites: the folder is one whole config constant
+        and nothing composed onto it. Without that pin this script writes an
+        `exports\\` wherever the shell happens to be standing, which is the
+        defect step 10r found. `tests/test_capture_report.py` holds the same
+        property for the other script against its own anchor.
         """
-        import capture_report
         expression = self._assignments()["OUTPUT_DIR"]
-        # A whole constant and nothing composed onto it. Asserted before the
-        # getattr rather than after, so a composed path fails with this sentence
-        # instead of raising AttributeError on a name like "BASE_DIR / 'Exports'".
+        # Asserted before the getattr rather than after, so a composed path
+        # fails with this sentence instead of raising AttributeError on a name
+        # like "BASE_DIR / 'Exports'".
         self.assertRegex(
             expression, r"^config\.[A-Z][A-Z0-9_]*$",
             f"OUTPUT_DIR is no longer one config constant: {expression!r}. "
             "The pin is the point: without it this script writes an exports\\ "
             "wherever the shell is standing.")
+        self.assertTrue(hasattr(config, expression.split(".", 1)[1]),
+                        f"{expression} is not a constant config defines")
+
+    def test_it_does_not_write_into_a_client_folder(self):
+        """This script is the one that stayed out of `Clients\\`.
+
+        Step 10ai moved the capture report in and left this alone, on the
+        grounds above: one CSV across every client and firm belongs to no
+        client. Asserted so that "left alone" is a property rather than an
+        absence of work.
+        """
+        expression = self._assignments()["OUTPUT_DIR"]
         resolved = getattr(config, expression.split(".", 1)[1])
-        self.assertEqual(
-            resolved, capture_report.OUTPUT_DIR,
-            "the two export scripts no longer write to the same folder")
+        self.assertNotIn("Clients", resolved.parts)
 
 
 class AlreadyFiledMessageTest(unittest.TestCase):

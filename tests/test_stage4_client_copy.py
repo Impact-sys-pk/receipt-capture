@@ -268,6 +268,31 @@ class ClientFolderWritersTest(unittest.TestCase):
         "worker/filing.py::get_client_directory",
         "worker/filing.py::file_statement",
         "app.py::process_once",
+        # **Step 10ai, 2026-09-18, Paul's decision.** The capture report moved
+        # out of `Intellibills\Exports\` and into
+        # `Clients\{name}\IntelliBooks\Reports\`, so a second product now
+        # composes a path into this tree. `output_dir_for()` carries the
+        # reasoning and what it supersedes.
+        #
+        # **This is the entry a reader should stop at.** 18.2b's single-writer
+        # rule is what this whole class is about, and the report is the first
+        # thing outside `worker/client_copy.py` to be put in a client folder on
+        # purpose rather than flagged as an oversight. Paul was shown the
+        # conflict with amendments 70 and 73 before deciding.
+        #
+        # **What keeps it narrow**: the report is a `.txt` in a folder of its
+        # own, it is not a receipt or a statement, and it goes through no part of
+        # the gated copy path. `test_every_caller_goes_through_the_gated_entry_point`
+        # below is unaffected because this writes no document.
+        #
+        # **The key is `output_dir_for` and not `main`, and that is this guard's
+        # blind spot rather than a claim about the code.** It keys on calls to
+        # `get_client_directory()` and reads of `config.CLIENTS_ROOT`, so it sees
+        # the path being COMPOSED. `main()` is what calls `mkdir()` and
+        # `write_text()`, and it is invisible here because it only handles a
+        # `Path` it was handed. A future writer given its path from elsewhere
+        # would be invisible too. Reported at step 10ai rather than fixed.
+        "capture_report.py::output_dir_for",
     }
 
     def test_the_set_of_routes_into_the_client_folder_is_the_allowed_set(self):

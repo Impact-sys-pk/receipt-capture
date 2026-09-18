@@ -28,11 +28,21 @@ the difference is on the page rather than left to be inferred.
 ## What it does not do
 
 **It reads.** The database is opened `mode=ro`, so a write raises rather than
-lands. Nothing is published, nothing is re-processed, no receipt's status moves,
-and nothing is written into `Clients\`, into `IntelliBooks\` or into
+lands. Nothing is published, nothing is re-processed and no receipt's status
+moves. Nothing is written into `Intellibills\Documents\`, which is the archive of
+record.
+
+**The one thing written is the report itself**, into
+`Clients\{client_folder_name}\IntelliBooks\Reports\`, beside the `Receipts\` and
+`Statements\` folders this pipeline already files into. Step 10ai, Paul's
+decision; `output_dir_for()` carries the reasoning and what it supersedes.
+
+~~and nothing is written into `Clients\`, into `IntelliBooks\` or into
 `Intellibills\Documents\`. The one thing written is the report itself, into
 `exports\` in this repository, which is gitignored and already where
-`export_bookkeeping.py` puts its output.
+`export_bookkeeping.py` puts its output.~~ **Struck 2026-09-18, and it was stale
+twice over**: step 10r had already moved the output out of the repository and
+into `Intellibills\Exports\` on 2026-09-12 without this paragraph moving with it.
 
 ## Usage
 
@@ -51,32 +61,98 @@ from pathlib import Path
 
 import config
 from worker import attached, london_time
-from worker.filing import determine_tax_year
+from worker.filing import determine_tax_year, get_client_directory
 
-#: Where the report is written. In the repository, beside `export_bookkeeping.py`'s
-#: output and covered by the same `.gitignore` line, so a report cannot dirty the
-#: working tree and trip `config.check_git_status_on_startup()` before a run.
+#: The folder inside the client's own `IntelliBooks\` folder that holds this
+#: client's capture reports. Step 10ai, amendment 388, Paul's decision of
+#: 2026-09-13, confirmed 2026-09-18.
 #:
-#: ~~**Deliberately not under any config root.** It is not a client-facing
-#: document, so `Clients\` is out by 18.2b; it is not an archive of record, so
-#: `Intellibills\Documents\` is out by 18.2; and it is not process state, so the
-#: unsynced root is out by 18.2a. It is an operator's working output, and this
-#: repository is where the operator is standing when they run it.~~
-#:
-#: **Struck by step 10r, amendment 359, Paul's decision of 2026-09-12.** Those
-#: three exclusions still hold and none of them argued for the repository; they
-#: ruled out three other roots and the repository was what was left. **18.2's
-#: third rule decides it: each store has one owner, and an export is an
-#: Intellibills output for a person rather than source.** It goes to
-#: `Intellibills\Exports\`, which already existed and already held two CSVs, so
-#: the repository's `exports\` was the second of two folders for one thing.
-#:
-#: Derived from a config constant rather than written relative to the working
-#: directory, so running the command from elsewhere still writes to one place
-#: rather than scattering an `exports\` wherever the shell happened to be. That
-#: reason is about having an anchor, not about which anchor, and it survives the
-#: move intact.
-OUTPUT_DIR = config.EXPORTS_DIR
+#: **A string rather than a `Path` constant**, joined onto a client directory at
+#: call time, which is exactly what `config.CLIENT_RECEIPTS_FOLDER_NAME` and
+#: `CLIENT_STATEMENTS_FOLDER_NAME` are and why. It is here rather than beside
+#: those two because there is one writer and because adding it there means
+#: editing the comment that records amendment 170. See `output_dir_for()`.
+CLIENT_REPORTS_FOLDER_NAME = "Reports"
+
+
+def output_dir_for(client_folder_name: str) -> Path:
+    r"""Where this client's capture reports go.
+
+    `Clients\{client_folder_name}\IntelliBooks\Reports\`.
+
+    **Matched to where receipts and statements already live**, which is what step
+    10ai asks for: both are `get_client_directory()` joined to a named kind
+    folder, `Receipts\{tax year}\` and `Statements\{tax year}\{platform}\`. This
+    is the same shape with the kind folder and no year below it, because the
+    report has two scopes and only one of them has a tax year: a `--from`/`--to`
+    range belongs to no year, so a year segment would be undefined for half the
+    command. The scope is in the filename instead, where it already was.
+
+    **`Reports\` is a FIFTH child of the client's `IntelliBooks\` folder, and
+    `config.py` still says there are four.** That comment records amendment 170,
+    Paul's decision of 2026-09-02: "four children and no more: Receipts,
+    Statements, HMRC Summaries and Handover Pack."
+
+    **The fifth is agreed. Paul's decision, 2026-09-18**, taken on this being
+    raised at step 10ai; the consultant session is writing the amendment.
+    **`config.py`'s comment is knowingly left saying four**, on his instruction
+    that correcting it is a separate change. So a reader finding the two
+    disagreeing has found a known gap rather than a mistake, and this paragraph
+    is here so that reader stops looking.
+
+    **Nothing enforces either number.** No test guards the set of children, and
+    the three in use on disk are `Receipts`, `Statements` and `HMRC Summaries`,
+    counted across the eight client folders on 2026-09-18.
+
+    **The folder name comes off `client_folder_name` and never off
+    `client_name`.** `get_client_directory()` carries that rule and its reason:
+    the folder name is fixed once a folder exists and the display name is freely
+    editable. Sub-step 10d.13 is what happens without it, four receipts filed
+    into a TESTST folder with nothing on screen.
+
+    **Derived from a config constant rather than from the working directory**, so
+    running the command from anywhere writes to one place. That reason is about
+    having an anchor rather than about which anchor, and it has now survived two
+    moves: `config.BASE_DIR`, then `config.EXPORTS_DIR`, now `config.CLIENTS_ROOT`
+    through `get_client_directory()`.
+
+    ## Where it used to go, and why that reasoning no longer decides it
+
+    ~~In the repository, beside `export_bookkeeping.py`'s output and covered by
+    the same `.gitignore` line, so a report cannot dirty the working tree and
+    trip `config.check_git_status_on_startup()` before a run.~~
+
+    ~~**Deliberately not under any config root.** It is not a client-facing
+    document, so `Clients\` is out by 18.2b; it is not an archive of record, so
+    `Intellibills\Documents\` is out by 18.2; and it is not process state, so the
+    unsynced root is out by 18.2a. It is an operator's working output, and this
+    repository is where the operator is standing when they run it.~~
+
+    ~~**Struck by step 10r, amendment 359, Paul's decision of 2026-09-12.** 18.2's
+    third rule decides it: each store has one owner, and an export is an
+    Intellibills output for a person rather than source. It goes to
+    `Intellibills\Exports\`.~~
+
+    **Struck in turn by step 10ai, Paul's decision.** The exclusion that mattered
+    was `Clients\` being out because the report is not a client-facing document,
+    and that is the one he reversed: the report is about one client, it names
+    that client, and it belongs with that client's records.
+
+    **He was shown the conflict and decided anyway.** `Clients\{name}\` is what a
+    portal would show, per amendment 70, and amendment 73's reasoning is that a
+    client looking at a capture-fed folder "sees a dump of files"; this report
+    names receipts that failed, duplicated or were discarded. His grounds were
+    that no portal exists and that a portal will need an explicit rule about what
+    it shows regardless. **This file is on the list of what a portal must not
+    show**, recorded in the step by the consultant session.
+
+    **Section 18 was retired entire on 2026-09-16 by amendment 498**, so the
+    citations struck through above no longer point at anything live. They are
+    kept as written because they are the record of what was argued at the time.
+    70 further references to section 18 remain across 16 production files,
+    counted 2026-09-18 and reported as a finding rather than fixed here.
+    """
+    return get_client_directory(client_folder_name) / CLIENT_REPORTS_FOLDER_NAME
 
 #: The columns each scope selects on, named in the output so a reader never has
 #: to infer which one answered their question.
@@ -684,18 +760,50 @@ def main() -> int:
         conn.close()
 
     text = "\n".join(lines) + "\n"
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # The London clock, so the file an operator is looking for in `exports\`
-    # is named for the time they ran it rather than an hour earlier. It is the
-    # same instant as the `Run at` line inside the report.
+    print(text, end="")
+
+    # **The report is printed before the folder is worked out, and that is the
+    # answer to "what happens when the registry does not know this client".**
+    # Step 10ai, decision 1.
+    #
+    # With no record there is no `client_folder_name`, so there is nowhere to
+    # put the file. **It is refused rather than sent somewhere else**: a fallback
+    # to the old export folder would be a second place reports live, findable
+    # only by knowing this rule, and sub-step 10d.13 is what a quiet fallback
+    # costs. `_client_folder_name()` in `app.py` returns None for exactly this
+    # and its callers refuse; this is the same treatment.
+    #
+    # **The screen output is unchanged, which is why the print is above.**
+    # `render()` already handles the missing record, printing
+    # `CLIENT_NOT_IN_REGISTRY` in the heading, and that handling exists so the
+    # report still renders. An operator asking "what happened to this client's
+    # receipts" gets the answer on screen and a reason why no file was written,
+    # rather than one error and nothing.
+    record = (config.CLIENTS_BY_ID or {}).get(args.client) or {}
+    client_folder_name = record.get("client_folder_name")
+    if not client_folder_name:
+        print(f"\nNot written. {args.client} has no client_folder_name in "
+              f"{config.CLIENTS_JSON.name}, so there is no folder to write it "
+              "to. The report is above.")
+        return 1
+
+    # Created rather than refused, decision 2, because that is what
+    # `file_statement()` and `write_client_copy()` both do before filing into a
+    # client folder: `destination_dir.mkdir(parents=True, exist_ok=True)`.
+    # Matching them is the instruction, and refusing here would make this the one
+    # thing that needs a folder made by hand first.
+    output_dir = output_dir_for(client_folder_name)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # The London clock, so the file an operator is looking for is named for the
+    # time they ran it rather than an hour earlier. It is the same instant as the
+    # `Run at` line inside the report.
     stamp = london_time.now().strftime("%Y%m%d-%H%M%S")
     written = _next_free_path(
-        OUTPUT_DIR,
+        output_dir,
         f"capture-report_{_safe(args.client)}_{_safe(scope.slug)}_{stamp}",
         ".txt")
     written.write_text(text, encoding="utf-8")
 
-    print(text, end="")
     print(f"\nWritten to {written}")
     return 0
 

@@ -195,9 +195,37 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
                 names.add((node.asname or node.name).rsplit(".", 1)[-1])
         return bool(names & set(cls.DRIVERS))
 
+    @staticmethod
+    def _fixture_redirects() -> set:
+        r"""What `TempEnvironment` pins, asked of the fixture rather than grepped.
+
+        **Changed 2026-09-20, because the text search this replaces was
+        defeated by a correct refactor.** `tests
+esolution_fixtures.py` used
+        to write `config.FILES_DIR = ...` once per path, and this guard looked
+        for that text. Those assignments restated `config.py`'s folder layout
+        and dropped the `Intellibills\` segment from every path under the
+        archive root, so the fixture now names the paths in `REDIRECTED` and
+        `PINNED_BY_HAND` and moves them with `setattr()`. **The literal
+        disappeared and 192 subtests here went red, with nothing actually
+        unredirected.**
+
+        **This is stronger than the text search, not weaker.** It reads the
+        list the fixture actually loops over, so a name removed from that tuple
+        is caught, where before a name could have been left in a commented-out
+        assignment and still matched.
+
+        The text search stays for every OTHER module, because the hand-rolled
+        environments this guard mostly exists to catch do assign one at a time.
+        """
+        import resolution_fixtures
+
+        return set(resolution_fixtures.REDIRECTED) | set(
+            resolution_fixtures.PINNED_BY_HAND)
+
     def test_every_test_that_drives_process_once_redirects_what_it_writes(self):
         tests_dir = Path(__file__).parent
-        fixtures = (tests_dir / "resolution_fixtures.py").read_text(encoding="utf-8")
+        inherited = self._fixture_redirects()
 
         checked = 0
         for module in sorted(tests_dir.glob("test_*.py")):
@@ -205,18 +233,35 @@ class ProcessOnceRedirectionTest(unittest.TestCase):
             if not self._drives(source):
                 continue
             # Modules that use the shared fixture inherit its redirects.
-            if "resolution_fixtures" in source:
-                source += fixtures
+            uses_fixture = "resolution_fixtures" in source
             checked += 1
             for name in PROCESS_ONCE_WRITES:
                 with self.subTest(module=module.name, config_name=name):
-                    self.assertIn(
-                        f"config.{name} =", source,
+                    redirected = (f"config.{name} =" in source
+                                  or (uses_fixture and name in inherited))
+                    self.assertTrue(
+                        redirected,
                         f"{module.name} drives process_once() without redirecting "
                         f"config.{name}, so the suite writes to the live one",
                     )
 
         self.assertGreater(checked, 0, "the guard found nothing to check, so it guards nothing")
+
+    def test_the_shared_fixture_covers_everything_process_once_writes(self):
+        """The control on `_fixture_redirects()`, without which it could return
+        anything and the guard above would pass on every module using the
+        fixture.
+
+        **It is not a restatement of the tuple.** It asserts the relationship
+        the guard depends on: every name `process_once()` writes is one
+        `TempEnvironment` pins.
+        """
+        missing = sorted(set(PROCESS_ONCE_WRITES) - self._fixture_redirects())
+        self.assertEqual(
+            [], missing,
+            f"TempEnvironment does not pin {missing}, so every module that "
+            f"relies on it writes those to the session temp root shared by the "
+            f"whole run")
 
     def test_the_predicate_discriminates(self):
         """The control, without which the change above could not be trusted.

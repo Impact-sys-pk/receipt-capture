@@ -1,0 +1,27 @@
+{
+  "receipt_id": "d4410e6c-5458-454c-9471-c22c4d81b3ac",
+  "client_id": "CLIENT001",
+  "client_name": "Test Client",
+  "source": "email",
+  "capture_date": "2026-09-20T09:07:57.677695+00:00",
+  "invoice_date": "2026-04-01",
+  "supplier": "Apcoa Parking",
+  "net": 10.0,
+  "vat": 2.0,
+  "gross": 99.0,
+  "currency": "GBP",
+  "category_code": null,
+  "category_name": null,
+  "category": null,
+  "confidence": "none",
+  "validation_status": "needs_review",
+  "asserted": null,
+  "original_filename": "shared.pdf",
+  "pipeline_receipt_id": "d4410e6c-5458-454c-9471-c22c4d81b3ac",
+  "validation_notes": [
+    "gross mismatch: 10.0 + 2.0 = 12.0, got 99.0"
+  ],
+  "category_unconfirmed": false,
+  "image_media_type": "application/pdf",
+  "archive_path": "Intellibills\\Documents\\CLIENT001\\2026\\09\\d4410e6c-5458-454c-9471-c22c4d81b3ac_shared.pdf"
+}

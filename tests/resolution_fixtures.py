@@ -23,6 +23,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import config
+import live_paths
 
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
@@ -31,99 +32,180 @@ from worker.resolution.service import parse_corrections
 VERSION = "test-version"
 
 
+#: Every `config` name `TempEnvironment` pins, and why the list is written out
+#: rather than discovered. **The list is the guard.** A config path that is not
+#: here keeps whatever `tests\live_paths.py` gave it, which is the session temp
+#: root shared by the whole run, so a test writing through it would be seen by
+#: the next test's poll. Each entry below was added because that happened:
+#: `LOGS_DIR` and `RUNS_LOG` because the console's intake panel reads the live
+#: event logs and `RUNS_LOG` resolves from `LOGS_DIR` at import; `CHARTS_DIR` as
+#: outstanding item 154, the one config path no fixture redirected, so a test
+#: reaching layer 5 read the live bundle in OneDrive; `INTELLIBOOKS_ROOT` and
+#: `INTELLIBOOKS_PUBLISH_DIR` as sub-step 10f.2, because every `ok` receipt
+#: published into one folder and a count was answered by the run order;
+#: `ATTACHED_DIR` as sub-step 10f.38 for the same reason.
+#:
+#: **What is NOT written out is where each one sits**, which is the change of
+#: 2026-09-20. See `_rebased()`.
+REDIRECTED = (
+    "DB_PATH",
+    "PRACTICE_ROOT",
+    "FILES_DIR",
+    "LOGS_DIR",
+    "RUNS_LOG",
+    "RECEIPT_INBOX_ROOT",
+    "REVIEW_ROOT",
+    "RESOLUTIONS_DIR",
+    "ATTACHED_DIR",
+    "PIPELINE_STATUS_PATH",
+    "BACKUPS_ROOT",
+    "CHARTS_DIR",
+    "INTELLIBOOKS_ROOT",
+    "INTELLIBOOKS_PUBLISH_DIR",
+)
+
+#: Saved and restored like the rest, and assigned by hand rather than rebased.
+#: **Neither is a layout, so neither is `_rebased()`'s business.**
+#:
+#: `CLIENTS_ROOT` is a FIRM SETTING, `client_top_folder` on the firm record,
+#: which `config.py` reads through `_client_top_folder(FIRMS)` rather than
+#: composing from the practice root. **What this fixture calls it is a fixture
+#: choice**, and `Clients` is what it has always called it. See the flag in
+#: `2026-09-20_REPORT_claude_code_temp_environment_archive_root.md`:
+#: `tests\live_paths.py` deliberately calls the session one `Client Folders` so
+#: that a regression to a composed `PRACTICE_ROOT / "Clients"` goes red, and
+#: this fixture's `Clients` undoes that for every test that uses it. **Moving it
+#: reaches 40 test files and is not this change's to make.**
+#:
+#: `CLIENTS_JSON` is pinned at a path that does not exist, which is a behaviour
+#: rather than a location: see where it is assigned.
+PINNED_BY_HAND = ("CLIENTS_ROOT", "CLIENTS_JSON")
+
+#: The folders this fixture creates, and the rest are deliberately absent.
+#:
+#: `config.py` creates its own at import, so a folder the pipeline makes on
+#: demand has to start missing here or the tests asserting it gets made would
+#: pass on a folder the fixture built. **`RECEIPT_INBOX_ROOT`, `REVIEW_ROOT`,
+#: `RESOLUTIONS_DIR`, `ATTACHED_DIR` and `CHARTS_DIR` are the five that must not
+#: be here**: the first four are made on demand by the code under test, and
+#: `CHARTS_DIR` is IntelliCharts' to publish and the pipeline never makes it, so
+#: a test reading a chart from it gets `chart.load_chart()`'s missing-bundle
+#: path rather than a real chart.
+#:
+#: `INTELLIBOOKS_PUBLISH_DIR` is created, unlike those five, because `config.py`
+#: creates it at import: the pipeline is that folder's only writer and an absent
+#: one would show up as the first publish failing rather than as a missing
+#: folder.
+CREATED = ("CLIENTS_ROOT", "FILES_DIR", "LOGS_DIR", "INTELLIBOOKS_PUBLISH_DIR")
+
+#: Names whose PARENT is the directory to create, because the constant is a
+#: file. `config.py` does the same thing in its own mkdir block, as
+#: `DB_PATH.parent.mkdir(...)`, and for the same reason: sqlite creates a
+#: missing database file and will not create the folder above it.
+#:
+#: **This entry is what the rebasing change of 2026-09-20 made necessary.**
+#: `DB_PATH` used to be pinned at the temp root itself, so its parent always
+#: existed; it now lands in `db\` where `config.py` puts it, and 819 tests
+#: failed with "unable to open database file" until this was added.
+CREATED_PARENTS = ("DB_PATH",)
+
+
+def _rebased(value, destination):
+    r"""A config path moved from the session temp root onto this test's own.
+
+    **This is `live_paths.live()` in the other direction, and for its reason.**
+    That function maps a redirected path back onto the real root "by taking the
+    part below whichever temp root it sits under, so this module holds no second
+    copy of the layout and a path that moves in config.py moves here with it".
+    The same argument applies here and this file was the counter-example.
+
+    ## Why it was written, 2026-09-20
+
+    **This fixture used to restate the layout**, setting
+    `config.FILES_DIR = self.path / "Documents"` where `config.py` derives
+    `INTELLIBILLS_ROOT = PRACTICE_ROOT / "Intellibills"` and then
+    `FILES_DIR = INTELLIBILLS_ROOT / "Documents"`. **The middle segment was
+    dropped**, in that line and in eight others, so every path under the
+    archive root was one segment short of the live one for as long as this
+    fixture has existed.
+
+    **It was invisible because `archive_address()` returns a path relative to
+    `PRACTICE_ROOT`**, and the fixture moved both ends, so the address was
+    internally consistent and wrong. It surfaced only when step 10am committed
+    one of those addresses as a fixture handed to another product, and the
+    consultant session compared it with what the live pipeline writes.
+
+    **So the derivation is not restated here at all.** Whatever `config.py`
+    computed from the session roots is what gets moved, segment for segment.
+    A layout change in `config.py` now reaches this fixture with no edit.
+
+    Raises for a path under neither session root rather than passing it
+    through, which would hand a test a path it believes was redirected.
+    """
+    value = Path(value)
+    for session_root in (live_paths.TEMP_PRACTICE_ROOT,
+                         live_paths.TEMP_UNSYNCED_ROOT):
+        try:
+            return destination / value.relative_to(session_root)
+        except ValueError:
+            continue
+    raise ValueError(
+        f"{value} is under neither session temp root, so this fixture cannot "
+        f"place it. Session roots are {live_paths.TEMP_PRACTICE_ROOT} and "
+        f"{live_paths.TEMP_UNSYNCED_ROOT}. A config path that something else "
+        f"has already redirected cannot be rebased, and pinning one here is a "
+        f"mistake rather than a special case."
+    )
+
+
 class TempEnvironment:
+    r"""One test's own practice root, with every config path moved onto it.
+
+    **The layout is `config.py`'s and is not restated here.** See `_rebased()`
+    for what that fixed and how it was missed for as long as this fixture has
+    existed.
+    """
+
     def __enter__(self):
         self._temp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.path = Path(self._temp.name)
-        self._saved = {
-            "DB_PATH": config.DB_PATH,
-            "PRACTICE_ROOT": config.PRACTICE_ROOT,
-            "CLIENTS_ROOT": config.CLIENTS_ROOT,
-            "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
-            # 10d.35 re-reads the registry at the top of every poll. Pinned at a
-            # path that does not exist, with the remembered mtime set to match, so
-            # the re-read sees no change and leaves the registry this fixture
-            # built. Without it a test would silently run against the live
-            # clients.json the moment somebody saved it.
-            "CLIENTS_JSON": config.CLIENTS_JSON,
-            "_CLIENTS_MTIME": config._CLIENTS_MTIME,
-            "FILES_DIR": config.FILES_DIR,
-            "LOGS_DIR": config.LOGS_DIR,
-            "RUNS_LOG": config.RUNS_LOG,
-            "RECEIPT_INBOX_ROOT": config.RECEIPT_INBOX_ROOT,
-            "REVIEW_ROOT": config.REVIEW_ROOT,
-            "RESOLUTIONS_DIR": config.RESOLUTIONS_DIR,
-            # Sub-step 10f.38, added 2026-09-11. Without it every test that
-            # drives process_once() drains the one folder tests/live_paths.py
-            # set up for the whole run, so a handoff written by one test would
-            # be recorded by the next one's poll. Same class of leak as
-            # LOGS_DIR and CHARTS_DIR below, and named here for the same
-            # reason: the list is the guard.
-            "ATTACHED_DIR": config.ATTACHED_DIR,
-            "PIPELINE_STATUS_PATH": config.PIPELINE_STATUS_PATH,
-            "BACKUPS_ROOT": config.BACKUPS_ROOT,
-            # The chart bundle. Outstanding item 154, raised and fixed 2026-09-04:
-            # this was the one config path the fixture did not redirect, so a test
-            # that reached layer 5 would read the live bundle in OneDrive. Nothing
-            # reaches it today, because layer 5 needs enable_ai_fallback and an
-            # OpenAI client and no test here turns either on. Same class of leak
-            # as the LOGS_DIR one three entries above, and found the same way.
-            "CHARTS_DIR": config.CHARTS_DIR,
-            # Sub-step 10f.2, added 2026-09-09. Without these two, every test
-            # that produces an `ok` receipt publishes an item into the one
-            # folder `tests/live_paths.py` set up for the whole run, so each
-            # test would see every earlier test's items and a count would be
-            # answered by the run order. Same class of leak as LOGS_DIR and
-            # CHARTS_DIR above, and found the same way: a test that passed on
-            # its own and failed in the file.
-            "INTELLIBOOKS_ROOT": config.INTELLIBOOKS_ROOT,
-            "INTELLIBOOKS_PUBLISH_DIR": config.INTELLIBOOKS_PUBLISH_DIR,
-        }
-        config.DB_PATH = self.path / "receipts.db"
-        # The practice root. A note's filed_path is relative to it, per 12.2.
-        config.PRACTICE_ROOT = self.path
-        config.CLIENTS_ROOT = self.path / "Clients"
-        config.CLIENTS_ROOT.mkdir(parents=True, exist_ok=True)
-        # The document store. Independent of the database and of the logs since
-        # amendment 76: it used to be config.DATA_DIR / "files", which reproduced
-        # inside this fixture the shared parent that put the live database one
-        # rename away from OneDrive.
-        config.FILES_DIR = self.path / "Documents"
-        config.FILES_DIR.mkdir(parents=True, exist_ok=True)
-        # LOGS_DIR carries the ndjson event logs and, since 18.2a, the four
-        # process logs as well: attach_log_handler() resolves it at call time, so
-        # a test that runs a CLI entry point appends to the live resolve.log
-        # without this. Same class of leak as the ndjson one that 2d19521 fixed,
-        # found the same way: by checking rather than assuming.
-        config.LOGS_DIR = self.path / "logs"
-        config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
-        # Under OneDrive in real life. The inbox, the Review folder and the
-        # Resolutions folder are deliberately not created here: the code under
-        # test creates them on demand, and the tests that assert that must start
-        # without them.
-        config.RECEIPT_INBOX_ROOT = self.path / "Receipt Inbox"
-        config.REVIEW_ROOT = self.path / "Review"
-        config.RESOLUTIONS_DIR = self.path / "Resolutions"
-        # Deliberately not created either, and config.py's rule for it is the
-        # same as Resolutions': the pipeline makes it on demand, and the tests
-        # that assert that have to start without it. Sub-step 10f.38.
-        config.ATTACHED_DIR = self.path / "Attached"
-        config.PIPELINE_STATUS_PATH = self.path / "pipeline-status.json"
-        config.BACKUPS_ROOT = self.path / "Backups"
-        # Deliberately not created, which is config.py's own rule for this one:
-        # IntelliCharts publishes the bundle and the pipeline never makes it. A
-        # test that reads a chart from here gets chart.load_chart()'s missing
-        # bundle path, an ERROR and an empty list, rather than a real chart.
-        config.CHARTS_DIR = self.path / "Charts"
-        # IntelliBooks' own folder and the publish destination inside it.
-        # **Created here, unlike Charts above**, because `config.py` creates it
-        # at import: the pipeline is the folder's only writer and an absent one
-        # would be the first publish failing rather than a missing folder.
-        config.INTELLIBOOKS_ROOT = self.path / "IntelliBooks"
-        config.INTELLIBOOKS_PUBLISH_DIR = config.INTELLIBOOKS_ROOT / "Published"
-        config.INTELLIBOOKS_PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
-        config.CLIENTS_JSON = self.path / "clients-not-placed.json"
+
+        # **`config.PRACTICE_ROOT` stays equal to `self.path`.** Several tests
+        # build a path outside the client folder as `env.path / "elsewhere.pdf"`
+        # and mean "inside the practice root, outside the store", so splitting
+        # this into a `practice\` subfolder would quietly change what those
+        # tests are asserting. The unsynced paths land here too, which is what
+        # this fixture has always done.
+        self._saved = {name: getattr(config, name)
+                       for name in REDIRECTED + PINNED_BY_HAND}
+        self._saved["CLIENTS_BY_ID"] = config.CLIENTS_BY_ID
+        # 10d.35 re-reads the registry at the top of every poll. Pinned below at
+        # a path that does not exist, with the remembered mtime set to match, so
+        # the re-read sees no change and leaves the registry this fixture built.
+        # Without it a test would silently run against the live clients.json the
+        # moment somebody saved it.
+        self._saved["_CLIENTS_MTIME"] = config._CLIENTS_MTIME
+
+        for name in REDIRECTED:
+            setattr(config, name, _rebased(self._saved[name], self.path))
+
+        # **The two hand pins come before the folders are made**, because
+        # `CLIENTS_ROOT` is one of the folders made and reading it a line too
+        # early would create the session one and leave this test without its
+        # own. See `PINNED_BY_HAND`.
+        config.CLIENTS_ROOT = config.PRACTICE_ROOT / "Clients"
+        # **Deliberately not `Intellibills\clients.json`.** The point of this
+        # one is that it names a file that is not there, so
+        # `config.load_clients()` re-reading on the next poll finds no change
+        # and leaves `CLIENTS_BY_ID` below alone. The real name would also be
+        # absent today, and would stop being absent the moment a test wrote a
+        # registry into the temp practice root.
+        config.CLIENTS_JSON = config.PRACTICE_ROOT / "clients-not-placed.json"
+
+        for name in CREATED:
+            getattr(config, name).mkdir(parents=True, exist_ok=True)
+        for name in CREATED_PARENTS:
+            getattr(config, name).parent.mkdir(parents=True, exist_ok=True)
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {

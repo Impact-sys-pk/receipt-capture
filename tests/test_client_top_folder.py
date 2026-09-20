@@ -638,3 +638,77 @@ class MkdirMembershipTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTestFixtureUsesTheSameDerivationTest(unittest.TestCase):
+    r"""`TempEnvironment` reads the client folder off a firm record too.
+
+    **Step 10bl, 2026-09-20.** `tests\resolution_fixtures.py` went on composing
+    `config.PRACTICE_ROOT / "Clients"` for thirteen days after `config.py`
+    stopped, so the tests worked the location out one way and the live system
+    worked it out another. Nothing was wrong in practice only because Paul's
+    `firms.json` happens to name a folder called `Clients`.
+
+    ## Why this class exists rather than just the fix
+
+    **A mutation putting the composed literal back was caught by nothing**,
+    across 1603 tests on 2026-09-20, and that is not a surprise: while the
+    record names `Clients` under the practice root, the composition and the
+    derivation produce the same path, character for character. **A fix nothing
+    can catch is where both of this week's defects came from**, so the check is
+    part of the change rather than a nicety.
+
+    **What makes it discriminate is pointing the record somewhere a composition
+    from the practice root cannot reach.** `_client_top_folder()`'s own
+    docstring says the value "is an absolute path in its own right and need not
+    sit under the practice root", so a folder outside it is a real case and not
+    a contrived one.
+    """
+
+    def _fixture(self, **kwargs):
+        sys.path.insert(0, str(Path(__file__).parent))
+        from resolution_fixtures import TempEnvironment
+
+        return TempEnvironment(**kwargs)
+
+    def test_the_default_keeps_the_name_every_other_test_expects(self):
+        """The control on the two below. Sixteen tests spell `Clients` out in
+        their `filed_path` constants, so this is what stops the guard being
+        bought at their expense."""
+        import config
+
+        with self._fixture() as env:
+            self.assertEqual(config.CLIENTS_ROOT, env.path / "Clients")
+
+    def test_the_client_root_follows_the_record_and_not_the_practice_root(self):
+        """The discriminator. A composed `PRACTICE_ROOT / "Clients"` fails here."""
+        import config
+
+        with tempfile.TemporaryDirectory() as outside:
+            elsewhere = Path(outside) / "Somebody Elses Filing"
+            with self._fixture(client_top_folder=elsewhere) as env:
+                self.assertEqual(config.CLIENTS_ROOT, elsewhere)
+                self.assertNotEqual(
+                    config.CLIENTS_ROOT, env.path / "Clients",
+                    "the fixture composed the path from the practice root "
+                    "instead of reading it off the firm record")
+                self.assertFalse(
+                    str(config.CLIENTS_ROOT).startswith(str(env.path)),
+                    "the client top folder need not sit under the practice "
+                    "root, and this one deliberately does not")
+
+    def test_the_firm_record_and_the_client_root_agree(self):
+        """`app.py` reads `config.FIRMS` at runtime for the firm name on an
+        alert, so a client root derived from a record the environment does not
+        hold would be an environment disagreeing with itself."""
+        import config
+
+        with tempfile.TemporaryDirectory() as outside:
+            elsewhere = Path(outside) / "Somebody Elses Filing"
+            with self._fixture(client_top_folder=elsewhere):
+                record, = config.FIRMS.values()
+                self.assertEqual(
+                    record[config.CLIENT_TOP_FOLDER_FIELD], str(elsewhere))
+                self.assertEqual(
+                    config._client_top_folder(config.FIRMS),
+                    config.CLIENTS_ROOT)

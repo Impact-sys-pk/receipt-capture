@@ -65,21 +65,37 @@ REDIRECTED = (
 )
 
 #: Saved and restored like the rest, and assigned by hand rather than rebased.
-#: **Neither is a layout, so neither is `_rebased()`'s business.**
-#:
-#: `CLIENTS_ROOT` is a FIRM SETTING, `client_top_folder` on the firm record,
-#: which `config.py` reads through `_client_top_folder(FIRMS)` rather than
-#: composing from the practice root. **What this fixture calls it is a fixture
-#: choice**, and `Clients` is what it has always called it. See the flag in
-#: `2026-09-20_REPORT_claude_code_temp_environment_archive_root.md`:
-#: `tests\live_paths.py` deliberately calls the session one `Client Folders` so
-#: that a regression to a composed `PRACTICE_ROOT / "Clients"` goes red, and
-#: this fixture's `Clients` undoes that for every test that uses it. **Moving it
-#: reaches 40 test files and is not this change's to make.**
+#: **Not a layout, so not `_rebased()`'s business.**
 #:
 #: `CLIENTS_JSON` is pinned at a path that does not exist, which is a behaviour
 #: rather than a location: see where it is assigned.
-PINNED_BY_HAND = ("CLIENTS_ROOT", "CLIENTS_JSON")
+#:
+#: ~~`CLIENTS_ROOT` is here too.~~ **It left on 2026-09-20, step 10bl**, and
+#: `FROM_THE_FIRM_RECORD` below is where it went.
+PINNED_BY_HAND = ("CLIENTS_JSON",)
+
+#: Set from a firm record rather than composed, because that is what production
+#: does. Step 10bl, 2026-09-20.
+#:
+#: **`config.py` has not composed `PRACTICE_ROOT / "Clients"` since 2026-09-07.**
+#: It reads `CLIENTS_ROOT = _client_top_folder(FIRMS)` off the firm record's
+#: `client_top_folder` field, because the client top folder is the firm's own
+#: filing structure: this product does not own it, does not create it, does not
+#: name it, and it need not sit under the practice root at all. Sub-step 10e.14
+#: piece three, amendment 261, and the comment in `config.py` above
+#: `INTELLIBILLS_ROOT` records the removal.
+#:
+#: **This fixture went on composing it for thirteen days**, which is the same
+#: defect class as the archive root fixed earlier the same day: the tests work
+#: the location out one way and the live system works it out another. Nothing
+#: was wrong in practice only because Paul's `firms.json` happens to name a
+#: folder called `Clients`.
+#:
+#: **`FIRMS` is pinned as well as `CLIENTS_ROOT`, and that is not tidiness.**
+#: `app.py` reads `config.FIRMS` at runtime in two places, for the firm name on
+#: an alert, so a `CLIENTS_ROOT` derived from a record that `config.FIRMS` does
+#: not hold would be an environment disagreeing with itself.
+FROM_THE_FIRM_RECORD = ("FIRMS", "CLIENTS_ROOT")
 
 #: The folders this fixture creates, and the rest are deliberately absent.
 #:
@@ -166,6 +182,22 @@ class TempEnvironment:
     existed.
     """
 
+    def __init__(self, client_top_folder=None):
+        """`client_top_folder` overrides the firm record's, for one test.
+
+        **It exists so the derivation can be told apart from the old
+        composition.** Both produce the same path while the record names a
+        folder called `Clients` under the practice root, so a mutation putting
+        `config.PRACTICE_ROOT / "Clients"` back was caught by nothing across
+        1603 tests on 2026-09-20. A test that points this somewhere else, and
+        especially outside the practice root, cannot be satisfied by any
+        composition from the practice root.
+
+        `None` means `self.path / "Clients"`, which is what every existing test
+        gets and why none of them moved.
+        """
+        self._client_top_folder = client_top_folder
+
     def __enter__(self):
         self._temp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.path = Path(self._temp.name)
@@ -176,8 +208,8 @@ class TempEnvironment:
         # this into a `practice\` subfolder would quietly change what those
         # tests are asserting. The unsynced paths land here too, which is what
         # this fixture has always done.
-        self._saved = {name: getattr(config, name)
-                       for name in REDIRECTED + PINNED_BY_HAND}
+        self._saved = {name: getattr(config, name) for name in
+                       REDIRECTED + PINNED_BY_HAND + FROM_THE_FIRM_RECORD}
         self._saved["CLIENTS_BY_ID"] = config.CLIENTS_BY_ID
         # 10d.35 re-reads the registry at the top of every poll. Pinned below at
         # a path that does not exist, with the remembered mtime set to match, so
@@ -189,11 +221,27 @@ class TempEnvironment:
         for name in REDIRECTED:
             setattr(config, name, _rebased(self._saved[name], self.path))
 
-        # **The two hand pins come before the folders are made**, because
-        # `CLIENTS_ROOT` is one of the folders made and reading it a line too
-        # early would create the session one and leave this test without its
-        # own. See `PINNED_BY_HAND`.
-        config.CLIENTS_ROOT = config.PRACTICE_ROOT / "Clients"
+        # **The client folder comes off a firm record, the way production gets
+        # it.** The record is the one `tests\live_paths.py` wrote, copied with
+        # its `client_top_folder` moved onto this test's own directory, and the
+        # path is then read back out of it by `config.py`'s own picker rather
+        # than composed here. See `FROM_THE_FIRM_RECORD`.
+        #
+        # **The name stays `Clients`**, which is what this fixture has always
+        # called it and what 16 tests across three files spell out in their
+        # `filed_path` constants. The name is now a property of the record
+        # rather than a rule this file states, which is the whole change: a
+        # firm whose folder is called anything else needs no edit here.
+        #
+        # **This comes before the folders are made**, because `CLIENTS_ROOT` is
+        # one of the folders made and reading it a line too early would create
+        # the session one and leave this test without its own.
+        top_folder = self._client_top_folder or (self.path / "Clients")
+        firm_id, firm = next(iter(self._saved["FIRMS"].items()))
+        config.FIRMS = {firm_id: dict(
+            firm, **{config.CLIENT_TOP_FOLDER_FIELD: str(top_folder)})}
+        config.CLIENTS_ROOT = config._client_top_folder(config.FIRMS)
+
         # **Deliberately not `Intellibills\clients.json`.** The point of this
         # one is that it names a file that is not there, so
         # `config.load_clients()` re-reading on the next poll finds no change

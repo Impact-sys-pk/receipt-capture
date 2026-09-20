@@ -94,6 +94,8 @@ All briefs are done. Step 10bh was its last, built in `989a30e` and verified by 
 
 **`guards.mjs` holds eight guards over `IntelliBooks-Desktop-v3.html`.** Run `node guards.mjs <file>` and `node guards.mjs --self-test`, which proves each of the eight can fail on a mutation. In summary: no `receipts` property outside four named places; only `saveOne()` writes JSON with a null handle; only three functions call `saveOne()`; no retired `image`/`doc`/`imageBase64`; only `archiveFileHandle()` walks the archive; `booksMod` confined to four places; the `_pipeId` check precedes anything irreversible in `fileReviewReceipt()` and `discardReviewReceipt()`; and each of the four memory exporters calls `dataMovedUnderneath()` before it writes.
 
+**A fifth does not: `IntelliBooks\App\drive_seam.mjs`, added 2026-09-20 by amendment 527, Paul's decision.** It is the Desktop half of step 10am and the only check of the Review seam's middle link. Run it from `IntelliBooks\App\` against the fixture committed in the pipeline repository at `tests\fixtures\published_item_needs_review.json`; its header says what it proves and what to watch. 24 cases.
+
 **Four harnesses exist only in the session scratchpad and are not on Paul's disk.** `drive.mjs` 10 cases on `drainInbox()`, `drive2.mjs` 10 on `fileReviewReceipt()`, `drive3.mjs` 5 on `migrateBooks()`, `drive4.mjs` 11 on `dataMovedUnderneath()` and `exportClientBackup()`. **Rebuild them if you need them.** Each extracts the real function from the file's syntax tree, so what runs is the code in the file.
 
 **Line endings.** `CLAUDE.md` is CRLF. `2026-07-25_BUILD_STATUS.md` and `2026-07-25_CONSOLE_DESIGN.md` are LF. Use `newline=''` in Python and assert the file has none of the wrong kind before writing.

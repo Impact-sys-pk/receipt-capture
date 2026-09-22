@@ -1089,7 +1089,7 @@ class Repository:
         self._conn.commit()
 
     def is_recorded_and_filed(self, receipt_id: str) -> bool:
-        """Check if a receipt is genuinely filed (has filed_path set).
+        """Check if a receipt is genuinely filed: filed, and not discarded.
 
         **NOT widened by 10f.24, and that is a decision rather than an
         oversight.** Its three remaining callers are the file-hash dedup in
@@ -1099,9 +1099,38 @@ class Repository:
         gives every validation status a `published` row, so widening this would
         make a resent review item look like a duplicate. Amendment 303, and
         `SettledMeansPublishedTest` holds the two answers apart.
+
+        ## `status <> 'discarded'`, added 2026-09-22 on Paul's instruction
+
+        **This NARROWS rather than widens**, so the paragraph above is
+        undisturbed: the only change is that one more case answers False.
+        `_move_inbox_pair_to_processed()`'s dependency is on `filed_path` being
+        NULL, which this does not touch, and
+        `ADiscardedRowThatKeptItsFiledPathTest` asserts that rather than
+        arguing it.
+
+        **Why it is needed when `discard_receipt()` already clears the column.**
+        The live database holds a row where it did not stick: `status` is
+        `discarded`, `filed_path` is populated, and the audit row, the log and
+        the deleted client copy all say the clearing ran.
+        `2026-09-22_REPORT_claude_code_filed_path_on_discarded_rows.md` carries
+        the enumeration; **the mechanism is not established and this does not
+        fix it.**
+
+        **What it does fix is the dependency.** The answer rested on the
+        clearing having worked rather than on the status that decides, so one
+        stale column meant a document an operator deleted could never be sent
+        again, through all three intake routes. Commit `a96627a` decided the
+        opposite in terms: "a discarded receipt gives up its client folder copy
+        and stops blocking a resend".
+
+        **The row itself is deliberately left alone**, Paul's decision of
+        2026-09-22: correcting it by hand would destroy the only instance of the
+        fault before anyone knows how it happened.
         """
         row = self._conn.execute(
-            "SELECT filed_path FROM receipts WHERE receipt_id = ?",
+            "SELECT filed_path FROM receipts "
+            "WHERE receipt_id = ? AND status <> 'discarded'",
             (receipt_id,)
         ).fetchone()
         return row and row[0] is not None

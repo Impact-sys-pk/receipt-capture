@@ -1277,6 +1277,176 @@ class FiledAtOutlivesFiledPathTest(unittest.TestCase):
                 repo.close()
 
 
+class ADiscardedRowThatKeptItsFiledPathTest(DiscardTestCase):
+    r"""A discarded receipt is not filed, whatever `filed_path` holds.
+
+    **Added 2026-09-22 on Paul's instruction, from the live database.** One row
+    in `C:\Intellibills\db\receipts.db` has `status = 'discarded'` and a
+    `filed_path` that is not NULL, reported in
+    `2026-09-22_REPORT_claude_code_filed_path_on_discarded_rows.md`. The audit
+    row for it records `filed_path_cleared`, the log agrees, and the client
+    folder copy really was deleted, so the clearing ran and the column is
+    populated anyway. **The mechanism is not established and is not what this
+    change fixes.**
+
+    ## Why the fix is here and not on the row
+
+    `is_recorded_and_filed()` answered on `filed_path` alone, so its answer
+    depended on the clearing having worked rather than on the status that
+    actually decides. **Commit `a96627a` decided in terms that a discarded
+    receipt must not block a resend**, and its message says so: "a discarded
+    receipt gives up its client folder copy and stops blocking a resend".
+    `clear_receipt_filed_path()`'s docstring states the same thing.
+
+    **So one stale column turned into a document that cannot be sent again**,
+    through the file-hash duplicate check at all three intake routes.
+
+    **Every test that existed asserted the case where the clearing worked.**
+    `FiledPathIsClearedOnEveryDiscardTest` and
+    `ADiscardedReceiptDoesNotBlockAResendTest` both discard through
+    `apply_resolution_note()` and then read a NULL column, so neither could see
+    this. This class seeds the state the live database is actually in.
+    """
+
+    def _discarded_but_still_filed(self, env, receipt_id="r-1"):
+        """The live row's shape: discarded, and `filed_path` still populated.
+
+        Written directly rather than through `discard_receipt()`, because that
+        function clears the column and the whole point is the row where the
+        clearing did not stick.
+        """
+        target = self.seed_published_and_filed(env, receipt_id=receipt_id)
+        repo = Repository()
+        try:
+            repo.update_receipt_status(receipt_id, "discarded")
+            row = repo.get_receipt(receipt_id)
+            self.assertEqual(row["status"], "discarded")
+            self.assertIsNotNone(
+                row["filed_path"],
+                "the fixture did not reproduce the live shape, so this test "
+                "proves nothing")
+        finally:
+            repo.close()
+        return target
+
+    def all_receipts(self):
+        """Every receipts row. The same helper
+        `ADiscardedReceiptDoesNotBlockAResendTest` carries, and it is repeated
+        here rather than hoisted: moving it onto `DiscardTestCase` would touch a
+        base class six other classes inherit from, which this brief does not ask
+        for."""
+        repo = Repository()
+        try:
+            return rows(repo, "SELECT * FROM receipts ORDER BY created_at, receipt_id")
+        finally:
+            repo.close()
+
+    def test_a_discarded_receipt_with_a_filed_path_is_not_recorded_and_filed(self):
+        """The failing test this change was written against."""
+        with TempEnvironment() as env:
+            self._discarded_but_still_filed(env)
+            repo = Repository()
+            try:
+                self.assertFalse(
+                    repo.is_recorded_and_filed("r-1"),
+                    "a discarded receipt counted as filed because its "
+                    "filed_path outlived the discard, so the identical "
+                    "document cannot be sent again")
+            finally:
+                repo.close()
+
+    def test_an_ok_receipt_with_a_filed_path_still_counts_as_filed(self):
+        """The control. Without it the change could be 'always return False'."""
+        with TempEnvironment() as env:
+            self.seed_published_and_filed(env)
+            repo = Repository()
+            try:
+                self.assertTrue(repo.is_recorded_and_filed("r-1"))
+            finally:
+                repo.close()
+
+    def test_a_needs_review_receipt_is_still_not_filed(self):
+        r"""`_move_inbox_pair_to_processed()` depends on this, in terms.
+
+        Its docstring says a file left in the inbox "is not
+        `is_recorded_and_filed()` **because `filed_path` is NULL**, and is then
+        deliberately reprocessed". **The reason is the NULL column and not the
+        status**, so a change that only ever returns False in MORE cases cannot
+        disturb it. Asserted rather than argued.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo, receipt_id="r-review", status="needs_review")
+                self.assertIsNone(repo.get_receipt("r-review")["filed_path"])
+                self.assertFalse(repo.is_recorded_and_filed("r-review"))
+            finally:
+                repo.close()
+
+    def test_every_other_status_answers_exactly_as_the_column_does(self):
+        """`discarded` is the only status the answer now depends on.
+
+        The statuses are `CLAUDE.md`'s list less `discarded`. Each is seeded
+        carrying a `filed_path`, which is not a state all of them reach in
+        production; the point is that the query changes the answer for one
+        status and for no other.
+        """
+        statuses = ("pending", "ok", "needs_review", "failed",
+                    "possible_duplicate", "retry_exhausted", "bank_attachment")
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                for index, status in enumerate(statuses):
+                    receipt_id = f"r-{index}"
+                    env.seed(repo, receipt_id=receipt_id, status=status)
+                    repo.mark_receipt_filed(
+                        receipt_id,
+                        str(config.CLIENTS_ROOT / f"{receipt_id}.pdf"))
+                    repo.update_receipt_status(receipt_id, status)
+                    with self.subTest(status=status):
+                        self.assertTrue(
+                            repo.is_recorded_and_filed(receipt_id),
+                            f"{status} carries a filed_path and must still "
+                            f"read as filed; only 'discarded' changed")
+            finally:
+                repo.close()
+
+    def test_the_identical_file_can_be_sent_again_even_though_the_column_stuck(self):
+        """The consequence, driven through a real poll rather than reasoned about.
+
+        The same bytes arrive by email, `find_by_hash()` matches the discarded
+        receipt and `is_recorded_and_filed()` decides. Before this change the
+        arrival was swallowed as a duplicate.
+        """
+        with TempEnvironment() as env:
+            repo = Repository()
+            try:
+                env.seed(repo, receipt_id="r-1", status="ok",
+                         supplier_name="Apcoa Parking",
+                         invoice_date="2026-04-01", gross_amount=96.0,
+                         validation_status="ok", validation_notes=[])
+                repo._conn.execute(
+                    "UPDATE receipts SET file_hash = ? WHERE receipt_id = ?",
+                    (app.compute_hash(DOCUMENT), "r-1"))
+                repo._conn.commit()
+                repo.mark_receipt_filed("r-1", str(
+                    config.CLIENTS_ROOT / "Test Client" / "copy.pdf"))
+                # The live shape: discarded, and the column did not clear.
+                repo.update_receipt_status("r-1", "discarded")
+                self.assertIsNotNone(repo.get_receipt("r-1")["filed_path"])
+            finally:
+                repo.close()
+
+            with_email_client(self)
+            Routes(RecordingExtractor(extraction_result())).email_attachment(
+                message_id="the-resend", data=DOCUMENT)
+
+            arrived = [r for r in self.all_receipts() if r["receipt_id"] != "r-1"]
+            self.assertEqual(
+                len(arrived), 1,
+                "the resend was swallowed as a duplicate of a receipt the "
+                "operator deleted")
+
 
 if __name__ == "__main__":
     unittest.main()

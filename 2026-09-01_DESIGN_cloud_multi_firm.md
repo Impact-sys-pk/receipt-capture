@@ -1,7 +1,8 @@
 # Cloud multi-firm: design inbox
 
 **Date:** 2026-09-01
-**Version:** 1.1, amended 2026-09-07
+**Version:** 1.2, amended 2026-10-20
+~~**Version:** 1.1, amended 2026-09-07~~
 ~~**Version:** 1.0~~
 **Status:** Not started. Nothing in this document is scheduled and nothing here is a decision except where it says so.
 **Authority:** `2026-07-25_CONSOLE_DESIGN.md` is the build authority for Intellibills and IntelliBooks. This document has no authority over either and describes a product that does not exist.
@@ -38,7 +39,7 @@ Each is a limit of the local system that no local work removes. The numbers are 
 
 | Was item | Constraint |
 |---|---|
-| 39 | **One capture mailbox.** `capture@lastingimpact.co.uk`, redirected to `bills@intellitax.co.uk`, one IMAP account. A real product gives each firm its own capture address, which `MULTIFIRM_EMAIL_FORWARDING_ANALYSIS_AND_FINDINGS.md` named as an option and never examined |
+| 39 | **One capture mailbox.** Clients send to `bills@intellitax.co.uk`, which is a shared mailbox on Microsoft 365, and rules there redirect each client's receipts to whichever system that client's books live in. `capture@lastingimpact.co.uk` on Krystal is Intellibills' own leg of that fan-out, and the one IMAP account the pipeline polls. A real product gives each firm its own capture address, which `MULTIFIRM_EMAIL_FORWARDING_ANALYSIS_AND_FINDINGS.md` named as an option and never examined. **Corrected 2026-10-20, amendment 544 of `2026-07-25_CONSOLE_DESIGN.md`: the redirect direction was stated backwards and the reason for two mailboxes was recorded nowhere.** ~~**One capture mailbox.** `capture@lastingimpact.co.uk`, redirected to `bills@intellitax.co.uk`, one IMAP account. A real product gives each firm its own capture address, which `MULTIFIRM_EMAIL_FORWARDING_ANALYSIS_AND_FINDINGS.md` named as an option and never examined~~ |
 | 40 | **One OneDrive.** `ONEDRIVE_USER` on Netlify is a single value |
 | 41 | **One Netlify deployment, one Azure app registration, one `AZ_TENANT_ID`** |
 | 42 | **One browser folder grant**, so one firm is open at a time |

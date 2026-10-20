@@ -363,8 +363,28 @@ def _mailbox_firm_name() -> str:
         return firms[0].get("name", "") or ""
     logger.warning(
         f"{len(firms)} firms in {config.FIRMS_JSON.name}, so the firm behind the capture mailbox "
-        "cannot be identified for an unknown-sender alert; sending it without a firm name"
+        "cannot be identified for an unknown-sender alert; sending it without a firm name "
+        "or a reply address"
     )
+    return ""
+
+
+def _mailbox_firm_reply_address() -> str:
+    """The reply address for an unknown sender's alert. Step 10bq.
+
+    The firm record's `email` field, taken by exactly the rule
+    _mailbox_firm_name() uses for the name: one firm in the registry is the
+    answer, none or several is no answer. Paul's decision of 2026-10-20 gives
+    that field its first reader, because nobody reads the mailbox the alert is
+    sent from. No answer means no Reply-To header, which is better than one
+    pointing at the wrong firm.
+
+    Silent where _mailbox_firm_name() warns, because the two are always called
+    together and one warning per alert is enough.
+    """
+    firms = list(config.FIRMS.values())
+    if len(firms) == 1:
+        return firms[0].get("email", "") or ""
     return ""
 
 
@@ -1575,7 +1595,9 @@ def process_once():
                             recipient_email = email_from.split("<")[1].split(">")[0].strip()
 
                         firm_name = _mailbox_firm_name()
-                        if send_unknown_sender_alert(recipient_email, firm_name):
+                        reply_address = _mailbox_firm_reply_address()
+                        if send_unknown_sender_alert(recipient_email, firm_name,
+                                                     reply_address=reply_address):
                             repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
 
                     # This path wrote no event at all until 2026-09-08, so a stranger
@@ -1789,8 +1811,12 @@ def process_once():
                 # Resolve sender to firm
                 client_id, firm_id, _client_folder = repo.resolve_client_info(email_from)
 
-                # Get firm name
-                firm_name = config.FIRMS.get(firm_id, {}).get("name", firm_id)
+                # Firm name and reply address, both off the firm record. Step
+                # 10bq: the sign-off is the firm name and nothing else, so a
+                # missing record signs nobody rather than signing with the id.
+                firm = config.FIRMS.get(firm_id, {})
+                firm_name = firm.get("name", "") or ""
+                reply_address = firm.get("email", "") or ""
 
                 # Extract email address (handle "Name <email>" format)
                 recipient_email = email_from
@@ -1798,7 +1824,8 @@ def process_once():
                     recipient_email = email_from.split("<")[1].split(">")[0].strip()
 
                 # Send alert
-                if send_no_attachment_alert(recipient_email, firm_name):
+                if send_no_attachment_alert(recipient_email, firm_name,
+                                            reply_address=reply_address):
                     repo.record_alert_sent(message_id, "no_attachment", recipient_email, firm_name)
                     stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
 
@@ -2099,7 +2126,9 @@ def process_once():
                         recipient_email = email_from.split("<")[1].split(">")[0].strip()
 
                     firm_name = _mailbox_firm_name()
-                    if send_unknown_sender_alert(recipient_email, firm_name):
+                    reply_address = _mailbox_firm_reply_address()
+                    if send_unknown_sender_alert(recipient_email, firm_name,
+                                                 reply_address=reply_address):
                         repo.record_alert_sent(message_id, "unknown_sender", recipient_email, firm_name)
 
                 # One event for the email, with no filename, because there is no

@@ -133,7 +133,8 @@ class Mailbox:
         self.successes.append((uid, folder))
         return True
 
-    def send_no_attachment_alert(self, recipient, firm_name=None):
+    def send_no_attachment_alert(self, recipient, firm_name=None,
+                                 reply_address=None):
         self.alerts.append((recipient, firm_name))
         return True
 

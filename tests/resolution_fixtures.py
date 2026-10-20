@@ -429,7 +429,8 @@ class Routes:
         self.alerts = []
         self.alert_result = alert_result
 
-    def _send_unknown_sender_alert(self, recipient, firm_name=None):
+    def _send_unknown_sender_alert(self, recipient, firm_name=None,
+                                   reply_address=None):
         self.alerts.append((recipient, firm_name))
         return self.alert_result
 

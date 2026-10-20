@@ -420,7 +420,10 @@ class UnknownSenderAlertTest(unittest.TestCase):
         with patch.object(alerts.smtplib, "SMTP_SSL", FakeSMTP):
             alerts.send_unknown_sender_alert("x@example.invalid")
 
-        self.assertIn("Receipt Capture System", sent["from"])
+        # ~~self.assertIn("Receipt Capture System", sent["from"])~~ Step 10bq,
+        # 2026-10-20: that phrase names no product and appears nowhere now, so
+        # with no firm name the From is the bare sending mailbox.
+        self.assertEqual(sent["from"], config.SMTP_USERNAME)
         self.assertNotIn("Lasting Impact", sent["body"])
 
 

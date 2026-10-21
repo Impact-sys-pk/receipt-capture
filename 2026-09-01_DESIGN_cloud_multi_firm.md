@@ -65,7 +65,7 @@ untouched.**
 
 | Was item | Constraint |
 |---|---|
-| 135 | **A firm not found by id falls back to showing its internal id rather than its name.** `app.py`'s `config.FIRMS.get(firm_id, {}).get("name", firm_id)`. Unreachable today: the single firm on file, `FIRM001`, is always found. In a multi-firm cloud product a firm mid-onboarding, or one referenced after being removed from the tenant list, could hit this path and show a client the internal id instead of a name |
+| 135 | **A firm not found by id falls back to showing its internal id rather than its name.** `app.py`'s `config.FIRMS.get(firm_id, {}).get("name", firm_id)`. Unreachable today: the single firm on file, `FIRM001`, is always found. In a multi-firm cloud product a firm mid-onboarding, or one referenced after being removed from the tenant list, could hit this path and show a client the internal id instead of a name **ONE OF THE TWO OCCURRENCES IS GONE, 2026-10-20, amendment 546 of `2026-07-25_CONSOLE_DESIGN.md`.** The no-attachment alert's call site no longer falls back to the firm id for the sign-off; it falls back to an empty name, which names nobody rather than showing a client `FIRM001`. The constraint stands for anywhere else the pattern appears, and it was never reachable on a single-firm registry. |
 
 ---
 

@@ -65,8 +65,21 @@ Four outcomes: **receipt**, **App Statement**, **Bank Statement**, **Other Attac
 - **A document it cannot place is an Other Attachment marked for review.** There is no fifth kind.
 - **Bank Statement covers credit card statements.**
 
-**Which model performs this call is NOT DECIDED.** Do not choose one. Propose, with what it costs
-per document, and stop until Paul answers.
+**The model is Claude Haiku 4.5. Paul's decision, 2026-10-21.** Three reasons, and the first is the
+strongest. **One, it already does this exact job in Paul's own production code**: `classify_attachment()`
+in `C:\\LastingImpact\\whatsapp-message-router\\handler.py` asks Haiku 4.5 whether an attachment is a
+receipt. The pipeline's version is the same question with four answers instead of two. **Read that
+function before writing yours.** **Two, it reads PDFs natively**, which that file's own docstring states,
+and the pipeline's OpenAI path does not: `_pdf_first_page_to_base64()` in
+`worker\\extraction\\openai_vision.py` renders page one only, through PyMuPDF. Bank statements are PDFs
+and stage two will want more than page one. **Three, the cost is immaterial at this volume.**
+
+**The extraction call is unchanged and stays on OpenAI.** This adds a second provider to the pipeline,
+so it adds a second key to `.env`. Amendment 541 of 2026-10-16 records what a key going stale costs;
+treat the new one the same way.
+
+**The consultant session estimated 0.2p to 0.4p per document and did NOT measure it.** Report the real
+figure from your first run, with the token counts it came from, and do not repeat the estimate back.
 
 ### 2. App Statements need a platform and a week ending
 

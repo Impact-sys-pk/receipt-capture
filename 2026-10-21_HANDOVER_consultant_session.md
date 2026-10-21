@@ -44,7 +44,7 @@ They carry the rules. **This handover does not restate them.**
 
 **Read step 10br in full. It is long and every paragraph is a decision of Paul's.** The brief for the pipeline half is `PROMPT_claude_code_2026-10-21_attachments_stage_one.md`. The Documents tab in `IntelliBooks-Desktop-v3.html` is yours and is not started.
 
-**One thing is NOT decided and blocks the pipeline half: which model performs the classification call.** The brief tells Claude Code to propose and stop.
+**The classification model is Claude Haiku 4.5**, Paul's decision of 2026-10-21, chosen because it already does this exact job in the WhatsApp router and because it reads PDFs natively where the pipeline's OpenAI path renders page one only. Cost per document was estimated at 0.2p to 0.4p and **not measured**; the brief asks Claude Code for the real figure.
 
 **Terminology Paul settled on 2026-10-21 and which you must hold to:**
 

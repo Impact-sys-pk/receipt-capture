@@ -507,8 +507,12 @@ def load_firms():
     """Read firms.json into firm_id -> firm record. Sub-step 10d.51.
 
     snake_case throughout, matching clients.json. The `email` field comes across
-    from firms.csv unchanged and deliberately gains no reader: it is outstanding
-    item 24 and one of the three fields a firm currently is.
+    from firms.csv unchanged. ~~It deliberately gains no reader: it is
+    outstanding item 24 and one of the three fields a firm currently is.~~
+    Corrected 2026-10-21: step 10bq gave it its first reader on 2026-10-20,
+    closing item 24. `app.py` uses it as the Reply-To address on both automatic
+    client emails, in `_mailbox_firm_reply_address()` and at the no-attachment
+    alert.
     """
     firms_by_id = {}
     for record in _read_registry(FIRMS_JSON, "firms"):

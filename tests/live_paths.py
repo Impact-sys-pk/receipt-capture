@@ -301,9 +301,15 @@ def write_firm_record(practice_root=None, client_top_folder=None,
     `Intellibills\\firms.json` refuses and every test errors during collection.
 
     Minimal on purpose. `firm_id` and `name` are the two fields `load_firms()`
-    guarantees and `app._mailbox_firm_name()` reads; `email` and `phone_app_url`
-    are left out because nothing in the pipeline reads either, so putting them
-    here would only invite a test to depend on them.
+    guarantees and `app._mailbox_firm_name()` reads. ~~`email` and
+    `phone_app_url` are left out because nothing in the pipeline reads either,
+    so putting them here would only invite a test to depend on them.~~
+    Corrected 2026-10-21: `email` has been read since step 10bq, as the alert
+    Reply-To. It is still left out because a firm with no `email` is a
+    supported case, so the default record is the one that sends no Reply-To; a
+    test that needs one sets `config.FIRMS` itself, as
+    `tests/test_alert_email_wording.py` does. `phone_app_url` is left out
+    because nothing in the pipeline reads it.
 
     The folder itself is **not** created. `config` does not create it either, and
     a test that needs it makes it: filing is what creates a client folder, and a

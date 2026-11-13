@@ -2529,7 +2529,14 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             filed_path=str(target),
             category_code=code,
             category_name=category_name or categorisation.suggested_name,
-            category_confidence=categorisation.confidence,
+            # As `resolve_receipt()` does: no confidence where the operator's
+            # category overrode the suggestion, because the confidence
+            # describes the suggestion. `code or category_name` is the same
+            # test that decides `update_categorisation()` above. Amendment 552,
+            # Paul's decision of 2026-11-13. Nothing prints this today; it is
+            # here so the two routes cannot drift.
+            category_confidence=(None if (code or category_name)
+                                 else categorisation.confidence),
             validation_notes=validation_notes,
             message=f"Recorded the Desktop filing at {target}",
         )

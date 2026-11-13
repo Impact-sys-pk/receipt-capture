@@ -270,6 +270,54 @@ class TheTeachingSurvivesTest(_Base):
         self.assertEqual(self.firm_rows(), [])
 
 
+class TheTwoRoutesReportConfidenceAlikeTest(_Base):
+    """Amendment 552, Paul's decision of 2026-11-13: both routes give no
+    confidence where the operator overrode the suggestion, and the
+    suggestion's own where they did not. Nothing prints `_apply_filed_note()`'s
+    today; this exists so the two routes cannot drift."""
+
+    def filed_note(self, category):
+        target = config.PRACTICE_ROOT / FILED_RELATIVE.replace("\\", "/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("the copy Desktop filed", encoding="utf-8")
+        values = {"supplier_name": SUPPLIER, "invoice_date": "2026-04-01",
+                  "net_amount": 10, "vat_amount": 2, "gross_amount": 12,
+                  "currency": "GBP", "category_name": ""}
+        if category:
+            values.update(category_code=category[0], category_name=category[1])
+        return apply_resolution_note(self.repo, self.engine, {
+            "schema": 1, "receipt_id": "r-1", "client_id": "CLIENT001",
+            "action": "filed", "resolved_by": "desktop",
+            "resolved_at": "2026-11-13T14:02:11.000Z",
+            "values": values, "filed_path": FILED_RELATIVE})
+
+    def cli(self, category):
+        corrections = good_corrections()
+        if category:
+            corrections.gl_nominal_code, corrections.gl_account_name = category
+        return resolve_receipt(self.repo, self.engine, "r-1", corrections,
+                               actor="test", source="cli")
+
+    def confidence(self, route, category):
+        self.seed()
+        self.original_run(code=IN_CHART, confidence="low")
+        outcome = route(category)
+        self.assertEqual(outcome.outcome, "filed", outcome.message)
+        return outcome.category_confidence
+
+    def test_cli_route_override_gives_no_confidence(self):
+        self.assertIsNone(self.confidence(self.cli, ALSO_IN_CHART))
+
+    def test_filed_note_route_override_gives_no_confidence(self):
+        self.assertIsNone(self.confidence(self.filed_note, ALSO_IN_CHART))
+
+    def test_cli_route_no_override_gives_the_suggestions_confidence(self):
+        self.assertEqual(self.confidence(self.cli, None), "low")
+
+    def test_filed_note_route_no_override_gives_the_suggestions_confidence(self):
+        self.assertEqual(self.confidence(self.filed_note, None), "low")
+
+
 class NoCategoriseCallRemainsTest(unittest.TestCase):
     """Set guard: no correction route calls categorise(). Read from the syntax tree."""
 

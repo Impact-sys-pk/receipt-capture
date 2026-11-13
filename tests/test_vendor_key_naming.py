@@ -202,22 +202,60 @@ class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):
     """
 
     SERVICE = REPO_ROOT / "worker" / "resolution" / "service.py"
+    PUBLISH = REPO_ROOT / "worker" / "publish.py"
 
-    def test_neither_branch_reaches_the_field_through_getattr(self):
-        # Report the lines, not the file. assertNotIn against the whole source
-        # prints all 1,500 lines of it into the failure.
-        # Comment lines are skipped: the comment above the corrected read names
-        # the old form on purpose, the same way the vendor_code allowlist above
-        # keeps the two comments that name the old field. Live code only.
-        hits = [f"{n}: {line.strip()}"
-                for n, line in enumerate(
-                    self.SERVICE.read_text(encoding="utf-8").splitlines(), 1)
-                if "getattr(categorisation" in line
-                and not line.strip().startswith("#")]
-        self.assertEqual(
-            hits, [],
-            "a getattr on the categorisation hides a rename instead of raising",
-        )
+    def test_nothing_reaches_a_categorisation_field_through_getattr(self):
+        """`service.py` and, from 2026-11-13, `publish.py`.
+
+        ~~It matched the line text `getattr(categorisation`, skipping lines
+        that start with `#`, over `service.py` alone.~~ **Rewritten 2026-11-13,
+        Paul's decision, section 4 of
+        `2026-11-13_REPORT_claude_code_vendor_key_on_review_items.md`.**
+        `extra_for()` read `vendor_key` and `category_is_unconfirmed()` read
+        `match_source` through a `getattr` with a `None` default, in
+        `publish.py`, which this guard did not watch. Both already check for
+        `None` above the read, so the default could only ever turn a rename
+        into a silent `null` key or a hold that never fires.
+
+        **The syntax tree rather than the text**, which `CLAUDE.md` asks of
+        every source guard: the text match missed a `getattr(` split over two
+        lines and would flag struck wording in a docstring. It now finds a call
+        to `getattr` whose first argument is the name `categorisation`, and
+        nothing else.
+        """
+        for path in (self.SERVICE, self.PUBLISH):
+            with self.subTest(file=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                hits = [f"{node.lineno}: {ast.unparse(node)}"
+                        for node in ast.walk(tree)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "getattr"
+                        and node.args
+                        and isinstance(node.args[0], ast.Name)
+                        and node.args[0].id == "categorisation"]
+                self.assertEqual(
+                    hits, [],
+                    "a getattr on the categorisation hides a rename instead of "
+                    "raising")
+
+    def test_publish_reads_both_fields_as_plain_attributes(self):
+        """The positive half, so the guard above cannot pass because the read
+        went away rather than because it was corrected."""
+        tree = ast.parse(self.PUBLISH.read_text(encoding="utf-8"))
+        functions = {node.name: node for node in tree.body
+                     if isinstance(node, ast.FunctionDef)}
+        for function, field in (("extra_for", "vendor_key"),
+                                ("category_is_unconfirmed", "match_source")):
+            with self.subTest(function=function):
+                reads = [ast.unparse(node)
+                         for node in ast.walk(functions[function])
+                         if isinstance(node, ast.Attribute)
+                         and isinstance(node.value, ast.Name)
+                         and node.value.id == "categorisation"]
+                self.assertEqual(reads, [f"categorisation.{field}"],
+                                 f"{function}() must read {field} once, as a "
+                                 "plain attribute")
 
     def test_both_branches_read_it_as_a_plain_attribute(self):
         """Read off the syntax tree, inside the two learning functions only.

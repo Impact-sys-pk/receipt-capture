@@ -435,7 +435,13 @@ def category_is_unconfirmed(categorisation) -> bool:
     """
     if categorisation is None:
         return False
-    return getattr(categorisation, "match_source", None) in MACHINE_MATCH_SOURCES
+    # A plain attribute, 2026-11-13, Paul's decision. ~~`getattr(categorisation,
+    # "match_source", None)`~~: with `None` handled above, the default could only
+    # turn a rename of the field into False for every receipt, so no guess would
+    # ever be held. Every caller passes `None` or a `CategorisationResult`,
+    # enumerated from the syntax tree in
+    # `2026-11-13_REPORT_claude_code_plain_attribute_reads.md`.
+    return categorisation.match_source in MACHINE_MATCH_SOURCES
 
 
 def extra_for(notes, duplicate_of=None, categorisation=None,
@@ -475,7 +481,9 @@ def extra_for(notes, duplicate_of=None, categorisation=None,
             "extra_for() takes the vendor key from the categorisation or from "
             "vendor_key, not both")
     if categorisation is not None:
-        vendor_key = getattr(categorisation, "vendor_key", None)
+        # A plain attribute, for `category_is_unconfirmed()`'s reason: a rename
+        # must raise, not publish `null` on every `ok` item.
+        vendor_key = categorisation.vendor_key
     if notes is None:
         notes = []
     elif isinstance(notes, str):

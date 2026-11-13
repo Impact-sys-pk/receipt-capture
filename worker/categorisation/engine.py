@@ -70,6 +70,15 @@ NOISE_WORDS = {
     "purchase", "pos", "online", "mobile",
     "london", "manchester", "birmingham",
     "the", "and", "of", "for", "in", "at", "on",
+    # The singular definite article in French, Italian and Spanish, the other
+    # languages most common on UK restaurant and cafe names. Added 2026-11-13,
+    # Paul's decision: `LA BELLA RESTAURANT` keyed on `la`, because the
+    # three-word rule in extract_vendor_key() keeps only the first word. `la` is
+    # the one the live database held; the other three fail the same way.
+    # Plurals, prepositions such as `de` and `di`, and indefinite articles were
+    # deliberately left out: see
+    # 2026-11-13_REPORT_claude_code_vendor_key_articles.md.
+    "la", "le", "il", "el",
     "ref", "reference", "txn",
 }
 

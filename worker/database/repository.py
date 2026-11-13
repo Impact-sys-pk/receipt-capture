@@ -77,6 +77,29 @@ def london_day_bounds(now=None):
             end.astimezone(timezone.utc).isoformat())
 
 
+def _by_name_then_agreeing_key(rows, vendor_name: Optional[str]) -> Optional[dict]:
+    """Sub-step 10bs.9's rule over every variant on one key, most-seen first.
+
+    1. The row whose `vendor_name` is exactly this name. The table is unique on
+       the name within a key, so there is at most one.
+    2. Otherwise the most-seen row, but only where every variant carries the
+       same `nominal_code`. One variant always agrees with itself.
+    3. Otherwise None: the variants disagree and no single answer is right.
+
+    Exact and case-sensitive on purpose. Trimming, collapsing spaces and
+    ignoring case belong to sub-step 10bs.10, which has its own brief.
+    """
+    if not rows:
+        return None
+    if vendor_name is not None:
+        for row in rows:
+            if row["vendor_name"] == vendor_name:
+                return dict(row)
+    if len({row["nominal_code"] for row in rows}) == 1:
+        return dict(rows[0])
+    return None
+
+
 class Repository:
     def __init__(self, db_path=None):
         if db_path is None:
@@ -635,8 +658,42 @@ class Repository:
 
     # Categorisation repository methods
 
-    def get_client_vendor(self, client_id: str, vendor_key: str) -> Optional[dict]:
-        """Exact match lookup for client-specific vendor mapping. Returns most-seen variant."""
+    def get_client_vendor(self, client_id: str, vendor_key: str,
+                          vendor_name: Optional[str]) -> Optional[dict]:
+        """Layer 1. This supplier's mapping, by name first. Sub-step 10bs.9.
+
+        **Paul's decision of 2026-11-13, amendment 548 item 9, option C.** An
+        exact `vendor_name` row wins. With none, the key answers ONLY where every
+        variant on it carries the same nominal code. Variants disagreeing means
+        None, and the receipt goes on to the later layers.
+
+        **Why.** `upsert_client_vendor()` keeps one row per name and the table is
+        unique on `(client_id, vendor_key, vendor_name)`, but this read on the
+        key alone and took the most-seen row. So `Shell Co-op Harborne`, taught
+        `7301 Fuel and oil`, was answered `7302 EV charging` at confidence `high`
+        because another Shell name had been taught more often.
+
+        `vendor_name` is required, deliberately, so no caller gets the key-only
+        answer by leaving it out. The fuzzy layer, which matches on keys and has
+        no name to give, calls `get_most_seen_client_vendor()` instead.
+        """
+        rows = self._conn.execute("""
+            SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
+            FROM categorisations_client_vendors
+            WHERE client_id = ? AND vendor_key = ?
+            ORDER BY times_seen DESC, last_updated DESC
+        """, (client_id, vendor_key)).fetchall()
+        return _by_name_then_agreeing_key(rows, vendor_name)
+
+    def get_most_seen_client_vendor(self, client_id: str, vendor_key: str) -> Optional[dict]:
+        """The most-seen variant on a key, whatever its name. Layer 3 only.
+
+        This is what `get_client_vendor()` was until sub-step 10bs.9, kept
+        byte-for-byte for the fuzzy layer, which has a matched key and no name.
+        **Not a choice that layer 3 is right**: the brief for 10bs.9 says to
+        report what layer 3 does with a key layer 1 refused rather than design
+        around it, and `tests/test_vendor_lookup_by_name.py` pins it.
+        """
         row = self._conn.execute("""
             SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
             FROM categorisations_client_vendors
@@ -682,8 +739,27 @@ class Repository:
         ).fetchall()
         return [row["vendor_key"] for row in rows]
 
-    def get_firm_vendor(self, business_type: str, vendor_key: str) -> Optional[dict]:
-        """Exact match lookup for firm-level vendor mapping. Returns most-seen variant."""
+    def get_firm_vendor(self, business_type: str, vendor_key: str,
+                        vendor_name: Optional[str]) -> Optional[dict]:
+        """Layer 2. The same rule as `get_client_vendor()`, on the firm pool.
+
+        Sub-step 10bs.9: Paul agreed on 2026-11-13 that the firm table gets the
+        name-first rule too. See `get_client_vendor()` for the reasoning.
+        """
+        rows = self._conn.execute("""
+            SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
+            FROM categorisations_firm_vendors
+            WHERE business_type = ? AND vendor_key = ?
+            ORDER BY times_seen DESC, last_updated DESC
+        """, (business_type, vendor_key)).fetchall()
+        return _by_name_then_agreeing_key(rows, vendor_name)
+
+    def get_most_seen_firm_vendor(self, business_type: str, vendor_key: str) -> Optional[dict]:
+        """The most-seen variant on a key, whatever its name. Layer 4 only.
+
+        What `get_firm_vendor()` was until sub-step 10bs.9. See
+        `get_most_seen_client_vendor()`.
+        """
         row = self._conn.execute("""
             SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
             FROM categorisations_firm_vendors

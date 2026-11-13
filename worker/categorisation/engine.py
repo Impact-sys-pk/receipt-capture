@@ -318,9 +318,12 @@ class CategorisationEngine:
                         matched_vendor=rule.get("rule_name"), needs_review=False
                     )
 
-        # Layer 1: Exact match in client lookup
+        # Layer 1: Exact match in client lookup. By supplier name first, then by
+        # key only where every name on the key agrees on the code. Sub-step
+        # 10bs.9; the rule is in the repository. `supplier_name` is the string
+        # every teaching route stores as `vendor_name`.
         if self.repo:
-            client_vendor = self.repo.get_client_vendor(client_id, vendor_key)
+            client_vendor = self.repo.get_client_vendor(client_id, vendor_key, supplier_name)
             if client_vendor:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
@@ -333,7 +336,7 @@ class CategorisationEngine:
                 )
 
             # Layer 2: Exact match in firm lookup (by business type)
-            firm_vendor = self.repo.get_firm_vendor(business_type, vendor_key)
+            firm_vendor = self.repo.get_firm_vendor(business_type, vendor_key, supplier_name)
             if firm_vendor:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
@@ -351,7 +354,10 @@ class CategorisationEngine:
                 fuzzy_results = fuzzy_match(vendor_key, client_vendors, threshold=0.70)
                 if fuzzy_results:
                     best_match, score = fuzzy_results[0]
-                    matched_vendor = self.repo.get_client_vendor(client_id, best_match)
+                    # Unchanged by 10bs.9: the most-seen variant on the
+                    # matched key. This can return the very mapping layer 1
+                    # refused, as `fuzzy_client`; reported to Paul, not decided.
+                    matched_vendor = self.repo.get_most_seen_client_vendor(client_id, best_match)
                     if matched_vendor:
                         conf = "medium" if score >= 0.80 else "low"
                         return CategorisationResult(
@@ -370,7 +376,7 @@ class CategorisationEngine:
                 fuzzy_results = fuzzy_match(vendor_key, firm_vendors, threshold=0.70)
                 if fuzzy_results:
                     best_match, score = fuzzy_results[0]
-                    matched_vendor = self.repo.get_firm_vendor(business_type, best_match)
+                    matched_vendor = self.repo.get_most_seen_firm_vendor(business_type, best_match)
                     if matched_vendor:
                         conf = "medium" if score >= 0.80 else "low"
                         return CategorisationResult(

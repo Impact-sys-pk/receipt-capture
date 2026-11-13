@@ -141,6 +141,41 @@ DUPLICATE_OF_KEY = "duplicate_of"
 #: sentence described code that no longer exists.
 CATEGORY_UNCONFIRMED_KEY = "category_unconfirmed"
 
+#: The vendor key the engine computed for this receipt's supplier name. **Sub-step
+#: 10bs.10, amendment 555, Paul's decision of 2026-11-13.** A sixth key whose name
+#: is part of the contract with IntelliBooks Desktop, and the one that lets the
+#: reader of `Intellibills\\Supplier Mappings\\{client_id}-mappings.json` say,
+#: at the Remember tick, which other names already sit on this receipt's key.
+#: Desktop does not compute the key itself: that would put
+#: `normalise_description()` and `extract_vendor_key()` in two products in two
+#: languages, which is the option Paul refused.
+#:
+#: **Spelt as `config.MAPPING_VENDOR_KEY_FIELD` is**, so the item and the
+#: mappings file use one word for one thing. The join is on the values; the
+#: matching names are for the person writing the reader.
+#:
+#: **Three states, and the reader can tell all three apart.** A string is the
+#: key. `null` is the pipeline saying there is none: the receipt was never
+#: categorised, which is every receipt that is not `ok`, or its supplier name
+#: normalised to nothing. **Absent** is an item written before this key
+#: existed. So this travels on every item, for `NOTES_KEY`'s reason, and "no
+#: key" is a stated `null` rather than a missing key, which is
+#: `DUPLICATE_OF_KEY`'s shape and the wrong one here: `=== null` and
+#: `=== undefined` are different questions in JavaScript and the reader may
+#: need both.
+#:
+#: **An empty string is never published.** It is falsy like `null` but is a
+#: string, so a reader testing `typeof` would take it for a key. The engine
+#: does not produce one today, `vendor_key_for()` returns None instead; the
+#: coercion in `extra_for()` makes that a property of the item rather than of
+#: the engine. This is the care `CATEGORY_UNCONFIRMED_KEY`'s comment asks for
+#: where a truthiness test meets another language.
+#:
+#: **It is the key at the moment of publishing.** Nothing republishes an item
+#: when the operator corrects the supplier name, so after a correction the key
+#: the pipeline would now compute can differ from the one on the item.
+VENDOR_KEY_KEY = "vendor_key"
+
 #: Every key a published item carries that the sidecar does not, in one place.
 #:
 #: **Added 2026-09-11 because adding the fifth broke a test that had the four
@@ -159,6 +194,7 @@ ITEM_ONLY_KEYS = (
     NOTES_KEY,
     DUPLICATE_OF_KEY,
     CATEGORY_UNCONFIRMED_KEY,
+    VENDOR_KEY_KEY,
 )
 
 #: The two outcomes a `publish_events` row can carry, sub-step 10f.36. The
@@ -417,6 +453,10 @@ def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:
     `category_is_unconfirmed()`. It defaults to None so a caller that says
     nothing publishes `false`, because a key that said nothing must not hold a
     receipt that is fine.
+
+    `VENDOR_KEY_KEY` comes off the same object, sub-step 10bs.10, so the two
+    callers cannot publish different keys for one receipt. `or None` turns an
+    empty string into `null`; see the constant for why.
     """
     if notes is None:
         notes = []
@@ -425,6 +465,7 @@ def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:
     extra = {
         NOTES_KEY: list(notes),
         CATEGORY_UNCONFIRMED_KEY: category_is_unconfirmed(categorisation),
+        VENDOR_KEY_KEY: getattr(categorisation, "vendor_key", None) or None,
     }
     if duplicate_of:
         extra[DUPLICATE_OF_KEY] = duplicate_of

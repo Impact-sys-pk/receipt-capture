@@ -381,6 +381,42 @@ def rows(repo, sql, params=()):
     return [dict(r) for r in repo._conn.execute(sql, params).fetchall()]
 
 
+def categorise_as_the_pipeline_does(repo, receipt_id="r-1", engine=None):
+    """Give a seeded receipt its ORIGINAL run. Sub-step 10bs.11.
+
+    A correction no longer runs the engine; it copies this row. So a test that
+    wants a matched suggestion on a corrected receipt has to make the original
+    run first, as `process_extraction_result()` does: `categorise()` on the
+    latest extraction, the chart check, then `save_categorisation()`.
+
+    `engine` defaults to the real one with layer 5 off. A test that patches
+    `CategorisationEngine.categorise` gets its patch here too, which is how the
+    classifier tests put an `ai` answer on the original run.
+    """
+    import uuid as _uuid
+    from datetime import datetime as _dt, timezone as _tz
+    from worker.categorisation.fallback import resolve_against_chart
+
+    extraction = repo.get_extraction_for_receipt(receipt_id)
+    receipt = repo.get_receipt(receipt_id)
+    trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
+    engine = engine or CategorisationEngine(repo=repo, enable_ai_fallback=False)
+    result = engine.categorise(
+        receipt_id=receipt_id, extraction_id=extraction["extraction_id"],
+        supplier_name=extraction["supplier_name"], client_id=receipt["client_id"],
+        business_type=trade, gross_amount=extraction["gross_amount"])
+    result = resolve_against_chart(result, repo=repo)
+    repo.save_categorisation(
+        categorisation_id=str(_uuid.uuid4()), receipt_id=receipt_id,
+        extraction_id=extraction["extraction_id"], client_id=receipt["client_id"],
+        trade=result.business_type, mapping_id=result.mapping_id,
+        suggested_code=result.suggested_code, suggested_name=result.suggested_name,
+        confidence=result.confidence, match_source=result.match_source,
+        matched_vendor=result.matched_vendor, needs_review=result.needs_review,
+        categorised_at=_dt.now(_tz.utc).isoformat())
+    return result
+
+
 def good_corrections():
     """Corrections that make the default seed valid."""
     corrections, errors = parse_corrections(

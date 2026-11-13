@@ -59,6 +59,7 @@ import config  # noqa: E402
 
 from chart_fixtures import TempChartBundle  # noqa: E402
 from resolution_fixtures import (  # noqa: E402
+    categorise_as_the_pipeline_does,
     RecordingExtractor,
     Routes,
     TempEnvironment,
@@ -281,8 +282,18 @@ class WhatACorrectedRowStoresTest(CorrectedNoteTestCase):
     def test_the_row_records_the_engine_suggestion_and_the_persons_choice(self):
         self.seed_filed()
         mapping = self.learn()
-        self.assertEqual(self.categorisations(), [],
-                         "the control: no categorisation row yet")
+        # Sub-step 10bs.11: the correction copies the ORIGINAL run rather than
+        # re-running the engine, so the original run is made here, by the real
+        # engine, the way the pipeline makes it. Layer 1 still produces the row
+        # the assertions below read, so the swap they exist to catch still
+        # reaches them.
+        repo = Repository()
+        try:
+            categorise_as_the_pipeline_does(repo)
+        finally:
+            repo.close()
+        self.assertEqual(len(self.categorisations()), 1,
+                         "the control: the original run's row and nothing else")
 
         self.write_note(corrected_note(
             values=values_with(category_code=ALSO_IN_CHART[0],
@@ -290,8 +301,8 @@ class WhatACorrectedRowStoresTest(CorrectedNoteTestCase):
         self.poll()
 
         written = self.categorisations()
-        self.assertEqual(len(written), 1, "one row per correction")
-        row = written[0]
+        self.assertEqual(len(written), 2, "one more row per correction")
+        row = written[-1]
 
         # What the ENGINE found, which is the audit trail and must never be
         # overwritten by the person's choice. Layer 1, because the mapping

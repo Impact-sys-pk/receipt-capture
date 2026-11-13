@@ -42,7 +42,7 @@ import unittest
 
 import config
 
-from resolution_fixtures import rows
+from resolution_fixtures import categorise_as_the_pipeline_does, rows
 from worker.categorisation.engine import CategorisationEngine
 from worker.database.repository import Repository
 
@@ -106,8 +106,15 @@ class WhatALayerTwoRowStoresTest(LayerTwoTestCase):
     def test_the_row_records_the_firm_mapping_and_the_persons_choice(self):
         self.seed_filed()
         mapping = self.seed_only_the_firm_table()
-        self.assertEqual(self.categorisations(), [],
-                         "the control: no categorisation row yet")
+        # Sub-step 10bs.11: the original run is made first, by the real engine,
+        # because a correction now copies it rather than re-running the engine.
+        repo = Repository()
+        try:
+            categorise_as_the_pipeline_does(repo)
+        finally:
+            repo.close()
+        self.assertEqual(len(self.categorisations()), 1,
+                         "the control: the original run's row and nothing else")
 
         self.write_note(corrected_note(
             values=values_with(category_code=ALSO_IN_CHART[0],
@@ -115,8 +122,8 @@ class WhatALayerTwoRowStoresTest(LayerTwoTestCase):
         self.poll()
 
         written = self.categorisations()
-        self.assertEqual(len(written), 1, "one row per correction")
-        row = written[0]
+        self.assertEqual(len(written), 2, "one more row per correction")
+        row = written[-1]
 
         # What the ENGINE found. `firm` and not `client`: this is the whole
         # reason the file exists, and it is asserted first because every other

@@ -236,6 +236,17 @@ class CategorisationEngine:
         self.enable_ai_fallback = enable_ai_fallback
         self.aliases = dict(DEFAULT_ALIASES)
 
+    def vendor_key_for(self, supplier_name: Optional[str]) -> Optional[str]:
+        """The key the layers look up, with no lookup and no call. Sub-step 10bs.11.
+
+        A correction no longer runs `categorise()`, but teaching a mapping still
+        needs the key of the CORRECTED supplier name, so it has to be derived the
+        same way. `categorise()` calls this too, so the two cannot drift.
+        """
+        if not supplier_name:
+            return None
+        return extract_vendor_key(normalise_description(supplier_name), self.aliases) or None
+
     def _rule_matches(self, rule: dict, vendor_key: str, detail: str) -> bool:
         """Check if a rule matches the given vendor and detail."""
         # Vendor key must match if specified in rule
@@ -294,8 +305,7 @@ class CategorisationEngine:
             )
 
         # Normalise and extract the vendor key
-        normalised = normalise_description(supplier_name)
-        vendor_key = extract_vendor_key(normalised, self.aliases)
+        vendor_key = self.vendor_key_for(supplier_name)
 
         if not vendor_key:
             return CategorisationResult(

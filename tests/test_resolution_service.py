@@ -40,6 +40,7 @@ from worker.resolution.service import (
     parse_corrections,
     resolve_receipt,
 )
+from resolution_fixtures import categorise_as_the_pipeline_does
 
 
 class TempEnvironment:
@@ -473,8 +474,12 @@ class GlOverrideTest(unittest.TestCase):
         with TempEnvironment() as env:
             repo = Repository()
             try:
-                env.seed(repo)
+                # Sub-step 10bs.11: the correction copies the ORIGINAL run, so
+                # the receipt is read with its supplier and run through the
+                # engine first, as the pipeline would.
+                env.seed(repo, supplier_name="Apcoa Parking")
                 self._seed_mapping(repo)
+                categorise_as_the_pipeline_does(repo)
 
                 corrections = _good_corrections()
                 corrections.gl_nominal_code = "999"
@@ -487,7 +492,8 @@ class GlOverrideTest(unittest.TestCase):
                 )
                 self.assertEqual(outcome.outcome, "filed", outcome.message)
 
-                cat = _rows(repo, "SELECT * FROM categorisations WHERE receipt_id = 'r-1'")[0]
+                cat = _rows(repo, "SELECT * FROM categorisations WHERE receipt_id = 'r-1' "
+                                  "ORDER BY categorised_at DESC, rowid DESC")[0]
                 self.assertEqual(cat["suggested_code"], "271", "the audit trail must survive")
                 self.assertEqual(cat["suggested_name"], "Parking and tolls")
                 self.assertEqual(cat["correction_code"], "999")
@@ -556,14 +562,17 @@ class GlOverrideTest(unittest.TestCase):
         with TempEnvironment() as env:
             repo = Repository()
             try:
-                env.seed(repo)
+                # Sub-step 10bs.11, as in the test above.
+                env.seed(repo, supplier_name="Apcoa Parking")
                 self._seed_mapping(repo)
+                categorise_as_the_pipeline_does(repo)
                 outcome = resolve_receipt(
                     repo, env.engine(repo), "r-1", _good_corrections(),
                     actor="paul", source="console",
                 )
                 self.assertEqual(outcome.category_code, "271")
-                cat = _rows(repo, "SELECT * FROM categorisations WHERE receipt_id = 'r-1'")[0]
+                cat = _rows(repo, "SELECT * FROM categorisations WHERE receipt_id = 'r-1' "
+                                  "ORDER BY categorised_at DESC, rowid DESC")[0]
                 self.assertIsNone(cat["correction_code"])
             finally:
                 repo.close()

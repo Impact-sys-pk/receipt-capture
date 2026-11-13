@@ -46,7 +46,11 @@ sys.modules.setdefault("openai", fake_openai)
 import config  # noqa: E402
 
 from chart_fixtures import TempChartBundle  # noqa: E402
-from resolution_fixtures import TempEnvironment, rows  # noqa: E402
+from resolution_fixtures import (  # noqa: E402
+    TempEnvironment,
+    categorise_as_the_pipeline_does,
+    rows,
+)
 from worker.database.repository import Repository  # noqa: E402
 from worker.resolution.service import (  # noqa: E402
     ResolutionNoteError,
@@ -360,16 +364,20 @@ class FiledNoteLearningTest(unittest.TestCase):
 
         second = r"Clients\Test Client\IntelliBooks\Receipts\2026-27\second.pdf"
         self.seed(receipt_id="r-2", relative=second)
-        self.write_note(note_payload(
-            receipt_id="r-2",
-            filed_path=second,
-            values=values_with(category_code=_ABSENT, category_name=""),
-            original_review_files=["r-2.pdf"],
-        ))
-        self.consume()
-
+        # ~~A second filed note for r-2, whose correction ran the engine.~~
+        # **Sub-step 10bs.11: a correction no longer runs the engine**, so the
+        # second receipt goes through it the way the pipeline runs it.
         repo = Repository()
         try:
+            # The seed reads no supplier, so the pipeline's reading of r-2 is
+            # added here with the same supplier the first note taught.
+            repo.save_extraction(
+                extraction_id="ext-r-2-read", receipt_id="r-2",
+                engine="openai_vision", supplier_name="Apcoa Parking",
+                invoice_date="2026-04-01", net_amount=80.0, vat_amount=16.0,
+                gross_amount=96.0, currency="GBP", raw_response="{}",
+                validation_status="ok", validation_notes=[], update_status=False)
+            categorise_as_the_pipeline_does(repo, receipt_id="r-2")
             categorisation = repo.get_categorisation_for_receipt("r-2")
         finally:
             repo.close()

@@ -925,6 +925,27 @@ class Repository:
         ).fetchone()
         return dict(row) if row else None
 
+    def get_original_categorisation(self, receipt_id: str) -> Optional[dict]:
+        """The pipeline's own suggestion for a receipt, or None. Sub-step 10bs.11.
+
+        The most recent row whose extraction is NOT a `manual_correction`: the
+        live poll, the recovery sweep or an auto-retry, which is what the receipt
+        was published with. A correction row is skipped even where it is newer,
+        because until 10bs.11 every correction re-ran the engine and stored an
+        answer nobody had been shown.
+
+        None means the engine never ran on this receipt, which is the ordinary
+        case for one that went to review: the pipeline categorises only `ok`.
+        """
+        row = self._conn.execute("""
+            SELECT k.* FROM categorisations k
+            JOIN extractions e ON e.extraction_id = k.extraction_id
+            WHERE k.receipt_id = ? AND e.engine <> 'manual_correction'
+            ORDER BY k.categorised_at DESC, k.rowid DESC
+            LIMIT 1
+        """, (receipt_id,)).fetchone()
+        return dict(row) if row else None
+
     def update_categorisation(self, categorisation_id: str,
                              correction_code: str, correction_name: str,
                              correction_reason: str):

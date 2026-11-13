@@ -361,12 +361,16 @@ class EveryCallSitePassesTheAmountTest(unittest.TestCase):
                 "app.py": 1,
                 "retroactive_categorise.py": 1,
                 "worker/extraction_pipeline.py": 1,
-                "worker/resolution/service.py": 2,
+                # ~~"worker/resolution/service.py": 2~~. Sub-step 10bs.11,
+                # 2026-11-13, Paul's decision: a correction no longer runs the
+                # engine, so both calls in the resolution service are gone.
             },
             "the set moved; here it is in full: "
             + "; ".join(f"{f}:{line}" for f, line, _ in sites),
         )
-        self.assertEqual(len(sites), 5)
+        # ~~5~~ Three since sub-step 10bs.11. The method name still says five;
+        # it is left alone so the rename is not mixed into this change.
+        self.assertEqual(len(sites), 3)
 
     def test_every_one_of_them_passes_the_gross_amount(self):
         missing = [f"{f}:{line}" for f, line, kws in self._call_sites()

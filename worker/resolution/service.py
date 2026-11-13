@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from worker import attached, line_items, london_time
+from worker import attached, london_time
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -34,6 +34,7 @@ from worker.client_copy import (
     copy_for_published_receipt,
     remove_client_copy,
 )
+from worker.categorisation.fallback import EVENT_ACTION as CHART_FALLBACK_ACTION
 from worker.categorisation.fallback import resolve_against_chart
 from worker.extraction.base import ExtractionResult
 from worker.filing import (
@@ -978,6 +979,86 @@ def _learn_firm_mapping_if_confirmed(repo, receipt, categorisation, chosen_code,
     return code, name
 
 
+def _the_original_suggestion(repo, categorisation_engine, receipt, extraction_id,
+                             supplier_name, business_type):
+    """What a correction stores as the engine's suggestion. Sub-step 10bs.11.
+
+    **Paul's decision of 2026-11-13, amendment 548 item 11, option B: a
+    correction does not re-run the categorisation engine. Its new
+    `categorisations` row carries the suggestion from the original run**, so the
+    audit trail shows what was on screen when the operator decided. Until this,
+    both correction routes called `categorise()` and stored its answer: on
+    receipt `52e76e99` that was `7340 Parking and tolls` where the original run
+    had said `7301 Fuel and oil`, and on a receipt no mapping answered it was an
+    OpenAI call whose answer was overwritten in the same transaction.
+
+    **The original** is `Repository.get_original_categorisation()`'s row. Its
+    suggestion, confidence, layer, mapping and matched key are copied onto a
+    result for the correction's own new extraction, so append-only is unchanged.
+
+    **No original run.** A receipt that went to review was never categorised,
+    because the pipeline categorises only `ok`. The row is then `unmatched`, no
+    code and confidence `none`, which says truthfully that nothing was proposed.
+    The operator's choice still goes into the correction columns beside it.
+
+    **Three things are still worked out here, and none of them is a lookup.**
+
+    - `vendor_key` comes from the CORRECTED supplier name through
+      `vendor_key_for()`, because the tick teaches that name, and a taught row
+      pairing one name with another name's key is the defect 10bs.9 fixed.
+    - `resolve_against_chart()` still runs over the copied code, as it runs
+      over every suggestion before it reaches a row. On an unchanged chart it
+      changes nothing, because the code was checked when it was first made.
+    - Where the original run's chart check substituted or refused the account,
+      it recorded a `chart_fallback` event against that run's extraction, and
+      the outcome and the classifier's own account are read back from it.
+      Without that, `_learn_firm_mapping_if_confirmed()` would teach the shared
+      pool this client's fallback account instead of the one the classifier
+      named, which its own comment warns against.
+    """
+    # Imported here rather than at the top. `engine.py` imports the `openai`
+    # package, which imports `argparse`, and `tests/test_resolution_view.py`'s
+    # LayeringTest holds this module free of `argparse` at import, as the mark
+    # of CLI code. Every caller has already built an engine by the time this
+    # runs, so the module is loaded already and nothing new arrives.
+    from worker.categorisation.engine import CategorisationResult
+
+    original = repo.get_original_categorisation(receipt["receipt_id"])
+    corrected_key = categorisation_engine.vendor_key_for(supplier_name)
+    if original is None:
+        result = CategorisationResult(
+            receipt_id=receipt["receipt_id"], extraction_id=extraction_id,
+            client_id=receipt["client_id"], business_type=business_type,
+            vendor_key=corrected_key)
+    else:
+        result = CategorisationResult(
+            receipt_id=receipt["receipt_id"], extraction_id=extraction_id,
+            client_id=receipt["client_id"], business_type=original["trade"],
+            vendor_key=corrected_key, mapping_id=original["mapping_id"],
+            suggested_code=original["suggested_code"],
+            suggested_name=original["suggested_name"],
+            confidence=original["confidence"],
+            match_source=original["match_source"],
+            matched_vendor=original["matched_vendor"],
+            needs_review=bool(original["needs_review"]))
+
+    result = resolve_against_chart(result, repo=repo)
+
+    if original is not None and result.chart_outcome in ("in_chart", "no_code"):
+        recorded = next(
+            (event for event in repo.list_resolution_events(receipt["receipt_id"])
+             if event["action"] == CHART_FALLBACK_ACTION
+             and event["extraction_id"] == original["extraction_id"]),
+            None)
+        if recorded is not None:
+            said = json.loads(recorded["corrections_json"] or "{}")
+            result.chart_outcome = recorded["outcome"]
+            result.original_code = said.get("suggested_code")
+            result.original_name = said.get("suggested_name")
+            result.chart_note = recorded["reason"]
+    return result
+
+
 def _override(value: Optional[str]) -> Optional[str]:
     """Treat an empty or whitespace-only GL field as no override at all."""
     if value is None:
@@ -1277,38 +1358,22 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             pipeline_version=pipeline_version,
         )
 
-        # 8. Categorise, then save the engine's suggestion. Never overwrite
-        #    suggested_code with the operator's value: that is the audit trail.
+        # 8. Save the ORIGINAL run's suggestion. Never overwrite suggested_code
+        #    with the operator's value: that is the audit trail.
+        #
+        #    ~~Categorise, then save the engine's suggestion.~~ **Struck
+        #    2026-11-13 by sub-step 10bs.11, Paul's decision: a correction does
+        #    not re-run the engine.** The call that stood here stored an answer
+        #    the operator was never shown and could cost an OpenAI call. It also
+        #    read `line_items` back with `get_extraction_for_receipt()` AFTER
+        #    step 7 had saved the correction's own row, which carries none, so
+        #    layer 5 never saw the item lines on this path whatever its comment
+        #    said. `_the_original_suggestion()` copies the original instead and
+        #    still runs the chart check.
         client_name, business_type, client_folder_name = _client_details(receipt.get("client_id"))
-        categorisation = categorisation_engine.categorise(
-            receipt_id=receipt_id,
-            extraction_id=extraction_id,
-            supplier_name=merged["supplier_name"],
-            client_id=receipt["client_id"],
-            business_type=business_type,
-            # merged["gross_amount"] is the corrected figure written to the
-            # extraction row twenty lines above. Layer 5 is the only reader; it
-            # was the only one of the five call sites on this path not passing
-            # it, so a Halfords receipt resolved here could still be answered
-            # "0081 Motor vehicles - cars - additions" with nothing in the
-            # prompt saying how much had been spent.
-            gross_amount=merged["gross_amount"],
-            # ~~No line_items: they are not stored, and this path has no
-            # extraction call in hand.~~ **Struck 2026-09-12 by step 10p part
-            # one: they ARE stored.** Read off the row the pipeline wrote, not
-            # off `merged`, which carries the operator's corrections to the
-            # figures and has no lines in it. A correction to a supplier name
-            # does not change what the document listed.
-            line_items=line_items.from_json(
-                (repo.get_extraction_for_receipt(receipt_id) or {}).get("line_items")),
-        )
-        # The suggested code has to be one the client's chart holds, whichever
-        # layer produced it. See resolve_against_chart() in
-        # worker/categorisation/fallback.py. It runs before save_categorisation()
-        # below and before the sidecar at step 10, and it does not touch the
-        # operator's own GL override at step 9: that is applied afterwards and
-        # still wins.
-        categorisation = resolve_against_chart(categorisation, repo=repo)
+        categorisation = _the_original_suggestion(
+            repo, categorisation_engine, receipt, extraction_id,
+            supplier_name=merged["supplier_name"], business_type=business_type)
         categorisation_id = str(uuid.uuid4())
         repo.save_categorisation(
             categorisation_id=categorisation_id,
@@ -2302,27 +2367,14 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             pipeline_version=config.get_pipeline_version(),
         )
 
-        # Categorise for the audit trail, exactly as 4.3 step 8 does. The engine's
-        # suggestion is never overwritten; Desktop's category goes in the correction
-        # columns beside it.
+        # The ORIGINAL run's suggestion for the audit trail, exactly as 4.3 step
+        # 8 now does. ~~Categorise for the audit trail~~ **struck 2026-11-13 by
+        # sub-step 10bs.11**: the engine is not re-run. The suggestion is never
+        # overwritten; Desktop's category goes in the correction columns beside it.
         client_name, business_type, _folder = _client_details(receipt.get("client_id"))
-        categorisation = categorisation_engine.categorise(
-            receipt_id=receipt_id,
-            extraction_id=extraction_id,
-            supplier_name=merged["supplier_name"],
-            client_id=receipt["client_id"],
-            business_type=business_type,
-            # As at 4.3 step 8 above, and for the same reason.
-            gross_amount=merged["gross_amount"],
-            # ~~No line_items.~~ **Struck 2026-09-12 by step 10p part one**, and
-            # read off the stored row for the reason given at 4.3 step 8.
-            line_items=line_items.from_json(
-                (repo.get_extraction_for_receipt(receipt_id) or {}).get("line_items")),
-        )
-        # The suggested code has to be one the client's chart holds, whichever
-        # layer produced it. Desktop's own category is applied below, into the
-        # correction columns, and is unaffected.
-        categorisation = resolve_against_chart(categorisation, repo=repo)
+        categorisation = _the_original_suggestion(
+            repo, categorisation_engine, receipt, extraction_id,
+            supplier_name=merged["supplier_name"], business_type=business_type)
         categorisation_id = str(uuid.uuid4())
         repo.save_categorisation(
             categorisation_id=categorisation_id,

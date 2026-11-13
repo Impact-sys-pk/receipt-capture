@@ -44,7 +44,7 @@ from unittest import mock
 import config
 
 from chart_fixtures import TempChartBundle
-from resolution_fixtures import rows
+from resolution_fixtures import categorise_as_the_pipeline_does, rows
 from worker.categorisation.engine import CategorisationResult
 from worker.categorisation.fallback import resolve_against_chart
 from worker.database.repository import Repository
@@ -290,6 +290,23 @@ class BothRoutesTest(CorrectedNoteTestCase):
         finally:
             repo.close()
 
+    def classifier_answered_originally(self, code=IN_CHART[0], name=IN_CHART[1]):
+        """The classifier's answer, on the ORIGINAL run. Sub-step 10bs.11.
+
+        ~~The test patched `categorise()` around the poll, so the classifier
+        answered at correction time.~~ A correction no longer runs the engine
+        and copies the original run instead, so the answer has to be there
+        before the note arrives. The poll then runs with NO patch, so a
+        correction that called the engine again would get `unmatched` back and
+        teach the firm pool nothing, and these tests would go red.
+        """
+        repo = Repository()
+        try:
+            with self._with_classifier(code, name):
+                categorise_as_the_pipeline_does(repo)
+        finally:
+            repo.close()
+
     def _with_classifier(self, code=IN_CHART[0], name=IN_CHART[1]):
         def fake(self_engine, **kwargs):
             return ai_result(code, name,
@@ -326,8 +343,8 @@ class BothRoutesTest(CorrectedNoteTestCase):
         self.seed_unfiled()
         self.write_note(self._filed_note(IN_CHART[0], IN_CHART[1],
                                          tick=True, with_path=True))
-        with self._with_classifier():
-            self.poll()
+        self.classifier_answered_originally()
+        self.poll()
         self.assertEqual(len(self.client()), 1, "the client table is written")
         firm = self.firm()
         self.assertEqual(len(firm), 1, "and so is the firm pool")
@@ -339,8 +356,8 @@ class BothRoutesTest(CorrectedNoteTestCase):
         self.seed_unfiled()
         self.write_note(self._filed_note(ALSO_IN_CHART[0], ALSO_IN_CHART[1],
                                          tick=True, with_path=True))
-        with self._with_classifier(IN_CHART[0], IN_CHART[1]):
-            self.poll()
+        self.classifier_answered_originally(IN_CHART[0], IN_CHART[1])
+        self.poll()
         self.assertEqual(len(self.client()), 1)
         self.assertEqual(self.firm(), [],
                          "the operator overrode the classifier, so the receipt "
@@ -350,8 +367,8 @@ class BothRoutesTest(CorrectedNoteTestCase):
         self.seed_unfiled()
         self.write_note(self._filed_note(IN_CHART[0], IN_CHART[1],
                                          tick=False, with_path=True))
-        with self._with_classifier():
-            self.poll()
+        self.classifier_answered_originally()
+        self.poll()
         self.assertEqual(self.client(), [], "11.3: learning is opt-in")
         self.assertEqual(self.firm(), [], "and the tick governs both tables")
 
@@ -367,8 +384,8 @@ class BothRoutesTest(CorrectedNoteTestCase):
         self.seed_unfiled()
         self.write_note(self._filed_note(IN_CHART[0], IN_CHART[1],
                                          tick=True, with_path=False))
-        with self._with_classifier():
-            self.poll()
+        self.classifier_answered_originally()
+        self.poll()
         self.assertEqual(len(self.client()), 1)
         firm = self.firm()
         self.assertEqual(len(firm), 1)
@@ -379,8 +396,8 @@ class BothRoutesTest(CorrectedNoteTestCase):
         self.seed_unfiled()
         self.write_note(self._filed_note(ALSO_IN_CHART[0], ALSO_IN_CHART[1],
                                          tick=True, with_path=False))
-        with self._with_classifier(IN_CHART[0], IN_CHART[1]):
-            self.poll()
+        self.classifier_answered_originally(IN_CHART[0], IN_CHART[1])
+        self.poll()
         self.assertEqual(len(self.client()), 1)
         self.assertEqual(self.firm(), [])
 
@@ -388,8 +405,8 @@ class BothRoutesTest(CorrectedNoteTestCase):
         self.seed_unfiled()
         self.write_note(self._filed_note(IN_CHART[0], IN_CHART[1],
                                          tick=False, with_path=False))
-        with self._with_classifier():
-            self.poll()
+        self.classifier_answered_originally()
+        self.poll()
         self.assertEqual(self.client(), [])
         self.assertEqual(self.firm(), [])
 

@@ -38,6 +38,7 @@ from worker.database.repository import Repository
 from worker.extraction.base import ExtractionResult
 from worker.extraction_pipeline import process_extraction_result
 from worker.filing import make_enriched_sidecar
+from resolution_fixtures import categorise_as_the_pipeline_does
 import app
 import resolve_receipt
 
@@ -345,7 +346,11 @@ class AllFourCallSitesTest(unittest.TestCase):
                     extraction_id="ext-resolve",
                     receipt_id="r-resolve",
                     engine="openai_vision",
-                    supplier_name=None,
+                    # ~~supplier_name=None~~. Sub-step 10bs.11: a correction
+                    # copies the ORIGINAL run, so the reading carries the
+                    # supplier and the receipt is run through the engine below,
+                    # as the pipeline would, before the CLI corrects it.
+                    supplier_name="Apcoa Parking",
                     invoice_date="2026-04-01",
                     net_amount=None,
                     vat_amount=None,
@@ -353,8 +358,9 @@ class AllFourCallSitesTest(unittest.TestCase):
                     currency="GBP",
                     raw_response="{}",
                     validation_status="needs_review",
-                    validation_notes=["missing supplier_name"],
+                    validation_notes=["missing gross_amount"],
                 )
+                categorise_as_the_pipeline_does(repo, receipt_id="r-resolve")
             finally:
                 repo.close()
 

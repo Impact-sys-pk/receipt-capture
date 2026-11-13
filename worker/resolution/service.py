@@ -1731,7 +1731,13 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                         else str(dest_path) if dest_path else None),
             category_code=effective_code,
             category_name=effective_name,
-            category_confidence=categorisation.confidence,
+            # The engine's confidence describes ITS suggestion. Where the
+            # operator overrode it, the effective code is theirs and has no
+            # confidence, so none is given rather than the suggestion's being
+            # printed beside it. Report 5.3 of
+            # `2026-11-13_REPORT_claude_code_vendor_lookup.md`.
+            category_confidence=(None if (override_code or override_name)
+                                 else categorisation.confidence),
             validation_notes=(["manually corrected and filed"] if despite is None
                               else ["manually corrected and filed"] + despite),
             message=message,

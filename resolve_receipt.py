@@ -215,7 +215,11 @@ def _report(outcome) -> int:
     if outcome.outcome == "filed":
         print(f"✓ {outcome.message}")
         if outcome.category_code:
-            print(f"  Category: {outcome.category_code} ({outcome.category_confidence})")
+            # The confidence is shown only when there is one: it is None where
+            # the operator overrode the suggestion. Report 5.3, 2026-11-13.
+            confidence = (f" ({outcome.category_confidence})"
+                          if outcome.category_confidence else "")
+            print(f"  Category: {outcome.category_code}{confidence}")
     elif outcome.outcome == "discarded":
         print(f"✓ {outcome.message}")
         report_client_copy(outcome)

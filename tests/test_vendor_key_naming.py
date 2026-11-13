@@ -220,14 +220,31 @@ class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):
         )
 
     def test_both_branches_read_it_as_a_plain_attribute(self):
-        source = self.SERVICE.read_text(encoding="utf-8")
-        reads = [line.strip() for line in source.splitlines()
-                 if "vendor_key = " in line and "categorisation" in line]
-        self.assertEqual(
-            reads,
-            ["vendor_key = categorisation.vendor_key"] * 2,
-            "resolve_receipt() and _apply_filed_note() must read it identically",
-        )
+        """Read off the syntax tree, inside the two learning functions only.
+
+        ~~It collected every line of `service.py` holding both `vendor_key = `
+        and `categorisation`.~~ **Rewritten 2026-11-13, report 5.4 of
+        `2026-11-13_REPORT_claude_code_vendor_lookup.md`.** That text match
+        went red on `vendor_key = categorisation_engine.vendor_key_for(...)` in
+        a helper that is not a learning branch, because `categorisation_engine`
+        contains `categorisation`, and it would have missed the same read
+        split over two lines. `CLAUDE.md`: a source guard parses the tree.
+        """
+        import ast
+
+        tree = ast.parse(self.SERVICE.read_text(encoding="utf-8"))
+        functions = {node.name: node for node in tree.body
+                     if isinstance(node, ast.FunctionDef)}
+        for name in ("resolve_receipt", "_apply_filed_note"):
+            with self.subTest(function=name):
+                reads = [ast.unparse(node.value)
+                         for node in ast.walk(functions[name])
+                         if isinstance(node, ast.Assign)
+                         and any(isinstance(t, ast.Name) and t.id == "vendor_key"
+                                 for t in node.targets)]
+                self.assertEqual(
+                    reads, ["categorisation.vendor_key"],
+                    f"{name}() must read it once, as a plain attribute")
 
 
 def _create_statements() -> str:

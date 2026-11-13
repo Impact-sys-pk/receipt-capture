@@ -502,6 +502,9 @@ class GlOverrideTest(unittest.TestCase):
 
                 self.assertEqual(outcome.category_code, "999")
                 self.assertEqual(outcome.category_name, "Sundry expenses")
+                # Report 5.3, 2026-11-13. The confidence belongs to the engine's
+                # suggestion, and 999 is the operator's code, so none is given.
+                self.assertIsNone(outcome.category_confidence)
             finally:
                 repo.close()
 
@@ -571,11 +574,34 @@ class GlOverrideTest(unittest.TestCase):
                     actor="paul", source="console",
                 )
                 self.assertEqual(outcome.category_code, "271")
+                # No override, so the code IS the suggestion and its confidence
+                # describes it. Layer 1, so high. Report 5.3.
+                self.assertEqual(outcome.category_confidence, "high")
                 cat = _rows(repo, "SELECT * FROM categorisations WHERE receipt_id = 'r-1' "
                                   "ORDER BY categorised_at DESC, rowid DESC")[0]
                 self.assertIsNone(cat["correction_code"])
             finally:
                 repo.close()
+
+    def test_the_cli_prints_a_confidence_only_when_it_has_one(self):
+        """Report 5.3. `Category: 999 (None)` would read as a defect, and
+        `Category: 999 (low)` pairs your code with the engine's confidence."""
+        import contextlib
+        import io
+
+        import resolve_receipt as cli
+        from worker.resolution.service import ResolutionOutcome
+
+        for confidence, expected in ((None, "  Category: 999"),
+                                     ("high", "  Category: 271 (high)")):
+            with self.subTest(confidence=confidence):
+                code = "999" if confidence is None else "271"
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    cli._report(ResolutionOutcome(
+                        outcome="filed", receipt_id="r-1", message="Filed",
+                        category_code=code, category_confidence=confidence))
+                self.assertIn(expected + "\n", out.getvalue())
 
 
 class RememberMappingTest(unittest.TestCase):

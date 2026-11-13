@@ -347,7 +347,10 @@ class EveryCallSitePassesTheAmountTest(unittest.TestCase):
                 ))
         return sorted(found)
 
-    def test_there_are_five_of_them_and_the_files_are_named(self):
+    def test_there_are_three_of_them_and_the_files_are_named(self):
+        # ~~test_there_are_five_of_them_and_the_files_are_named~~. Renamed
+        # 2026-11-13, report 5.5: sub-step 10bs.11 removed the two calls in the
+        # resolution service.
         # The files and their counts, not the line numbers. A line number moves
         # whenever anything above it is edited, and a test that fails for that
         # is a test nobody trusts by the third time.
@@ -368,8 +371,7 @@ class EveryCallSitePassesTheAmountTest(unittest.TestCase):
             "the set moved; here it is in full: "
             + "; ".join(f"{f}:{line}" for f, line, _ in sites),
         )
-        # ~~5~~ Three since sub-step 10bs.11. The method name still says five;
-        # it is left alone so the rename is not mixed into this change.
+        # ~~5~~ Three since sub-step 10bs.11.
         self.assertEqual(len(sites), 3)
 
     def test_every_one_of_them_passes_the_gross_amount(self):

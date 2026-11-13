@@ -63,39 +63,18 @@ class AiAccountSuggestion(BaseModel):
     name: str = Field(description="The account name shown beside that code in the list above")
 
 
-NOISE_WORDS = {
-    "ltd", "limited", "plc", "inc", "co", "uk",
-    "payment", "to", "from", "direct", "debit", "credit",
-    "card", "visa", "mastercard", "contactless",
-    "purchase", "pos", "online", "mobile",
-    "london", "manchester", "birmingham",
-    "the", "and", "of", "for", "in", "at", "on",
-    # The singular definite article in French, Italian and Spanish, the other
-    # languages most common on UK restaurant and cafe names. Added 2026-11-13,
-    # Paul's decision: `LA BELLA RESTAURANT` keyed on `la`, because the
-    # three-word rule in extract_vendor_key() keeps only the first word. `la` is
-    # the one the live database held; the other three fail the same way.
-    # Plurals, prepositions such as `de` and `di`, and indefinite articles were
-    # deliberately left out: see
-    # 2026-11-13_REPORT_claude_code_vendor_key_articles.md.
-    "la", "le", "il", "el",
-    "ref", "reference", "txn",
-}
-
-DEFAULT_ALIASES = {
-    "amzn": "amazon", "amz": "amazon", "amazon.co.uk": "amazon",
-    "pp": "paypal", "tfl": "tfl", "transport for london": "tfl",
-    "sumup": "sumup", "sum up": "sumup",
-    "google": "google", "goog": "google",
-}
-
-LOCATION_WORDS = {
-    "dartford", "bromley", "swanley", "london", "croydon",
-    "greenwich", "lewisham", "bexley", "sevenoaks", "maidstone",
-    "orpington", "sidcup", "eltham", "woolwich", "erith",
-    "stn", "serv", "station", "connect", "garage", "petrol",
-    "express", "local", "extra", "superstore", "metro",
-}
+# The vendor key rule: NOISE_WORDS, LOCATION_WORDS, DEFAULT_ALIASES,
+# normalise_description() and extract_vendor_key(). Moved to normalise.py
+# on 2026-11-13 so a script can use it without importing this module, which
+# brings config and the openai client. Imported here so every existing
+# `from worker.categorisation.engine import ...` gets the same objects.
+from .normalise import (  # noqa: E402,F401
+    DEFAULT_ALIASES,
+    LOCATION_WORDS,
+    NOISE_WORDS,
+    extract_vendor_key,
+    normalise_description,
+)
 
 
 @dataclass
@@ -132,61 +111,6 @@ class CategorisationResult:
     original_code: Optional[str] = None
     original_name: Optional[str] = None
     chart_note: Optional[str] = None
-
-
-def normalise_description(raw: str) -> str:
-    """Strip noise from a bank/receipt description to extract usable vendor name."""
-    text = raw.lower().strip()
-
-    # Remove common prefixes
-    text = re.sub(r"^(dd|so|bgo|bgc|chq|tfr|bp|fp|ddr)\s*[-–]\s*", "", text)
-
-    # Remove asterisks and everything before them
-    text = text.replace("*", " ")
-
-    # Remove reference numbers (6+ digits)
-    text = re.sub(r"\b\d{6,}\b", "", text)
-
-    # Remove single/double digit fragments
-    text = re.sub(r"\b\d{1,2}\b", "", text)
-
-    # Split and filter noise
-    words = text.split()
-    filtered = [w for w in words if w not in NOISE_WORDS and len(w) > 1]
-
-    return " ".join(filtered)
-
-
-def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
-    """Extract canonical vendor key from normalised description."""
-    if aliases is None:
-        aliases = DEFAULT_ALIASES
-
-    # Check full string against aliases
-    if normalised in aliases:
-        return aliases[normalised]
-
-    # Check first word against aliases
-    words = normalised.split()
-    if words and words[0] in aliases:
-        return aliases[words[0]]
-
-    # Strip trailing numbers (store codes)
-    words = [w for w in words if not w.isdigit()]
-
-    # Strip known location words
-    core_words = [w for w in words if w not in LOCATION_WORDS]
-
-    # Fallback to first word if stripping removed everything
-    if not core_words and words:
-        core_words = [words[0]]
-
-    # Take only first 1-2 words to avoid verbosity (e.g., "apcoa hal ss" → "apcoa")
-    if len(core_words) > 2:
-        core_words = core_words[:1]
-
-    result = " ".join(core_words)
-    return result if result else normalised
 
 
 def fuzzy_match(query: str, candidates: list[str], threshold: float = 0.70) -> list[tuple[str, float]]:

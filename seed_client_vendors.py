@@ -7,65 +7,20 @@ normalizes vendor names, and inserts mappings into the database.
 
 import csv
 import sys
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 import config
 from worker.database.repository import Repository
-
-# Embedded from engine.py to avoid openai import
-NOISE_WORDS = {
-    "ltd", "limited", "plc", "inc", "co", "uk",
-    "payment", "to", "from", "direct", "debit", "credit",
-    "card", "visa", "mastercard", "contactless",
-    "purchase", "pos", "online", "mobile",
-    "london", "manchester", "birmingham",
-    "the", "and", "of", "for", "in", "at", "on",
-    "ref", "reference", "txn",
-}
-
-LOCATION_WORDS = {
-    "dartford", "bromley", "swanley", "london", "croydon",
-    "greenwich", "lewisham", "bexley", "sevenoaks", "maidstone",
-    "orpington", "sidcup", "eltham", "woolwich", "erith",
-    "stn", "serv", "station", "connect", "garage", "petrol",
-    "express", "local", "extra", "superstore", "metro",
-}
-
-DEFAULT_ALIASES = {
-    "amzn": "amazon", "amz": "amazon", "amazon.co.uk": "amazon",
-    "pp": "paypal", "tfl": "tfl", "transport for london": "tfl",
-    "sumup": "sumup", "sum up": "sumup",
-    "google": "google", "goog": "google",
-}
-
-def normalise_description(raw: str) -> str:
-    """Strip noise from a bank/receipt description to extract usable vendor name."""
-    text = raw.lower().strip()
-    text = re.sub(r"^(dd|so|bgo|bgc|chq|tfr|bp|fp|ddr)\s*[-–]\s*", "", text)
-    text = text.replace("*", " ")
-    text = re.sub(r"\b\d{6,}\b", "", text)
-    text = re.sub(r"\b\d{1,2}\b", "", text)
-    words = text.split()
-    filtered = [w for w in words if w not in NOISE_WORDS and len(w) > 1]
-    return " ".join(filtered)
-
-def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
-    """Extract canonical vendor key from normalised description."""
-    if aliases is None:
-        aliases = DEFAULT_ALIASES
-    if normalised in aliases:
-        return aliases[normalised]
-    words = normalised.split()
-    if words and words[0] in aliases:
-        return aliases[words[0]]
-    words = [w for w in words if not w.isdigit()]
-    core_words = [w for w in words if w not in LOCATION_WORDS]
-    if not core_words and words:
-        core_words = [words[0]]
-    result = " ".join(core_words)
-    return result if result else normalised
+# The engine's own key rule, 2026-11-13, Paul's decision. ~~A copy "embedded
+# from engine.py to avoid openai import"~~, which had fallen behind it: it
+# never had the rule keeping only the first word of a name of three or more,
+# so it wrote keys the engine never computes and layer 1 could never find.
+# `normalise` imports nothing but `re`, so this still loads no openai client.
+from worker.categorisation.normalise import (
+    extract_vendor_key,
+    normalise_description,
+)
 
 
 def parse_transactions_csv(csv_path: str) -> dict[str, list[str]]:

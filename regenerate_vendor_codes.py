@@ -6,65 +6,18 @@ This produces short, core merchant names suitable for lookups.
 """
 
 import csv
-import re
 from pathlib import Path
 
-# Embedded from engine.py to avoid openai import
-NOISE_WORDS = {
-    "ltd", "limited", "plc", "inc", "co", "uk",
-    "payment", "to", "from", "direct", "debit", "credit",
-    "card", "visa", "mastercard", "contactless",
-    "purchase", "pos", "online", "mobile",
-    "london", "manchester", "birmingham",
-    "the", "and", "of", "for", "in", "at", "on",
-    "ref", "reference", "txn",
-}
-
-LOCATION_WORDS = {
-    "dartford", "bromley", "swanley", "london", "croydon",
-    "greenwich", "lewisham", "bexley", "sevenoaks", "maidstone",
-    "orpington", "sidcup", "eltham", "woolwich", "erith",
-    "stn", "serv", "station", "connect", "garage", "petrol",
-    "express", "local", "extra", "superstore", "metro",
-}
-
-DEFAULT_ALIASES = {
-    "amzn": "amazon", "amz": "amazon", "amazon.co.uk": "amazon",
-    "pp": "paypal", "tfl": "tfl", "transport for london": "tfl",
-    "sumup": "sumup", "sum up": "sumup",
-    "google": "google", "goog": "google",
-}
-
-def normalise_description(raw: str) -> str:
-    """Strip noise from description."""
-    text = raw.lower().strip()
-    text = re.sub(r"^(dd|so|bgo|bgc|chq|tfr|bp|fp|ddr)\s*[-–]\s*", "", text)
-    text = text.replace("*", " ")
-    text = re.sub(r"\b\d{6,}\b", "", text)
-    text = re.sub(r"\b\d{1,2}\b", "", text)
-    words = text.split()
-    filtered = [w for w in words if w not in NOISE_WORDS and len(w) > 1]
-    return " ".join(filtered)
-
-def extract_vendor_key(normalised: str, aliases: dict = None) -> str:
-    """Extract canonical vendor key from normalised description."""
-    if aliases is None:
-        aliases = DEFAULT_ALIASES
-    if normalised in aliases:
-        return aliases[normalised]
-    words = normalised.split()
-    if words and words[0] in aliases:
-        return aliases[words[0]]
-    words = [w for w in words if not w.isdigit()]
-    core_words = [w for w in words if w not in LOCATION_WORDS]
-    if not core_words and words:
-        core_words = [words[0]]
-    # For vendor key regeneration, take only first 1-2 words to avoid verbosity
-    # (e.g., "apcoa hal ss" → "apcoa", "half ords balham" → "halfords")
-    if len(core_words) > 2:
-        core_words = core_words[:1]
-    result = " ".join(core_words)
-    return result if result else normalised
+# The engine's own key rule, 2026-11-13, Paul's decision. ~~A copy "embedded
+# from engine.py to avoid openai import"~~, which had fallen behind it: it
+# lacked the four articles added in b61f055. `normalise` imports nothing but
+# `re`, so this script still imports neither openai nor `config`, whose import
+# creates folders under the practice root. Importing the engine would do both.
+from worker.categorisation.normalise import (
+    DEFAULT_ALIASES,
+    extract_vendor_key,
+    normalise_description,
+)
 
 
 # `regenerate_codes(csv_path)` was here and is DELETED, 2026-09-12, item 115

@@ -31,7 +31,7 @@ from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler, console_handler
-from worker import line_items, london_time
+from worker import line_items, london_time, supplier_mappings
 from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_note
 from worker.attached import (
     AttachedMessageError,
@@ -1554,6 +1554,13 @@ def process_once():
         # re-extracted in the same cycle it was resolved. Reordering these two lines
         # costs an OpenAI call per resolved receipt and overwrites the decision.
         _consume_resolution_notes(repo, engine, stats)
+
+        # Sub-step 10bs.10, amendment 554. Each client's taught supplier
+        # mappings, published for IntelliBooks Desktop. Straight after the notes,
+        # because a note with the Remember tick is the only place a poll teaches.
+        # A file is written only where it is missing or differs from the
+        # database, and a failure is logged without stopping the poll.
+        supplier_mappings.publish_all(repo)
 
         # Part 1: Auto-retry failed receipts with older pipeline_version
         _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)

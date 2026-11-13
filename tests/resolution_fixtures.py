@@ -62,6 +62,9 @@ REDIRECTED = (
     "CHARTS_DIR",
     "INTELLIBOOKS_ROOT",
     "INTELLIBOOKS_PUBLISH_DIR",
+    # Sub-step 10bs.10. Every poll publishes into it, so without this one
+    # test's mappings file would be the next test's starting state.
+    "SUPPLIER_MAPPINGS_DIR",
 )
 
 #: Saved and restored like the rest, and assigned by hand rather than rebased.

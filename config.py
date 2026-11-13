@@ -293,6 +293,42 @@ RESOLUTIONS_DIR = INTELLIBILLS_ROOT / "Resolutions"
 # attached a document. `_consume_attached_documents()` in `app.py` creates it.
 ATTACHED_DIR = INTELLIBILLS_ROOT / "Attached"
 
+# Each client's taught supplier mappings, published for IntelliBooks Desktop.
+# Sub-step 10bs.10, pipeline half, amendment 554, Paul's decision of
+# 2026-11-13, option A. One file per registered client,
+# `{client_id}{SUPPLIER_MAPPINGS_SUFFIX}`, written by `worker/supplier_mappings.py`
+# and by nothing else. Desktop reaches it through its practice-root grant as
+# `Intellibills\Supplier Mappings\`.
+#
+# **Its own folder, not `Intellibills\Receipts\`.** That folder is the receipt
+# record store, which section 20.1 defines and which the Receipts tab alone
+# writes. Every exchange folder here has one writer, and this one is the
+# pipeline's.
+#
+# **A Path constant, for ATTACHED_DIR's reason**: it is redirected per test in
+# `tests/resolution_fixtures.py`, so a test's file cannot be read by the next.
+# Not created at import; the writer makes it on demand.
+SUPPLIER_MAPPINGS_DIR = INTELLIBILLS_ROOT / "Supplier Mappings"
+SUPPLIER_MAPPINGS_SUFFIX = "-mappings.json"
+# **Every key in the file is named here, and the Desktop reader is written
+# against these names.** The CLIENT_TOP_FOLDER_FIELD precedent: two products
+# built by sessions that cannot see each other agree on a name or silently stop
+# meeting. `tests/test_supplier_mappings.py` pins every value.
+SUPPLIER_MAPPINGS_SCHEMA = 1
+MAPPINGS_SCHEMA_FIELD = "schema"
+MAPPINGS_CLIENT_ID_FIELD = "client_id"
+# A list, and an EMPTY list for a registered client with no mappings, so the
+# reader can tell "nothing taught" from "no file published".
+MAPPINGS_LIST_FIELD = "mappings"
+# One object per row of `categorisations_client_vendors`, as stored: no
+# trimming, no case folding, no merging. Comparison is the reader's.
+MAPPING_VENDOR_KEY_FIELD = "vendor_key"
+MAPPING_VENDOR_NAME_FIELD = "vendor_name"
+MAPPING_NOMINAL_CODE_FIELD = "nominal_code"
+MAPPING_ACCOUNT_NAME_FIELD = "account_name"
+MAPPING_TIMES_SEEN_FIELD = "times_seen"
+MAPPING_LAST_UPDATED_FIELD = "last_updated"
+
 # Three of these four are REQUIRED and none of the three has a default. Item 173
 # of 2026-08-20_LIST_outstanding_items_and_decisions.md, Paul's decision,
 # 2026-09-07. They were bare os.environ[...] subscripts, which is not the defect

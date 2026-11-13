@@ -731,6 +731,22 @@ class Repository:
 
         self._conn.commit()
 
+    def list_client_vendor_mappings(self, client_id: str) -> list[dict]:
+        """Every taught mapping for one client, as stored. Sub-step 10bs.10.
+
+        Read for `worker/supplier_mappings.py`, which publishes them. Ordered on
+        key then name then row id, so the same rows always give the same file
+        and an unchanged set is never rewritten.
+        """
+        rows = self._conn.execute("""
+            SELECT vendor_key, vendor_name, nominal_code, account_name,
+                   times_seen, last_updated
+            FROM categorisations_client_vendors
+            WHERE client_id = ?
+            ORDER BY vendor_key, vendor_name, mapping_id
+        """, (client_id,)).fetchall()
+        return [dict(row) for row in rows]
+
     def list_client_vendors(self, client_id: str) -> list[str]:
         """Get distinct vendor_keys for a client for fuzzy matching candidates."""
         rows = self._conn.execute(

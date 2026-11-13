@@ -350,6 +350,11 @@ def process_extraction_result(
     # only the `ok` branch categorises, and `extra_for()` is called below both
     # branches. Without this the name would be unbound on the other one.
     categorisation = None
+    # Sub-step 10bs.10, Paul's decision of 2026-11-13. The vendor key for a
+    # receipt that is NOT categorised, set on the non-`ok` branch below. The
+    # `ok` branch's key travels on `categorisation` instead, and `extra_for()`
+    # refuses both at once, so exactly one of the two is ever set.
+    uncategorised_vendor_key = None
 
     # 10d.16 and 10d.18. An unresolved client files nothing into Clients and the
     # item goes to Review, so a clean extraction for a client nobody can name is
@@ -451,6 +456,17 @@ def process_extraction_result(
         stats['extractions_succeeded'] = stats.get('extractions_succeeded', 0) + 1
 
     else:  # failed, needs_review, possible_duplicate
+        # The key this receipt's supplier name is on, for the published item
+        # only. Sub-step 10bs.10, flag 5.1 of
+        # `2026-11-13_REPORT_claude_code_vendor_key_on_item.md`: a receipt that
+        # arrived for review is the one the operator is editing when the
+        # Remember tick is offered, and without this its item said `null`.
+        # **Nothing is categorised and nothing is written**: `vendor_key_for()`
+        # is a pure function of the name and the alias table. None for a
+        # receipt with no supplier name, which publishes as `null`.
+        uncategorised_vendor_key = categorisation_engine.vendor_key_for(
+            extraction.supplier_name)
+
         # Build sidecar with confidence="none"
         sidecar_payload = make_enriched_sidecar(
             receipt_id=receipt_id,
@@ -526,7 +542,8 @@ def process_extraction_result(
         # that could be unconfirmed. Such an item is held by its
         # `validation_status` instead.
         extra=extra_for(validation.notes, duplicate_of,
-                        categorisation=categorisation),
+                        categorisation=categorisation,
+                        vendor_key=uncategorised_vendor_key),
     )
 
     # The copy into the firm's client folder, on a successful publish and on

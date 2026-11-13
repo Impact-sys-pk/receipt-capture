@@ -155,9 +155,14 @@ CATEGORY_UNCONFIRMED_KEY = "category_unconfirmed"
 #: matching names are for the person writing the reader.
 #:
 #: **Three states, and the reader can tell all three apart.** A string is the
-#: key. `null` is the pipeline saying there is none: the receipt was never
-#: categorised, which is every receipt that is not `ok`, or its supplier name
-#: normalised to nothing. **Absent** is an item written before this key
+#: key. `null` is the pipeline saying there is none: the receipt has no
+#: supplier name, or its name normalised to nothing. ~~the receipt was never
+#: categorised, which is every receipt that is not `ok`~~ **Struck the same
+#: day, Paul's decision of 2026-11-13: a receipt that arrives for review is the
+#: one the operator is most likely to be editing at the tick, so it carries the
+#: key its name is on.** `process_extraction_result()` works that out with
+#: `vendor_key_for()` on its non-`ok` branch, which categorises nothing and
+#: writes nothing. **Absent** is an item written before this key
 #: existed. So this travels on every item, for `NOTES_KEY`'s reason, and "no
 #: key" is a stated `null` rather than a missing key, which is
 #: `DUPLICATE_OF_KEY`'s shape and the wrong one here: `=== null` and
@@ -433,7 +438,8 @@ def category_is_unconfirmed(categorisation) -> bool:
     return getattr(categorisation, "match_source", None) in MACHINE_MATCH_SOURCES
 
 
-def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:
+def extra_for(notes, duplicate_of=None, categorisation=None,
+              vendor_key=None) -> dict:
     """The keys amendment 293 adds to a published item, built in one place.
 
     Two callers, `process_extraction_result()` and the recovery sweep in
@@ -457,7 +463,19 @@ def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:
     `VENDOR_KEY_KEY` comes off the same object, sub-step 10bs.10, so the two
     callers cannot publish different keys for one receipt. `or None` turns an
     empty string into `null`; see the constant for why.
+
+    `vendor_key` is for a receipt that was not categorised, which is the
+    non-`ok` branch of `process_extraction_result()`: there is no object to
+    read the key off, so the caller passes the one `vendor_key_for()` gave.
+    **Passing both is refused**, so no item can carry a key that the
+    categorisation passed beside it disagrees with.
     """
+    if categorisation is not None and vendor_key is not None:
+        raise ValueError(
+            "extra_for() takes the vendor key from the categorisation or from "
+            "vendor_key, not both")
+    if categorisation is not None:
+        vendor_key = getattr(categorisation, "vendor_key", None)
     if notes is None:
         notes = []
     elif isinstance(notes, str):
@@ -465,7 +483,7 @@ def extra_for(notes, duplicate_of=None, categorisation=None) -> dict:
     extra = {
         NOTES_KEY: list(notes),
         CATEGORY_UNCONFIRMED_KEY: category_is_unconfirmed(categorisation),
-        VENDOR_KEY_KEY: getattr(categorisation, "vendor_key", None) or None,
+        VENDOR_KEY_KEY: vendor_key or None,
     }
     if duplicate_of:
         extra[DUPLICATE_OF_KEY] = duplicate_of

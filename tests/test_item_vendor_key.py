@@ -49,7 +49,13 @@ sys.modules.setdefault("openai", fake_openai)
 
 import config  # noqa: E402
 from chart_fixtures import TempChartBundle  # noqa: E402
-from resolution_fixtures import TempEnvironment  # noqa: E402
+from resolution_fixtures import (  # noqa: E402
+    RecordingExtractor,
+    Routes,
+    TempEnvironment,
+    extraction_result,
+    with_email_client,
+)
 from worker import publish  # noqa: E402
 from worker.categorisation.engine import (  # noqa: E402
     CategorisationEngine,
@@ -86,6 +92,12 @@ def key_for(supplier):
         return CategorisationEngine(repo=repo).vendor_key_for(supplier)
     finally:
         repo.close()
+
+
+def drive_with(test_case, extraction):
+    """`drive()` for an extraction `OUTCOMES` does not hold."""
+    with_email_client(test_case, CLIENT)
+    Routes(RecordingExtractor(extraction)).email_attachment()
 
 
 def result(**overrides):
@@ -145,22 +157,41 @@ class OnThePollTest(unittest.TestCase):
             self.assertEqual(item_for(receipt["receipt_id"])[publish.VENDOR_KEY_KEY],
                              key_for(SUPPLIER))
 
-    def test_a_receipt_that_is_not_ok_carries_null(self):
-        """Never categorised, so no key, and the key is present to say so."""
+    def test_a_receipt_that_is_not_ok_carries_its_key_and_is_not_categorised(self):
+        """**Paul's decision of 2026-11-13, flag 5.1 of
+        `2026-11-13_REPORT_claude_code_vendor_key_on_item.md`.** ~~Never
+        categorised, so no key, and the key is present to say so.~~ A receipt
+        that arrived for review is the one the operator is most likely to be
+        editing when the Remember tick is offered, so its item says which key
+        its name is on. **It is still not categorised**: no `categorisations`
+        row, and the item's category is still empty."""
         for outcome in ("needs_review", "failed"):
             with self.subTest(outcome=outcome):
                 with TempEnvironment():
                     drive(self, outcome)
                     receipt, = receipts()
-                    self.assertEqual(categorisations(), [])
+                    self.assertEqual(categorisations(), [],
+                                     "nothing is categorised on this branch")
                     item = item_for(receipt["receipt_id"])
-                    self.assertIn(publish.VENDOR_KEY_KEY, item)
-                    self.assertIsNone(item[publish.VENDOR_KEY_KEY])
+                    self.assertEqual(item[publish.VENDOR_KEY_KEY],
+                                     key_for(SUPPLIER))
+                    self.assertIsNone(item["category_code"])
+                    self.assertIs(item[publish.CATEGORY_UNCONFIRMED_KEY], False)
+
+    def test_a_receipt_with_no_supplier_name_carries_null(self):
+        """No name, no key. The key is present to say so."""
+        with TempEnvironment():
+            drive_with(self, extraction_result(supplier_name=None))
+            receipt, = receipts()
+            self.assertNotEqual(receipt["status"], "ok")
+            item = item_for(receipt["receipt_id"])
+            self.assertIn(publish.VENDOR_KEY_KEY, item)
+            self.assertIsNone(item[publish.VENDOR_KEY_KEY])
 
     def test_null_is_spelt_null_in_the_file(self):
         """The bytes, because the reader sees JSON and not a Python None."""
         with TempEnvironment():
-            drive(self, "failed")
+            drive_with(self, extraction_result(supplier_name=None))
             receipt, = receipts()
             text = raw_item_text(receipt["receipt_id"]).replace(": ", ":")
             self.assertIn(f'"{publish.VENDOR_KEY_KEY}":null', text)
@@ -213,6 +244,23 @@ class ExtraForTest(unittest.TestCase):
              publish.CATEGORY_UNCONFIRMED_KEY: True,
              publish.DUPLICATE_OF_KEY: "r-0",
              publish.VENDOR_KEY_KEY: "shell"})
+
+    def test_with_no_categorisation_the_key_passed_is_published(self):
+        """The non-`ok` branch's route: a key worked out from the name, with
+        nothing categorised."""
+        extra = publish.extra_for([], vendor_key="apcoa parking")
+        self.assertEqual(extra[publish.VENDOR_KEY_KEY], "apcoa parking")
+
+    def test_an_empty_key_passed_is_published_as_null(self):
+        extra = publish.extra_for([], vendor_key="")
+        self.assertIsNone(extra[publish.VENDOR_KEY_KEY])
+
+    def test_a_categorisation_and_a_key_together_are_refused(self):
+        """One source per item. Two would let a caller publish a key the
+        categorisation it also passed disagrees with."""
+        with self.assertRaises(ValueError):
+            publish.extra_for([], categorisation=result(vendor_key="shell"),
+                              vendor_key="shell")
 
     def test_it_survives_json(self):
         extra = publish.extra_for([], categorisation=result(vendor_key="apcoa"))

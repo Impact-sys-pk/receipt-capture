@@ -26,3 +26,12 @@ Claude outputs/
 # start would have warned "Changed files: 9 file(s)" on a tree that is clean.
 *.bak
 *.bak-*
+
+# A copy of CLAUDE.md with "Claude Code" replaced by "Codex", for Codex to read.
+# It is not tracked, because two copies of one rule set drift, which CLAUDE.md's
+# own trap list already records once. It was swept in by a git add -A at c24a397
+# on 2026-11-14 and untracked the same day, outstanding item 32. By then it was
+# 20 days behind: it still said categorisations_firm_vendors holds 0 rows and has
+# no writer, which amendment 558 struck that morning, and its permission-layer
+# trap named .Codex/settings.json, a path that does not exist.
+AGENTS.md

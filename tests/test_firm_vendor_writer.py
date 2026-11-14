@@ -84,7 +84,9 @@ def ai_result(code, name, client_id="CLIENT001", business_type=BUSINESS_TYPE):
         client_id=client_id, business_type=business_type,
         vendor_key=VENDOR_KEY, suggested_code=code, suggested_name=name,
         confidence="low", match_source="ai",
-        matched_vendor=VENDOR_KEY, needs_review=True,
+        # No variant answers at layer 5. ~~matched_vendor=VENDOR_KEY~~,
+        # changed 2026-11-14, Paul's decision.
+        matched_vendor=None, needs_review=True,
     )
 
 
@@ -509,7 +511,9 @@ class TheShapeTest(unittest.TestCase):
                                     "match_source 'ai'")
         self.assertEqual(found["confidence"], "'low'")
         self.assertEqual(found["needs_review"], "True")
-        self.assertEqual(found["matched_vendor"], "vendor_key")
+        # ~~"vendor_key"~~ 2026-11-14, Paul's decision: no variant answered,
+        # so the AI layer records nothing, as the unmatched branch does.
+        self.assertEqual(found["matched_vendor"], "None")
         self.assertEqual(service.CLASSIFIER_MATCH_SOURCE, "ai")
 
 

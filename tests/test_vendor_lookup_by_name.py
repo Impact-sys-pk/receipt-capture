@@ -251,6 +251,19 @@ class MatchedVendorIsTheVariantThatAnsweredTest(_Base):
         self.assertEqual(result.match_source, "fuzzy_client")
         self.assertEqual(result.matched_vendor, SHELL_EV_LONG)
 
+    def test_layer_five_records_nothing(self):
+        """No variant answered at the AI layer, so it records what the
+        unmatched branch records. Paul's decision of 2026-11-14. The model is
+        stubbed: no real call."""
+        engine = CategorisationEngine(repo=self.repo, enable_ai_fallback=True)
+        engine._ai_suggest = lambda *a, **k: {"code": "7500", "name": "Sundries"}
+        result = engine.categorise(
+            receipt_id="r-1", extraction_id="e-1", supplier_name=SHELL_UNSEEN,
+            client_id=CLIENT, business_type=TRADE)
+        self.assertEqual(result.match_source, "ai")
+        self.assertIsNone(result.matched_vendor)
+        self.assertEqual(result.vendor_key, "shell", "the key is still on the result")
+
     def test_layer_four_records_the_variant_not_the_matched_key(self):
         self.teach_firm(SHELL_EV_LONG, EV, times=3)
         self.teach_firm(SHELL_FUEL, FUEL)

@@ -353,7 +353,11 @@ class CategorisationEngine:
                     vendor_key=vendor_key, suggested_code=ai_result.get("code"),
                     suggested_name=ai_result.get("name"),
                     confidence="low", match_source="ai",
-                    matched_vendor=vendor_key, needs_review=True
+                    # No variant answered, so nothing is recorded, as on the
+                    # unmatched branch. ~~matched_vendor=vendor_key~~ read as
+                    # if a mapping had matched. Paul's decision, 2026-11-14.
+                    # The key is on vendor_key above.
+                    matched_vendor=None, needs_review=True
                 )
 
         # No match

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from worker import attached, london_time, receipt_rules
+from worker import attached, london_time, mapping_notes, receipt_rules
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -102,8 +102,11 @@ NOTE_ACTIONS = ("filed", "discarded", ATTACHED_ACTION, CORRECTED_ACTION)
 #: which is the receipt notes' vocabulary and requires a `receipt_id`: a rule
 #: note is handed to `worker/receipt_rules.py` before that parser runs. They
 #: are here because `app.py` moves a note to `processed\` on this set alone.
+#: **Flag F2 of step 10bu adds the two mapping words**, on the same terms.
 NOTE_APPLIED_OUTCOMES = ("filed", "discarded", ATTACHED_ACTION, CORRECTED_ACTION,
-                         config.RULE_SAVED_ACTION, config.RULE_DELETED_ACTION)
+                         config.RULE_SAVED_ACTION, config.RULE_DELETED_ACTION,
+                         config.MAPPING_CODE_CHANGED_ACTION,
+                         config.MAPPING_DELETED_ACTION)
 
 # The note's own timestamp, which is what 12.3 step 3 keys idempotency on.
 # resolution_events has no column for it, so it lives in corrections_json, which
@@ -2903,6 +2906,15 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
         return ResolutionOutcome(
             outcome=applied.outcome, receipt_id="",
             message=f"rule_id {applied.rule_id or 'missing'}: {applied.message}",
+            error_detail=applied.error_detail)
+
+    # Flag F2 of step 10bu. A taught mapping's code change or delete, on the
+    # same terms: not about a receipt, so handed over before the receipt parser.
+    if mapping_notes.is_mapping_note(note):
+        applied = mapping_notes.apply_mapping_note(repo, note)
+        return ResolutionOutcome(
+            outcome=applied.outcome, receipt_id="",
+            message=f"mapping_id {applied.mapping_id or 'missing'}: {applied.message}",
             error_detail=applied.error_detail)
 
     receipt_id_hint = note.get("receipt_id") if isinstance(note, dict) else None

@@ -412,7 +412,9 @@ class TheNoteShapeTest(unittest.TestCase):
         # outcomes and are NOT receipt actions: NOTE_ACTIONS above is unchanged.
         self.assertEqual(NOTE_APPLIED_OUTCOMES,
                          ("filed", "discarded", "attached", "corrected",
-                          "rule_saved", "rule_deleted"))
+                          "rule_saved", "rule_deleted",
+                          # Flag F2 of step 10bu, 2026-11-14: not receipt actions.
+                          "mapping_code_changed", "mapping_deleted"))
 
     def test_it_parses_with_values_and_no_filed_path(self):
         note = parse_resolution_note(corrected_note())

@@ -23,7 +23,8 @@ mapping taught from the CLI or the console between polls reaches the file on
 the next poll by the same comparison.
 
 **What it never does.** It teaches nothing, merges nothing, trims nothing and
-folds no case. Comparing names is the reader's, and saying two names are one
+folds no case. A mapping is changed or deleted by `worker/mapping_notes.py`,
+flag F2 of step 10bu, and never here. Comparing names is the reader's, and saying two names are one
 supplier is the operator's. It never stops a poll: a failed write is logged and
 the next poll tries again.
 
@@ -73,6 +74,9 @@ def payload_for(repo, client_id: str) -> dict:
         config.MAPPINGS_CLIENT_ID_FIELD: client_id,
         config.MAPPINGS_LIST_FIELD: [
             {
+                # Flag F2, 2026-11-14: so Desktop can name one row to change or
+                # delete. See config.MAPPING_ID_FIELD for why not the name.
+                config.MAPPING_ID_FIELD: row["mapping_id"],
                 config.MAPPING_VENDOR_KEY_FIELD: row["vendor_key"],
                 config.MAPPING_VENDOR_NAME_FIELD: row["vendor_name"],
                 config.MAPPING_NOMINAL_CODE_FIELD: row["nominal_code"],

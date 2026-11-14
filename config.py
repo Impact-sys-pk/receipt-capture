@@ -328,6 +328,19 @@ MAPPING_NOMINAL_CODE_FIELD = "nominal_code"
 MAPPING_ACCOUNT_NAME_FIELD = "account_name"
 MAPPING_TIMES_SEEN_FIELD = "times_seen"
 MAPPING_LAST_UPDATED_FIELD = "last_updated"
+# The row's own id, added 2026-11-14 by flag F2 of step 10bu so IntelliBooks
+# Desktop can name one row to change or delete. The natural key, client, key
+# and name, would also do today, but `vendor_name` is nullable and SQLite's
+# UNIQUE lets NULLs repeat, so only the id names exactly one row in every case.
+MAPPING_ID_FIELD = "mapping_id"
+
+# The two resolution note words that change a taught mapping. Flag F2, Paul's
+# decision of 2026-11-14, option 1: the nominal code can be changed and the row
+# can be deleted; the supplier name and the vendor key cannot be changed, because
+# they are the row's identity. Through RESOLUTIONS_DIR, as RULE_SAVED_ACTION is,
+# and with no receipt_id. `worker/mapping_notes.py` holds the shapes.
+MAPPING_CODE_CHANGED_ACTION = "mapping_code_changed"
+MAPPING_DELETED_ACTION = "mapping_deleted"
 
 # The trade a client carries until somebody sets one. Outstanding item 29: no
 # control sets a trade, so every client carries this today. Named here for

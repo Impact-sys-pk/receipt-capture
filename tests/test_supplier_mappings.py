@@ -83,6 +83,7 @@ class TheKeysAreTheConstantsTest(unittest.TestCase):
                 "MAPPING_ACCOUNT_NAME_FIELD": config.MAPPING_ACCOUNT_NAME_FIELD,
                 "MAPPING_TIMES_SEEN_FIELD": config.MAPPING_TIMES_SEEN_FIELD,
                 "MAPPING_LAST_UPDATED_FIELD": config.MAPPING_LAST_UPDATED_FIELD,
+                "MAPPING_ID_FIELD": config.MAPPING_ID_FIELD,
             },
             {
                 "SUPPLIER_MAPPINGS_SUFFIX": "-mappings.json",
@@ -96,6 +97,7 @@ class TheKeysAreTheConstantsTest(unittest.TestCase):
                 "MAPPING_ACCOUNT_NAME_FIELD": "account_name",
                 "MAPPING_TIMES_SEEN_FIELD": "times_seen",
                 "MAPPING_LAST_UPDATED_FIELD": "last_updated",
+                "MAPPING_ID_FIELD": "mapping_id",
             })
 
     def test_the_folder_is_under_intellibills_and_named(self):
@@ -114,7 +116,12 @@ class WhatIsPublishedTest(_Base):
                                         config.MAPPINGS_LIST_FIELD})
         self.assertEqual(payload[config.MAPPINGS_SCHEMA_FIELD], config.SUPPLIER_MAPPINGS_SCHEMA)
         self.assertEqual(payload[config.MAPPINGS_CLIENT_ID_FIELD], CLIENT)
+        mapping_id = rows(self.repo, "SELECT mapping_id FROM "
+                                     "categorisations_client_vendors")[0]["mapping_id"]
         self.assertEqual(payload[config.MAPPINGS_LIST_FIELD], [{
+            # Flag F2 of step 10bu, 2026-11-14: the row's id, so Desktop can
+            # name one row to change or delete.
+            config.MAPPING_ID_FIELD: mapping_id,
             config.MAPPING_VENDOR_KEY_FIELD: "shell",
             config.MAPPING_VENDOR_NAME_FIELD: "Shell Co-op Harborne",
             config.MAPPING_NOMINAL_CODE_FIELD: "7301",

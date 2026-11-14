@@ -739,13 +739,50 @@ class Repository:
         and an unchanged set is never rewritten.
         """
         rows = self._conn.execute("""
-            SELECT vendor_key, vendor_name, nominal_code, account_name,
+            SELECT mapping_id, vendor_key, vendor_name, nominal_code, account_name,
                    times_seen, last_updated
             FROM categorisations_client_vendors
             WHERE client_id = ?
             ORDER BY vendor_key, vendor_name, mapping_id
         """, (client_id,)).fetchall()
         return [dict(row) for row in rows]
+
+    def get_client_vendor_mapping(self, mapping_id: str) -> Optional[dict]:
+        """One taught mapping by its row id, or None. Flag F2 of step 10bu."""
+        row = self._conn.execute(
+            "SELECT * FROM categorisations_client_vendors WHERE mapping_id = ?",
+            (mapping_id,)).fetchone()
+        return dict(row) if row else None
+
+    def change_client_mapping_code(self, mapping_id: str, nominal_code: str,
+                                  account_name: str, changed_at: str) -> bool:
+        """Change one taught mapping's account. True if a row was changed.
+
+        **Flag F2, Paul's decision of 2026-11-14.** The code and the account
+        name move together; the supplier name and the vendor key never move,
+        because they are the row's identity.
+
+        **`times_seen` is left alone: a correction is not a sighting.** It is
+        what layer 3 ranks variants on, so counting a correction would let a
+        corrected variant overtake one genuinely seen more often.
+        **`last_updated` moves**, because the row did change, and it is what
+        the published file shows as when the row last changed.
+        """
+        cursor = self._conn.execute("""
+            UPDATE categorisations_client_vendors
+            SET nominal_code = ?, account_name = ?, last_updated = ?
+            WHERE mapping_id = ?
+        """, (nominal_code, account_name, changed_at, mapping_id))
+        self._conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_client_vendor_mapping(self, mapping_id: str) -> bool:
+        """Delete one taught mapping. True if one was there. Flag F2."""
+        cursor = self._conn.execute(
+            "DELETE FROM categorisations_client_vendors WHERE mapping_id = ?",
+            (mapping_id,))
+        self._conn.commit()
+        return cursor.rowcount > 0
 
     def list_client_vendors(self, client_id: str) -> list[str]:
         """Get distinct vendor_keys for a client for fuzzy matching candidates."""

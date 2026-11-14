@@ -293,7 +293,9 @@ class TheNoteShapeTest(unittest.TestCase):
         # sub-step. They are not receipt notes and write no client folder copy.
         self.assertEqual(NOTE_APPLIED_OUTCOMES,
                          ("filed", "discarded", "attached", "corrected",
-                          "rule_saved", "rule_deleted"))
+                          "rule_saved", "rule_deleted",
+                          # Flag F2 of step 10bu, 2026-11-14: not receipt actions.
+                          "mapping_code_changed", "mapping_deleted"))
 
 
 class OnThePostTriggerTest(PostTimeTestCase):

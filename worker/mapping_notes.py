@@ -59,19 +59,17 @@ is not decided; see the report of 2026-11-14.
 """
 
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import config
+from worker import note_fields
 from worker.categorisation.chart import get_chart_accounts_for_client
 
 logger = logging.getLogger(__name__)
 
 MAPPING_ACTIONS = (config.MAPPING_CODE_CHANGED_ACTION, config.MAPPING_DELETED_ACTION)
-
-_ACCOUNT_CODE_RE = re.compile(r"^\d{4}$")
 
 # Present in a code-change note means somebody tried to change the identity.
 _NOT_EDITABLE = (config.MAPPING_VENDOR_NAME_FIELD, config.MAPPING_VENDOR_KEY_FIELD)
@@ -93,27 +91,19 @@ def is_mapping_note(note: Any) -> bool:
     return isinstance(note, dict) and note.get("action") in MAPPING_ACTIONS
 
 
-def _required_text(note: dict, key: str) -> str:
-    value = note.get(key)
-    if value is None:
-        raise MappingNoteError(f"'{key}' is required")
-    if not isinstance(value, str):
-        raise MappingNoteError(f"'{key}' must be text, got {type(value).__name__}")
-    value = value.strip()
-    if not value:
-        raise MappingNoteError(f"'{key}' is required")
-    return value
+# ~~_required_text()~~ was here. Flag H5, 2026-11-14: the reader lives in
+# worker/note_fields.py, shared with the receipt and rule notes.
 
 
 def _apply(repo, note: dict) -> str:
     if note.get("schema") != 1:
         raise MappingNoteError(f"unsupported note schema {note.get('schema')!r}; "
                                "this pipeline understands 1")
-    _required_text(note, "resolved_at")
-    client_id = _required_text(note, config.MAPPINGS_CLIENT_ID_FIELD)
+    note_fields.required_text(note, "resolved_at", error=MappingNoteError)
+    client_id = note_fields.required_text(note, config.MAPPINGS_CLIENT_ID_FIELD, error=MappingNoteError)
     if client_id not in config.CLIENTS_BY_ID:
         raise MappingNoteError(f"client {client_id!r} is not in the registry")
-    mapping_id = _required_text(note, config.MAPPING_ID_FIELD)
+    mapping_id = note_fields.required_text(note, config.MAPPING_ID_FIELD, error=MappingNoteError)
     row = repo.get_client_vendor_mapping(mapping_id)
     if row is not None and row["client_id"] != client_id:
         raise MappingNoteError(
@@ -134,8 +124,8 @@ def _apply(repo, note: dict) -> str:
                 "key are its identity. Delete it and teach the name afresh")
     if row is None:
         raise MappingNoteError(f"no mapping {mapping_id} for client {client_id}")
-    code = _required_text(note, config.MAPPING_NOMINAL_CODE_FIELD)
-    if not _ACCOUNT_CODE_RE.match(code):
+    code = note_fields.required_text(note, config.MAPPING_NOMINAL_CODE_FIELD, error=MappingNoteError)
+    if not note_fields.ACCOUNT_CODE_RE.match(code):
         raise MappingNoteError(f"'{config.MAPPING_NOMINAL_CODE_FIELD}' must be four "
                                f"digits, got {code!r}")
     accounts = get_chart_accounts_for_client(client_id)

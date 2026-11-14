@@ -43,13 +43,12 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import config
+from worker import note_fields
 from worker.supplier_mappings import _on_disk, write_atomically
 
 logger = logging.getLogger(__name__)
 
 RULE_ACTIONS = (config.RULE_SAVED_ACTION, config.RULE_DELETED_ACTION)
-
-_ACCOUNT_CODE_RE = re.compile(r"^\d{4}$")
 
 
 class RuleNoteError(ValueError):
@@ -69,20 +68,8 @@ def is_rule_note(note: Any) -> bool:
     return isinstance(note, dict) and note.get("action") in RULE_ACTIONS
 
 
-def _text(raw: dict, key: str, where: str) -> Optional[str]:
-    value = raw.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise RuleNoteError(f"'{where}{key}' must be text, got {type(value).__name__}")
-    return value.strip() or None
-
-
-def _required(raw: dict, key: str, where: str = "") -> str:
-    value = _text(raw, key, where)
-    if not value:
-        raise RuleNoteError(f"'{where}{key}' is required")
-    return value
+# ~~_text()~~ and ~~_required()~~ were here. Flag H5, 2026-11-14: the readers
+# live in worker/note_fields.py, shared with the receipt and mapping notes.
 
 
 def _parse_rule(raw: Any) -> dict:
@@ -91,11 +78,11 @@ def _parse_rule(raw: Any) -> dict:
     if not isinstance(raw, dict):
         raise RuleNoteError(f"'{config.RULE_NOTE_RULE_FIELD}' must be an object")
 
-    scope = _required(raw, config.RULE_SCOPE_FIELD, where)
+    scope = note_fields.required_text(raw, config.RULE_SCOPE_FIELD, where, error=RuleNoteError)
     if scope not in config.RULE_SCOPES:
         raise RuleNoteError(f"'{where}{config.RULE_SCOPE_FIELD}' must be one of "
                             f"{config.RULE_SCOPES}, got {scope!r}")
-    scope_id = _required(raw, config.RULE_SCOPE_ID_FIELD, where)
+    scope_id = note_fields.required_text(raw, config.RULE_SCOPE_ID_FIELD, where, error=RuleNoteError)
     if scope == config.RULE_SCOPE_CLIENT and scope_id not in config.CLIENTS_BY_ID:
         raise RuleNoteError(f"client {scope_id!r} is not in the registry")
     if scope == config.RULE_SCOPE_FIRM and scope_id not in config.FIRMS:
@@ -110,16 +97,16 @@ def _parse_rule(raw: Any) -> dict:
         raise RuleNoteError(f"'{where}{config.RULE_PRIORITY_FIELD}' must be a whole "
                             f"number, got {type(priority).__name__}")
 
-    condition_type = _required(raw, config.RULE_CONDITION_TYPE_FIELD, where)
+    condition_type = note_fields.required_text(raw, config.RULE_CONDITION_TYPE_FIELD, where, error=RuleNoteError)
     if condition_type not in config.RULE_CONDITION_TYPES:
         raise RuleNoteError(f"'{where}{config.RULE_CONDITION_TYPE_FIELD}' must be one of "
                             f"{config.RULE_CONDITION_TYPES}, got {condition_type!r}")
-    condition_field = _required(raw, config.RULE_CONDITION_FIELD_FIELD, where)
+    condition_field = note_fields.required_text(raw, config.RULE_CONDITION_FIELD_FIELD, where, error=RuleNoteError)
     if condition_field not in config.RULE_CONDITION_FIELDS:
         # Decision 5: the supplier name and the vendor key, nothing else.
         raise RuleNoteError(f"'{where}{config.RULE_CONDITION_FIELD_FIELD}' must be one of "
                             f"{config.RULE_CONDITION_FIELDS}, got {condition_field!r}")
-    condition_value = _required(raw, config.RULE_CONDITION_VALUE_FIELD, where)
+    condition_value = note_fields.required_text(raw, config.RULE_CONDITION_VALUE_FIELD, where, error=RuleNoteError)
     if condition_type == "regex":
         # The matcher swallows a bad pattern and returns False, so one stored
         # here would be a rule that silently never matches.
@@ -129,22 +116,22 @@ def _parse_rule(raw: Any) -> dict:
             raise RuleNoteError(f"'{where}{config.RULE_CONDITION_VALUE_FIELD}' is not "
                                 f"a valid regular expression: {exc}")
 
-    nominal_code = _required(raw, config.RULE_NOMINAL_CODE_FIELD, where)
-    if not _ACCOUNT_CODE_RE.match(nominal_code):
+    nominal_code = note_fields.required_text(raw, config.RULE_NOMINAL_CODE_FIELD, where, error=RuleNoteError)
+    if not note_fields.ACCOUNT_CODE_RE.match(nominal_code):
         raise RuleNoteError(f"'{where}{config.RULE_NOMINAL_CODE_FIELD}' must be four "
                             f"digits, got {nominal_code!r}")
 
     return {
         "scope": scope,
         "scope_id": scope_id,
-        "rule_name": _required(raw, config.RULE_NAME_FIELD, where),
+        "rule_name": note_fields.required_text(raw, config.RULE_NAME_FIELD, where, error=RuleNoteError),
         "priority": priority,
-        "vendor_key": _text(raw, config.RULE_VENDOR_KEY_FIELD, where),
+        "vendor_key": note_fields.optional_text(raw, config.RULE_VENDOR_KEY_FIELD, where, error=RuleNoteError),
         "condition_type": condition_type,
         "condition_field": condition_field,
         "condition_value": condition_value,
         "nominal_code": nominal_code,
-        "account_name": _required(raw, config.RULE_ACCOUNT_NAME_FIELD, where),
+        "account_name": note_fields.required_text(raw, config.RULE_ACCOUNT_NAME_FIELD, where, error=RuleNoteError),
     }
 
 
@@ -155,8 +142,8 @@ def apply_rule_note(repo, note: dict) -> RuleNoteOutcome:
         if note.get("schema") != 1:
             raise RuleNoteError(f"unsupported note schema {note.get('schema')!r}; "
                                 "this pipeline understands 1")
-        resolved_at = _required(note, "resolved_at")
-        rule_id = _required(note, config.RULE_ID_FIELD)
+        resolved_at = note_fields.required_text(note, "resolved_at", error=RuleNoteError)
+        rule_id = note_fields.required_text(note, config.RULE_ID_FIELD, error=RuleNoteError)
         action = note["action"]
         if action == config.RULE_SAVED_ACTION:
             fields = _parse_rule(note.get(config.RULE_NOTE_RULE_FIELD))

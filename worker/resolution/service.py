@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from worker import attached, london_time, mapping_notes, receipt_rules
+from worker import attached, london_time, mapping_notes, note_fields, receipt_rules
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -176,10 +176,11 @@ _AMOUNT_RE = re.compile(r"^-?(\d+(\.\d{1,2})?|\.\d{1,2})$")
 # YYYY-MM-DD, zero-padded. strptime alone accepts "2026-7-5", which we do not.
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# A master account code is four digits, and any three-digit code is legacy per
-# amendment 96. Used in one place only, to read a note written before Desktop
-# gained `category_code`; see the older-note rule in parse_resolution_note().
-_ACCOUNT_CODE_RE = re.compile(r"^\d{4}$")
+# ~~_ACCOUNT_CODE_RE~~ was here, and so was ~~_note_text()~~ further down. Flag
+# H5, 2026-11-14: both live in worker/note_fields.py, shared with the rule and
+# mapping notes. The pattern is used here in one place only, to read a note
+# written before Desktop gained `category_code`; see the older-note rule in
+# parse_resolution_note().
 
 
 @dataclass
@@ -389,15 +390,6 @@ class ResolutionNote:
     delete_client_copy: bool = False
 
 
-def _note_text(raw: Dict[str, Any], key: str) -> Optional[str]:
-    value = raw.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ResolutionNoteError(f"'{key}' must be text, got {type(value).__name__}")
-    return value.strip() or None
-
-
 def _note_flag(raw: Dict[str, Any], key: str) -> bool:
     """One of the note's top-level booleans. Absent means False.
 
@@ -464,7 +456,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
             f"'action' must be one of {NOTE_ACTIONS}, got {action!r}"
         )
 
-    resolved_at = _note_text(raw, "resolved_at")
+    resolved_at = note_fields.optional_text(raw, "resolved_at", error=ResolutionNoteError)
     if not resolved_at:
         raise ResolutionNoteError("'resolved_at' is required: it is the idempotency key")
 
@@ -479,7 +471,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     # which names two ways of matching when only one exists. The person reading
     # the `.error.txt` in `Resolutions\failed\` is deciding whether the pipeline
     # or Desktop is at fault, and that message pointed at both.
-    receipt_id = _note_text(raw, "receipt_id")
+    receipt_id = note_fields.optional_text(raw, "receipt_id", error=ResolutionNoteError)
     if not receipt_id:
         raise ResolutionNoteError(
             "'receipt_id' is required: it is the only thing that says which "
@@ -501,10 +493,10 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         action=action,
         resolved_at=resolved_at,
         receipt_id=receipt_id,
-        client_id=_note_text(raw, "client_id"),
-        resolved_by=_note_text(raw, "resolved_by"),
+        client_id=note_fields.optional_text(raw, "client_id", error=ResolutionNoteError),
+        resolved_by=note_fields.optional_text(raw, "resolved_by", error=ResolutionNoteError),
         original_review_files=list(review_files),
-        reason=_note_text(raw, "reason"),
+        reason=note_fields.optional_text(raw, "reason", error=ResolutionNoteError),
         remember_gl_for_supplier=remember,
         delete_client_copy=delete_client_copy,
     )
@@ -583,7 +575,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
                 "and this pipeline holds the path. Ignoring it"
             )
     else:
-        note.filed_path = _note_text(raw, "filed_path")
+        note.filed_path = note_fields.optional_text(raw, "filed_path", error=ResolutionNoteError)
 
     raw_values = raw.get("values")
     if not isinstance(raw_values, dict):
@@ -672,7 +664,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     note.category_code = (code or "").strip() or None
 
     if (not note.category_code and note.category_name
-            and _ACCOUNT_CODE_RE.match(note.category_name)):
+            and note_fields.ACCOUNT_CODE_RE.match(note.category_name)):
         note.category_code = note.category_name
         note.category_name = None
         logger.info(

@@ -173,7 +173,8 @@ def keys_the_note_parser_reads():
 
     Read off `worker\resolution\service.py`'s syntax tree rather than from any
     brief. The parser reaches a key three ways, `raw.get("x")`,
-    `_note_text(raw, "x")` and `_note_flag(raw, "x")`, and the flag call is
+    `note_fields.optional_text(raw, "x", ...)`, which was `_note_text()` until
+    flag H5, and `_note_flag(raw, "x")`, and the flag call is
     handed a constant rather than a literal for one of them, so the constant is
     resolved against the module.
     """
@@ -188,7 +189,9 @@ def keys_the_note_parser_reads():
         call = ast.unparse(node.func)
         if call == "raw.get" and node.args:
             argument = node.args[0]
-        elif call in ("_note_text", "_note_flag") and len(node.args) >= 2 \
+        # ~~"_note_text"~~: flag H5 of 2026-11-14 moved the reader into
+        # worker/note_fields.py, and the parser now calls it by that name.
+        elif call in ("note_fields.optional_text", "_note_flag") and len(node.args) >= 2 \
                 and ast.unparse(node.args[0]) == "raw":
             argument = node.args[1]
         else:

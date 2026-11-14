@@ -333,6 +333,15 @@ MAPPING_LAST_UPDATED_FIELD = "last_updated"
 # and name, would also do today, but `vendor_name` is nullable and SQLite's
 # UNIQUE lets NULLs repeat, so only the id names exactly one row in every case.
 MAPPING_ID_FIELD = "mapping_id"
+# What the shared firm pool answers for this mapping's supplier name, where it
+# answers with a DIFFERENT code, and null otherwise. Flag H2, Paul's decision
+# of 2026-11-14: tell the operator on screen. Read through
+# `Repository.get_firm_vendor()`, the reader layer 2 uses, so it is what another
+# client receiving this supplier name is actually given. **This is the only
+# part of the firm pool that is published**, Paul's decision of 2026-11-13 that
+# the pool itself is not, and it is published only beside a client mapping.
+MAPPING_FIRM_POOL_CODE_FIELD = "firm_pool_code"
+MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD = "firm_pool_account_name"
 
 # The two resolution note words that change a taught mapping. Flag F2, Paul's
 # decision of 2026-11-14, option 1: the nominal code can be changed and the row

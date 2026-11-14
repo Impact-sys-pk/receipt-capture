@@ -84,6 +84,8 @@ class TheKeysAreTheConstantsTest(unittest.TestCase):
                 "MAPPING_TIMES_SEEN_FIELD": config.MAPPING_TIMES_SEEN_FIELD,
                 "MAPPING_LAST_UPDATED_FIELD": config.MAPPING_LAST_UPDATED_FIELD,
                 "MAPPING_ID_FIELD": config.MAPPING_ID_FIELD,
+                "MAPPING_FIRM_POOL_CODE_FIELD": config.MAPPING_FIRM_POOL_CODE_FIELD,
+                "MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD": config.MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD,
             },
             {
                 "SUPPLIER_MAPPINGS_SUFFIX": "-mappings.json",
@@ -98,6 +100,8 @@ class TheKeysAreTheConstantsTest(unittest.TestCase):
                 "MAPPING_TIMES_SEEN_FIELD": "times_seen",
                 "MAPPING_LAST_UPDATED_FIELD": "last_updated",
                 "MAPPING_ID_FIELD": "mapping_id",
+                "MAPPING_FIRM_POOL_CODE_FIELD": "firm_pool_code",
+                "MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD": "firm_pool_account_name",
             })
 
     def test_the_folder_is_under_intellibills_and_named(self):
@@ -128,6 +132,10 @@ class WhatIsPublishedTest(_Base):
             config.MAPPING_ACCOUNT_NAME_FIELD: "Fuel and oil",
             config.MAPPING_TIMES_SEEN_FIELD: 1,
             config.MAPPING_LAST_UPDATED_FIELD: WHEN,
+            # Flag H2 of 2026-11-14: null, because no firm row answers this
+            # name. `tests/test_firm_pool_disagreement.py` covers the rest.
+            config.MAPPING_FIRM_POOL_CODE_FIELD: None,
+            config.MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD: None,
         }])
 
     def test_a_client_with_no_mappings_gets_an_empty_list_not_no_file(self):

@@ -29,6 +29,10 @@ supplier is the operator's. It never stops a poll: a failed write is logged and
 the next poll tries again.
 
 **The firm pool is not published.** That is Paul's decision and it is open.
+The one exception is per mapping: where the firm pool answers this client's
+supplier name with a different code, that code and its account name sit on the
+mapping. Flag H2, Paul's decision of 2026-11-14. A firm row with no client
+mapping beside it appears nowhere.
 """
 
 import json
@@ -67,25 +71,45 @@ def write_atomically(path, payload) -> None:
         raise
 
 
+def _firm_pool_disagreement(repo, trade, row) -> tuple:
+    """(code, account name) where layer 2 answers this supplier name with a
+    different code, else (None, None). Flag H2, Paul's decision of 2026-11-14.
+
+    **`get_firm_vendor()` and not a query of its own**, so this cannot drift
+    from what layer 2 does: the exact name first, then the key where every
+    name on it agrees. Reads only; nothing here writes the firm pool.
+    """
+    firm = repo.get_firm_vendor(trade, row["vendor_key"], row["vendor_name"])
+    if firm is None or firm["nominal_code"] == row["nominal_code"]:
+        return None, None
+    return firm["nominal_code"], firm["account_name"]
+
+
 def payload_for(repo, client_id: str) -> dict:
     """The file's content for one client, built only from the database."""
+    # The client's trade, as the engine takes it at layer 2.
+    trade = (config.CLIENTS_BY_ID.get(client_id) or {}).get("trade") or config.UNSPECIFIED_TRADE
+    mappings = []
+    for row in repo.list_client_vendor_mappings(client_id):
+        firm_code, firm_name = _firm_pool_disagreement(repo, trade, row)
+        mappings.append({
+            # Flag F2, 2026-11-14: so Desktop can name one row to change or
+            # delete. See config.MAPPING_ID_FIELD for why not the name.
+            config.MAPPING_ID_FIELD: row["mapping_id"],
+            config.MAPPING_VENDOR_KEY_FIELD: row["vendor_key"],
+            config.MAPPING_VENDOR_NAME_FIELD: row["vendor_name"],
+            config.MAPPING_NOMINAL_CODE_FIELD: row["nominal_code"],
+            config.MAPPING_ACCOUNT_NAME_FIELD: row["account_name"],
+            config.MAPPING_TIMES_SEEN_FIELD: row["times_seen"],
+            config.MAPPING_LAST_UPDATED_FIELD: row["last_updated"],
+            # Flag H2: null unless the firm pool answers this name differently.
+            config.MAPPING_FIRM_POOL_CODE_FIELD: firm_code,
+            config.MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD: firm_name,
+        })
     return {
         config.MAPPINGS_SCHEMA_FIELD: config.SUPPLIER_MAPPINGS_SCHEMA,
         config.MAPPINGS_CLIENT_ID_FIELD: client_id,
-        config.MAPPINGS_LIST_FIELD: [
-            {
-                # Flag F2, 2026-11-14: so Desktop can name one row to change or
-                # delete. See config.MAPPING_ID_FIELD for why not the name.
-                config.MAPPING_ID_FIELD: row["mapping_id"],
-                config.MAPPING_VENDOR_KEY_FIELD: row["vendor_key"],
-                config.MAPPING_VENDOR_NAME_FIELD: row["vendor_name"],
-                config.MAPPING_NOMINAL_CODE_FIELD: row["nominal_code"],
-                config.MAPPING_ACCOUNT_NAME_FIELD: row["account_name"],
-                config.MAPPING_TIMES_SEEN_FIELD: row["times_seen"],
-                config.MAPPING_LAST_UPDATED_FIELD: row["last_updated"],
-            }
-            for row in repo.list_client_vendor_mappings(client_id)
-        ],
+        config.MAPPINGS_LIST_FIELD: mappings,
     }
 
 

@@ -1,0 +1,70 @@
+======================================================================
+receipt cf74484c-70fe-4c3b-9c24-b399fca115c9
+  extraction_id    '51538f62-5882-40c6-a945-6f71536c72ea'
+  extracted_at     '2026-11-14T12:34:13.132692+00:00'
+  net_amount       42.63
+  vat_amount       8.48
+  gross_amount     51.11
+  details          'Thank you for choosing Shell'
+  line_items       '[{"description": "FS Unleaded (PUMP 5; 33.36 @ 1.499)", "amount": 50.01}, {"description": "WRIG X C/BREE10PK14G (1.00 @ 1.10)", "amount": 1.1}]'
+  raw_response:
+    ```json
+    {
+        "supplier_name": "Shell Co-op Harborne",
+        "invoice_date": "2026-07-08",
+        "invoice_date_raw": "08-07-26",
+        "net_amount": 42.63,
+        "vat_amount": 8.48,
+        "gross_amount": 51.11,
+        "receipt_ref_number": "16871102102",
+        "receipt_time": "06:23",
+        "details": "Thank you for choosing Shell",
+        "line_items": [
+            {
+                "description": "FS Unleaded (PUMP 5; 33.36 @ 1.499)",
+                "amount": 50.01
+            },
+            {
+                "description": "WRIG X C/BREE10PK14G (1.00 @ 1.10)",
+                "amount": 1.10
+            }
+        ],
+        "currency": "GBP"
+    }
+    ```
+
+======================================================================
+receipt 12495a90-2464-4516-8559-57b6ac1c3cea
+  extraction_id    'bf9dafb1-2637-4d60-8f49-79d50f7ac742'
+  extracted_at     '2026-11-14T12:34:15.030823+00:00'
+  net_amount       42.6
+  vat_amount       8.51
+  gross_amount     51.11
+  details          None
+  line_items       '[{"description": "*FS Unleaded 6", "amount": 50.01}, {"description": "WRIG X C/BRE10PK14G 3", "amount": 1.1}]'
+  raw_response:
+    ```json
+    {
+        "supplier_name": "Shell Co-op Harborne",
+        "invoice_date": "2026-07-08",
+        "invoice_date_raw": "08/07/26",
+        "net_amount": 42.60,
+        "vat_amount": 8.51,
+        "gross_amount": 51.11,
+        "receipt_ref_number": "000013",
+        "receipt_time": "06:23",
+        "details": null,
+        "line_items": [
+            {
+                "description": "*FS Unleaded 6",
+                "amount": 50.01
+            },
+            {
+                "description": "WRIG X C/BRE10PK14G 3",
+                "amount": 1.10
+            }
+        ],
+        "currency": "GBP"
+    }
+    ```
+

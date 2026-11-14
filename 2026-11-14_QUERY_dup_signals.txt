@@ -1,0 +1,36 @@
+columns present on extractions, of those asked for: receipt_id, extracted_at, engine, supplier_name, invoice_date, gross_amount, net_amount, vat_amount, receipt_ref_number, receipt_time, validation_status
+
+receipt 12495a90-2464-4516-8559-57b6ac1c3cea: 1 extraction row(s)
+    receipt_id           '12495a90-2464-4516-8559-57b6ac1c3cea'
+    extracted_at         '2026-11-14T12:34:15.030823+00:00'
+    engine               'openai_vision'
+    supplier_name        'Shell Co-op Harborne'
+    invoice_date         '2026-07-08'
+    gross_amount         51.11
+    net_amount           42.6
+    vat_amount           8.51
+    receipt_ref_number   '000013'
+    receipt_time         '06:23'
+    validation_status    'ok'
+
+receipt cf74484c-70fe-4c3b-9c24-b399fca115c9: 1 extraction row(s)
+    receipt_id           'cf74484c-70fe-4c3b-9c24-b399fca115c9'
+    extracted_at         '2026-11-14T12:34:13.132692+00:00'
+    engine               'openai_vision'
+    supplier_name        'Shell Co-op Harborne'
+    invoice_date         '2026-07-08'
+    gross_amount         51.11
+    net_amount           42.63
+    vat_amount           8.48
+    receipt_ref_number   '16871102102'
+    receipt_time         '06:23'
+    validation_status    'ok'
+
+receipts row 12495a90-2464-4516-8559-57b6ac1c3cea: {'receipt_id': '12495a90-2464-4516-8559-57b6ac1c3cea', 'status': 'ok', 'filed_path': None, 'duplicate_of': None, 'file_hash': '6d2eae1f74bb8f1f39aadde0d9835e178402431646248f8005c42aefab822061'}
+receipts row cf74484c-70fe-4c3b-9c24-b399fca115c9: {'receipt_id': 'cf74484c-70fe-4c3b-9c24-b399fca115c9', 'status': 'ok', 'filed_path': None, 'duplicate_of': None, 'file_hash': '6d2eae1f74bb8f1f39aadde0d9835e178402431646248f8005c42aefab822061'}
+
+every receipt carrying that file hash: 4
+    {'receipt_id': '87c1ecec-0c7e-49ef-adf0-f91b4c7015e4', 'status': 'discarded', 'filed_path': None}
+    {'receipt_id': '1573408b-de18-41ed-b770-ca6881e4f0a8', 'status': 'discarded', 'filed_path': None}
+    {'receipt_id': 'cf74484c-70fe-4c3b-9c24-b399fca115c9', 'status': 'ok', 'filed_path': None}
+    {'receipt_id': '12495a90-2464-4516-8559-57b6ac1c3cea', 'status': 'ok', 'filed_path': None}

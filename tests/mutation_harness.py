@@ -48,8 +48,8 @@ Write a throwaway module in the scratchpad that defines mutations and calls
         Mutation(
             name="drop-the-guard",
             target="app.py",
-            old='if existing and repo.is_recorded_and_filed(existing):',
-            new='if existing:',
+            old='blocker = repo.find_blocker_by_hash(intake.file_hash, receipt_client_id)',
+            new='blocker = None',
         ),
     ]
 
@@ -59,6 +59,15 @@ Write a throwaway module in the scratchpad that defines mutations and calls
 Then `python that_file.py drop-the-guard`, or with no argument to run them all
 in turn. **A mutation whose anchor is not unique fails loudly before anything is
 written to disk.**
+
+**The example's anchor, and why it is that line.** ~~`if existing and
+repo.is_recorded_and_filed(existing):`~~ Repointed 2026-11-14: that line left
+`app.py` with commit `3628c35`, and `replace_once()` refused it with "the anchor
+appears 0 times", which is this file's own warning shown by its own example.
+The capture route's call is used because the embedded-image and attachment
+routes share `blocker = repo.find_blocker_by_hash(file_hash, client_id)` at
+different indents, so that shorter line appears twice and is refused: the
+substring trap described above.
 """
 
 from __future__ import annotations

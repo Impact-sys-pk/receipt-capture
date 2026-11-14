@@ -24,6 +24,7 @@ from pathlib import Path
 
 from worker.categorisation.engine import CategorisationEngine, CategorisationResult
 from worker.database import schema
+from test_category_hold import production_files
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKER = REPO_ROOT / "worker"
@@ -205,7 +206,14 @@ class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):
     PUBLISH = REPO_ROOT / "worker" / "publish.py"
 
     def test_nothing_reaches_a_categorisation_field_through_getattr(self):
-        """`service.py` and, from 2026-11-13, `publish.py`.
+        """The whole production tree, from 2026-11-14.
+
+        ~~`service.py` and, from 2026-11-13, `publish.py`.~~ **Widened
+        2026-11-14, Paul's decision, amendment 557**: a guard over two named
+        files cannot see the third file that does it. The set is
+        `production_files()` in `tests/test_category_hold.py`, imported rather
+        than defined a second time, so the two cannot disagree about what
+        production is.
 
         ~~It matched the line text `getattr(categorisation`, skipping lines
         that start with `#`, over `service.py` alone.~~ **Rewritten 2026-11-13,
@@ -223,21 +231,27 @@ class TheTwoLearningBranchesReadTheFieldTheSameWay(unittest.TestCase):
         to `getattr` whose first argument is the name `categorisation`, and
         nothing else.
         """
-        for path in (self.SERVICE, self.PUBLISH):
-            with self.subTest(file=path.name):
-                tree = ast.parse(path.read_text(encoding="utf-8"))
-                hits = [f"{node.lineno}: {ast.unparse(node)}"
-                        for node in ast.walk(tree)
-                        if isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id == "getattr"
-                        and node.args
-                        and isinstance(node.args[0], ast.Name)
-                        and node.args[0].id == "categorisation"]
-                self.assertEqual(
-                    hits, [],
-                    "a getattr on the categorisation hides a rename instead of "
-                    "raising")
+        files = production_files()
+        # The set has to contain the two files the guard used to name, or it
+        # is a narrower guard wearing a wider name.
+        self.assertIn(self.SERVICE, files)
+        self.assertIn(self.PUBLISH, files)
+        hits = []
+        for path in files:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            where = path.relative_to(REPO_ROOT).as_posix()
+            hits += [f"{where}:{node.lineno}: {ast.unparse(node)}"
+                     for node in ast.walk(tree)
+                     if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Name)
+                     and node.func.id == "getattr"
+                     and node.args
+                     and isinstance(node.args[0], ast.Name)
+                     and node.args[0].id == "categorisation"]
+        self.assertEqual(
+            hits, [],
+            "a getattr on the categorisation hides a rename instead of "
+            "raising")
 
     def test_publish_reads_both_fields_as_plain_attributes(self):
         """The positive half, so the guard above cannot pass because the read

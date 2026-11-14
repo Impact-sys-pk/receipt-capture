@@ -425,10 +425,12 @@ def _move_inbox_pair_to_processed(intake) -> None:
     """Move a folder-intake original, and any sidecar, out of the client's inbox.
 
     Design document 3.13. This runs on **every** outcome, not only `ok`. Anything
-    left behind is found by `find_by_hash()` on the next poll, is not
-    `is_recorded_and_filed()` because `filed_path` is NULL, and is then
-    deliberately reprocessed: a new receipt row, a new extraction row, a new
-    Review pair and one OpenAI call, every five minutes, indefinitely.
+    left behind is found by the hash check on the next poll and, ~~is not
+    `is_recorded_and_filed()` because `filed_path` is NULL,~~ **unless its
+    receipt is `ok` or `bank_attachment`, which `find_ok_by_hash()` refuses
+    from 2026-11-14,** is then deliberately reprocessed: a new receipt row, a
+    new extraction row, a new Review pair and one OpenAI call, every five
+    minutes, indefinitely.
 
     A move rather than a delete, per CLAUDE.md's no-data-loss rule, and that
     applies to the `ok` path too, which used to delete. The reprocessing rule this

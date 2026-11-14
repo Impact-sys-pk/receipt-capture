@@ -425,5 +425,25 @@ class TheCaptureLogSaysWhatWasTestedTest(unittest.TestCase):
 # removed, because two guards over one set drift.
 
 
+class TheOldGuardIsGoneTest(unittest.TestCase):
+    """`is_recorded_and_filed()` is deleted, 2026-11-14, Paul's decision.
+
+    Item 34 took its three callers and nothing called it after. **Asserted as
+    absent from the repository class rather than as uncalled**, the shape
+    `tests/test_layer_two_row.py` uses for `increment_firm_vendor_count()` at
+    amendment 344: uncalled is what it already was, and a function nobody calls
+    is one edit away from looking as though it decides something. Its reasoning
+    is in amendments 303 and 538 of `2026-07-25_CONSOLE_DESIGN.md`.
+    """
+
+    def test_it_has_not_come_back(self):
+        import source_guards
+        tree = source_guards.tree_of("worker", "database", "repository.py")
+        self.assertFalse(
+            source_guards.defines(tree, "is_recorded_and_filed"),
+            "it was deleted on 2026-11-14 and is back. The file-hash block is "
+            "find_ok_by_hash(), which asks the status, not filed_path")
+
+
 if __name__ == "__main__":
     unittest.main()

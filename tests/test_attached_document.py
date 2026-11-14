@@ -657,10 +657,15 @@ class TheSweepsTest(AttachedTestCase):
         function was described.
 
         **Item 34, 2026-11-14: none of this decides any more.** The three
-        callers ask `find_ok_by_hash()`, which finds an `ok` receipt and nothing
-        else, so an attached document blocks nothing before Post or after it.
-        The assertions below still hold because they ask
-        `is_recorded_and_filed()` directly. What follows is kept as written.
+        callers ask `find_ok_by_hash()`. ~~which finds an `ok` receipt and
+        nothing else, so an attached document blocks nothing before Post or
+        after it. The assertions below still hold because they ask
+        `is_recorded_and_filed()` directly.~~ **Corrected the same evening,
+        twice.** Paul's decision put `bank_attachment` in
+        `config.HASH_DUPLICATE_STATUSES`, so an attached document blocks a
+        resend **before Post as well as after**, and `is_recorded_and_filed()`
+        is deleted. The assertions below ask `find_ok_by_hash()`. What follows
+        is kept as written.
 
         ~~**What actually decides is the guard all three callers pair it with.**~~
         `existing and repo.is_recorded_and_filed(existing)` is the duplicate
@@ -679,9 +684,11 @@ class TheSweepsTest(AttachedTestCase):
             try:
                 self.assertEqual(repo.find_by_hash(file_hash, "CLIENT001"),
                                  RECEIPT_ID)
-                self.assertFalse(
-                    repo.is_recorded_and_filed(RECEIPT_ID),
-                    "before Post it has no filed_path, so it blocks nothing")
+                # ~~before Post it has no filed_path, so it blocks nothing~~
+                self.assertEqual(
+                    repo.find_ok_by_hash(file_hash, "CLIENT001"), RECEIPT_ID,
+                    "a bank_attachment blocks a resend before Post: its status "
+                    "is set on arrival, and the status is what decides")
                 # Another client's identical bytes are not this client's
                 # duplicate. 10f.18, and it holds here too.
                 self.assertIsNone(repo.find_by_hash(file_hash, "CLIENT002"))
@@ -693,9 +700,10 @@ class TheSweepsTest(AttachedTestCase):
 
             repo = Repository()
             try:
-                self.assertTrue(
-                    repo.is_recorded_and_filed(RECEIPT_ID),
-                    "after Post it has a filed_path, which is flag 3")
+                self.assertEqual(
+                    repo.find_ok_by_hash(file_hash, "CLIENT001"), RECEIPT_ID,
+                    "and after Post, unchanged by the copy")
+                self.assertIsNone(repo.find_ok_by_hash(file_hash, "CLIENT002"))
             finally:
                 repo.close()
 
@@ -715,7 +723,9 @@ class TheSweepsTest(AttachedTestCase):
         expected = {
             # Asked by receipt_id, so they answer about whatever row is named
             # and there is nothing to exclude.
-            "get_receipt", "get_filed_path", "is_recorded_and_filed",
+            # ~~"is_recorded_and_filed"~~ deleted 2026-11-14: no caller after
+            # item 34.
+            "get_receipt", "get_filed_path",
             "is_discarded",
             # Filter status = 'ok', which the marker is not.
             "get_unpublished_ok_receipts",

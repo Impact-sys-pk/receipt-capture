@@ -146,8 +146,12 @@ class Repository:
         which is asserted in tests/test_step10f_duplicates.py rather than left
         to be met: an attachment row naming a receipt a rebuild has dropped now
         matches nobody, where the unjoined query returned the dangling id. No
-        caller can tell, because every one of them pairs this with
-        is_recorded_and_filed() and a receipt with no row is not filed.
+        caller can tell: ~~because every one of them pairs this with
+        is_recorded_and_filed() and a receipt with no row is not filed~~ from
+        2026-11-14 the hash block is `find_ok_by_hash()` below, whose
+        `processed_attachments` subquery is joined to `receipts` the same way,
+        and this function's one remaining caller only names a match in a log
+        line.
         """
         row = self._conn.execute(
             """
@@ -452,8 +456,9 @@ class Repository:
 
         Sub-step 10f.11. `filed_path` is the record that a copy was written, so
         this is the question "has this receipt been copied", asked by the one
-        function that writes the copy. `is_recorded_and_filed()` asks the same
-        column for a different purpose and returns a bool.
+        function that writes the copy. ~~`is_recorded_and_filed()` asks the same
+        column for a different purpose and returns a bool.~~ That function was
+        deleted on 2026-11-14, so this is the column's only reader by name.
         """
         row = self._conn.execute(
             "SELECT filed_path FROM receipts WHERE receipt_id = ?",
@@ -555,8 +560,11 @@ class Repository:
         in `2026-09-10_REPORT_claude_code_discard_and_client_copy.md`.
 
         **Two things this changes for a reader of the column, both intended.**
-        `is_recorded_and_filed()` goes False, which is what lets the identical
-        document be sent again, per deliverable 3 of the same brief. And
+        ~~`is_recorded_and_filed()` goes False, which is what lets the identical
+        document be sent again~~ **From 2026-11-14 the column does not decide
+        that**: the hash block is `find_ok_by_hash()`, and the `discarded`
+        status is what lets the identical document be sent again, per
+        deliverable 3 of the same brief. And
         `get_published_receipts_without_client_copy()` selects on
         `filed_path IS NULL`, so a cleared column would queue the receipt for a
         copy on the next poll **were it not for that query's own
@@ -1529,52 +1537,26 @@ class Repository:
         )
         self._conn.commit()
 
-    def is_recorded_and_filed(self, receipt_id: str) -> bool:
-        """Check if a receipt is genuinely filed: filed, and not discarded.
-
-        **NOT widened by 10f.24, and that is a decision rather than an
-        oversight.** Its three remaining callers are the file-hash dedup in
-        `app.py`, and `_move_inbox_pair_to_processed()` depends in terms on a
-        `needs_review` receipt NOT counting as filed, so that a file an
-        operator puts back by hand is deliberately reprocessed. Amendment 293
-        gives every validation status a `published` row, so widening this would
-        make a resent review item look like a duplicate. Amendment 303, and
-        `SettledMeansPublishedTest` holds the two answers apart.
-
-        ## `status <> 'discarded'`, added 2026-09-22 on Paul's instruction
-
-        **This NARROWS rather than widens**, so the paragraph above is
-        undisturbed: the only change is that one more case answers False.
-        `_move_inbox_pair_to_processed()`'s dependency is on `filed_path` being
-        NULL, which this does not touch, and
-        `ADiscardedRowThatKeptItsFiledPathTest` asserts that rather than
-        arguing it.
-
-        **Why it is needed when `discard_receipt()` already clears the column.**
-        The live database holds a row where it did not stick: `status` is
-        `discarded`, `filed_path` is populated, and the audit row, the log and
-        the deleted client copy all say the clearing ran.
-        `2026-09-22_REPORT_claude_code_filed_path_on_discarded_rows.md` carries
-        the enumeration; **the mechanism is not established and this does not
-        fix it.**
-
-        **What it does fix is the dependency.** The answer rested on the
-        clearing having worked rather than on the status that decides, so one
-        stale column meant a document an operator deleted could never be sent
-        again, through all three intake routes. Commit `a96627a` decided the
-        opposite in terms: "a discarded receipt gives up its client folder copy
-        and stops blocking a resend".
-
-        **The row itself is deliberately left alone**, Paul's decision of
-        2026-09-22: correcting it by hand would destroy the only instance of the
-        fault before anyone knows how it happened.
-        """
-        row = self._conn.execute(
-            "SELECT filed_path FROM receipts "
-            "WHERE receipt_id = ? AND status <> 'discarded'",
-            (receipt_id,)
-        ).fetchone()
-        return row and row[0] is not None
+    # `is_recorded_and_filed()` was here and is DELETED, 2026-11-14, on Paul's
+    # decision, flag 3 of `2026-11-14_REPORT_claude_code_duplicates_and_two_flags.md`.
+    # It answered whether a receipt had a `filed_path` and was not discarded,
+    # and its three callers were the file-hash duplicate block in `app.py`.
+    # **Item 34 replaced all three with `find_ok_by_hash()`**, because
+    # `filed_path` waits for Post on the `post` trigger, so the block could
+    # refuse nothing until then; nothing called it after. Enumerated from the
+    # syntax tree before the deletion: no production caller, thirteen test
+    # calls in four files.
+    #
+    # **Its reasoning is not lost with it.** Why a `needs_review` receipt must
+    # not count is amendment 303 of `2026-07-25_CONSOLE_DESIGN.md`, and why a
+    # discarded receipt whose `filed_path` outlived the discard must not block
+    # a resend is amendment 538, commit `435d1b5`. `find_ok_by_hash()` holds
+    # both answers by status: neither `needs_review` nor `discarded` is in
+    # `config.HASH_DUPLICATE_STATUSES`.
+    #
+    # Amendment 344's reasoning for `increment_firm_vendor_count()` applies: a
+    # function nobody calls is one edit away from looking as though it decides
+    # something. `tests/test_hash_duplicate_ok_only.py` asserts it stays gone.
 
     def is_published(self, receipt_id: str) -> bool:
         """Whether this receipt has ever landed at a destination. 10f.24.
@@ -1610,8 +1592,9 @@ class Repository:
         no about it would be lying to its other readers.
 
         An id that names no receipt is not discarded, which is the same answer
-        `is_recorded_and_filed()` gives and for the same reason: there is
-        nothing there to have been deleted.
+        `is_recorded_and_filed()` ~~gives~~ gave, before its deletion on
+        2026-11-14, and for the same reason: there is nothing there to have
+        been deleted.
         """
         row = self._conn.execute(
             "SELECT 1 FROM receipts WHERE receipt_id = ? AND status = 'discarded'",

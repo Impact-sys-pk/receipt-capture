@@ -644,13 +644,17 @@ class FiledPathIsClearedOnEveryDiscardTest(DiscardTestCase):
 
     def test_the_receipt_is_no_longer_recorded_and_filed(self):
         """The second effect, and it is intended: this is what lets the
-        identical file be sent again. `is_recorded_and_filed()` is unchanged;
-        the data it reads is what moved."""
+        identical file be sent again. ~~`is_recorded_and_filed()` is unchanged;
+        the data it reads is what moved.~~
+
+        **2026-11-14: kept, against `find_ok_by_hash()`**, because its subject
+        is the rule (a discard stops blocking a resend) rather than the deleted
+        function. What moves now is the status, not the column."""
         with TempEnvironment() as env:
             self.seed_published_and_filed(env)
             repo = Repository()
             try:
-                self.assertTrue(repo.is_recorded_and_filed("r-1"))
+                self.assertEqual(repo.find_ok_by_hash("hash-r-1", "CLIENT001"), "r-1")
             finally:
                 repo.close()
 
@@ -658,7 +662,7 @@ class FiledPathIsClearedOnEveryDiscardTest(DiscardTestCase):
 
             repo = Repository()
             try:
-                self.assertFalse(repo.is_recorded_and_filed("r-1"))
+                self.assertIsNone(repo.find_ok_by_hash("hash-r-1", "CLIENT001"))
             finally:
                 repo.close()
 
@@ -721,8 +725,10 @@ class ADiscardedReceiptDoesNotBlockAResendTest(DiscardTestCase):
     """Deliverable 3. Paul's case: the operator changes their mind.
 
     Two arms, because a resend takes one of two shapes. **The identical file**
-    is caught by the hash, which reads `filed_path` through
-    `is_recorded_and_filed()`, so deliverable 2 answers it. **A re-photograph**
+    is caught by the hash, ~~which reads `filed_path` through
+    `is_recorded_and_filed()`, so deliverable 2 answers it~~ **which from
+    2026-11-14 asks `find_ok_by_hash()` for the status, and `discarded` is not
+    one that refuses**. **A re-photograph**
     has different bytes, so only the semantic check sees it, and that reads a
     `published` row which a discarded receipt keeps for ever.
     """
@@ -900,9 +906,12 @@ class ADiscardedReceiptDoesNotBlockAResendTest(DiscardTestCase):
     def test_the_identical_file_can_be_sent_again(self):
         """The hash arm, driven rather than reasoned about.
 
-        The same bytes, so `find_by_hash()` matches and
+        ~~The same bytes, so `find_by_hash()` matches and
         `is_recorded_and_filed()` decides. `filed_path` is NULL after the
-        discard, so the resend is processed.
+        discard, so the resend is processed.~~ **2026-11-14: the same bytes,
+        and `find_ok_by_hash()` decides on the status**: `ok` before the
+        discard, so the arrival is a duplicate; `discarded` after, so the
+        resend is processed. The precondition below is repointed accordingly.
         """
         with TempEnvironment() as env:
             repo = Repository()
@@ -917,7 +926,8 @@ class ADiscardedReceiptDoesNotBlockAResendTest(DiscardTestCase):
                 repo._conn.commit()
                 repo.mark_receipt_filed("r-1", str(
                     config.CLIENTS_ROOT / "Test Client" / "copy.pdf"))
-                self.assertTrue(repo.is_recorded_and_filed("r-1"))
+                self.assertEqual(
+                    repo.find_ok_by_hash(app.compute_hash(DOCUMENT), "CLIENT001"), "r-1")
             finally:
                 repo.close()
 
@@ -1280,6 +1290,12 @@ class FiledAtOutlivesFiledPathTest(unittest.TestCase):
 class ADiscardedRowThatKeptItsFiledPathTest(DiscardTestCase):
     r"""A discarded receipt is not filed, whatever `filed_path` holds.
 
+    **2026-11-14: `is_recorded_and_filed()` is deleted**, and the rule this
+    class holds, that the discarded-but-still-filed row must not block a
+    resend, is kept against `find_ok_by_hash()`, which decides on the status
+    and never reads `filed_path`. The text below is the 2026-09-22 reasoning,
+    kept as written; amendment 538 of `2026-07-25_CONSOLE_DESIGN.md` records it.
+
     **Added 2026-09-22 on Paul's instruction, from the live database.** One row
     in `C:\Intellibills\db\receipts.db` has `status = 'discarded'` and a
     `filed_path` that is not NULL, reported in
@@ -1342,13 +1358,16 @@ class ADiscardedRowThatKeptItsFiledPathTest(DiscardTestCase):
             repo.close()
 
     def test_a_discarded_receipt_with_a_filed_path_is_not_recorded_and_filed(self):
-        """The failing test this change was written against."""
+        """The failing test this change was written against.
+
+        **Kept against `find_ok_by_hash()`, 2026-11-14**: the rule is the
+        subject, and the row's shape is the live database's."""
         with TempEnvironment() as env:
             self._discarded_but_still_filed(env)
             repo = Repository()
             try:
-                self.assertFalse(
-                    repo.is_recorded_and_filed("r-1"),
+                self.assertIsNone(
+                    repo.find_ok_by_hash("hash-r-1", "CLIENT001"),
                     "a discarded receipt counted as filed because its "
                     "filed_path outlived the discard, so the identical "
                     "document cannot be sent again")
@@ -1356,67 +1375,51 @@ class ADiscardedRowThatKeptItsFiledPathTest(DiscardTestCase):
                 repo.close()
 
     def test_an_ok_receipt_with_a_filed_path_still_counts_as_filed(self):
-        """The control. Without it the change could be 'always return False'."""
+        """The control. Without it the change could be 'always return False'.
+        Kept against `find_ok_by_hash()`, 2026-11-14."""
         with TempEnvironment() as env:
             self.seed_published_and_filed(env)
             repo = Repository()
             try:
-                self.assertTrue(repo.is_recorded_and_filed("r-1"))
+                self.assertEqual(repo.find_ok_by_hash("hash-r-1", "CLIENT001"), "r-1")
             finally:
                 repo.close()
 
     def test_a_needs_review_receipt_is_still_not_filed(self):
         r"""`_move_inbox_pair_to_processed()` depends on this, in terms.
 
-        Its docstring says a file left in the inbox "is not
+        ~~Its docstring says a file left in the inbox "is not
         `is_recorded_and_filed()` **because `filed_path` is NULL**, and is then
         deliberately reprocessed". **The reason is the NULL column and not the
         status**, so a change that only ever returns False in MORE cases cannot
-        disturb it. Asserted rather than argued.
+        disturb it.~~ **2026-11-14: kept against `find_ok_by_hash()`**, which
+        answers by status, and `needs_review` is not in
+        `config.HASH_DUPLICATE_STATUSES`, so a file put back by hand is still
+        reprocessed. Amendment 303. Asserted rather than argued.
         """
         with TempEnvironment() as env:
             repo = Repository()
             try:
                 env.seed(repo, receipt_id="r-review", status="needs_review")
                 self.assertIsNone(repo.get_receipt("r-review")["filed_path"])
-                self.assertFalse(repo.is_recorded_and_filed("r-review"))
+                self.assertIsNone(repo.find_ok_by_hash("hash-r-review", "CLIENT001"))
             finally:
                 repo.close()
 
-    def test_every_other_status_answers_exactly_as_the_column_does(self):
-        """`discarded` is the only status the answer now depends on.
-
-        The statuses are `CLAUDE.md`'s list less `discarded`. Each is seeded
-        carrying a `filed_path`, which is not a state all of them reach in
-        production; the point is that the query changes the answer for one
-        status and for no other.
-        """
-        statuses = ("pending", "ok", "needs_review", "failed",
-                    "possible_duplicate", "retry_exhausted", "bank_attachment")
-        with TempEnvironment() as env:
-            repo = Repository()
-            try:
-                for index, status in enumerate(statuses):
-                    receipt_id = f"r-{index}"
-                    env.seed(repo, receipt_id=receipt_id, status=status)
-                    repo.mark_receipt_filed(
-                        receipt_id,
-                        str(config.CLIENTS_ROOT / f"{receipt_id}.pdf"))
-                    repo.update_receipt_status(receipt_id, status)
-                    with self.subTest(status=status):
-                        self.assertTrue(
-                            repo.is_recorded_and_filed(receipt_id),
-                            f"{status} carries a filed_path and must still "
-                            f"read as filed; only 'discarded' changed")
-            finally:
-                repo.close()
+    # `test_every_other_status_answers_exactly_as_the_column_does` was here and
+    # is DELETED, 2026-11-14, with `is_recorded_and_filed()`. It existed only to
+    # pin that function's answer per status when every row carried a
+    # `filed_path`; `find_ok_by_hash()` never reads `filed_path`, and its own
+    # status matrix is in `tests/test_hash_duplicate_ok_only.py`.
 
     def test_the_identical_file_can_be_sent_again_even_though_the_column_stuck(self):
         """The consequence, driven through a real poll rather than reasoned about.
 
-        The same bytes arrive by email, `find_by_hash()` matches the discarded
-        receipt and `is_recorded_and_filed()` decides. Before this change the
-        arrival was swallowed as a duplicate.
+        The same bytes arrive by email, ~~`find_by_hash()` matches the discarded
+        receipt and `is_recorded_and_filed()` decides~~ **and
+        `find_ok_by_hash()` finds no `ok` or `bank_attachment` receipt, from
+        2026-11-14**. Before the 2026-09-22 change the arrival was swallowed as
+        a duplicate.
         """
         with TempEnvironment() as env:
             repo = Repository()

@@ -53,9 +53,12 @@ def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
                  firm_id="TESTFIRM001", published=False, status=None):
     """One receipt row for `client_id`, filed unless told otherwise.
 
-    Filed matters: every caller of find_by_hash() pairs it with
+    ~~Filed matters: every caller of find_by_hash() pairs it with
     is_recorded_and_filed(), from 10f.20 onwards, so an unfiled seed tests a
-    different thing.
+    different thing.~~ **From 2026-11-14 the hash block is
+    `find_ok_by_hash()`, which decides on `status` and never reads
+    `filed_path`**, so a seed meant to be a hash duplicate passes `status`, and
+    `filed` matters only to tests about the client folder copy.
 
     **`published` is the other marker and it is a separate axis on purpose.**
     Sub-step 10f.24 moved the semantic duplicate check off `filed_path` and on
@@ -160,18 +163,20 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
         from.
 
         **It changes nothing a caller can see**, and that is the point of
-        asserting it: all three call sites pair the lookup with
+        asserting it: ~~all three call sites pair the lookup with
         `is_recorded_and_filed()` from 10f.20, and a receipt with no row is not
-        filed, so both the old answer and the new one allow reprocessing.
+        filed~~ **the three call sites ask `find_ok_by_hash()` from 2026-11-14,
+        whose subquery is joined to `receipts` the same way**, so both the old
+        answer and the new one allow reprocessing.
         """
         with TempEnvironment():
             repo = Repository()
             try:
                 repo.mark_processed("msg-1", "att-1", SHARED_HASH, "r-gone", "TESTFIRM001")
                 self.assertIsNone(repo.find_by_hash(SHARED_HASH, CLIENT_A))
-                self.assertFalse(repo.is_recorded_and_filed("r-gone"),
-                                 "and it was never filed, so the outcome for a "
-                                 "caller is unchanged")
+                self.assertIsNone(repo.find_ok_by_hash(SHARED_HASH, CLIENT_A),
+                                  "and the block finds no row either, so the "
+                                  "outcome for a caller is unchanged")
             finally:
                 repo.close()
 
@@ -492,31 +497,14 @@ class SettledMeansPublishedTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_the_shared_helper_still_answers_the_filed_question(self):
-        """`is_recorded_and_filed()` is NOT widened, and that is deliberate.
-
-        Its three other callers are the file-hash dedup in `app.py`, and
-        `_move_inbox_pair_to_processed()` depends in terms on a `needs_review`
-        receipt not counting as filed, so that a file an operator puts back by
-        hand is deliberately reprocessed. Amendment 293 gives every status a
-        `published` row, so a widened helper would make a resent review item
-        look like a duplicate. Amendment 303.
-        """
-        with TempEnvironment():
-            repo = Repository()
-            try:
-                seed_receipt(repo, "r-published", CLIENT_A, file_hash="h-p",
-                             filed=False, published=True)
-                seed_receipt(repo, "r-filed", CLIENT_A, file_hash="h-f",
-                             filed=True, published=False)
-                self.assertFalse(
-                    repo.is_recorded_and_filed("r-published"),
-                    "is_recorded_and_filed() now answers yes to a published "
-                    "receipt, so it has been widened and the file-hash dedup "
-                    "in app.py has changed with it")
-                self.assertTrue(repo.is_recorded_and_filed("r-filed"))
-            finally:
-                repo.close()
+    # `test_the_shared_helper_still_answers_the_filed_question` was here and is
+    # DELETED, 2026-11-14, with `is_recorded_and_filed()`. It pinned that the
+    # helper was not widened from `filed_path` to a `published` row, which
+    # amendment 303 decided because every status publishes (amendment 293) and
+    # a resent review item must not look like a duplicate. **The rule is held
+    # now by status**: `find_ok_by_hash()` refuses only the statuses in
+    # `config.HASH_DUPLICATE_STATUSES`, and the matrix in
+    # `tests/test_hash_duplicate_ok_only.py` seeds every status published.
 
 
 class EmbeddedImageGuardTest(unittest.TestCase):
@@ -620,8 +608,10 @@ class EmbeddedImageGuardTest(unittest.TestCase):
         status test moved into the query, because `find_by_hash()` is `LIMIT 1`
         and handed back a discarded row ahead of an `ok` one on 2026-11-14. So
         the rule now is that every `find_ok_by_hash()` call is followed by the
-        `if` that acts on it, and that there are three. `is_recorded_and_filed()`
-        having no caller is held by `tests/test_stage4_client_copy.py`.
+        `if` that acts on it, and that there are three. ~~`is_recorded_and_filed()`
+        having no caller is held by `tests/test_stage4_client_copy.py`.~~
+        `is_recorded_and_filed()` is deleted, 2026-11-14, and
+        `tests/test_hash_duplicate_ok_only.py` holds that it stays gone.
         """
         import ast
         from pathlib import Path

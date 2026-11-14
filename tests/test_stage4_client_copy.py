@@ -1163,7 +1163,11 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
                          validation_notes=[])
                 repo.mark_receipt_filed(
                     "r-old", str(config.CLIENTS_ROOT / "old.pdf"))
-                self.assertTrue(repo.is_recorded_and_filed("r-old"))
+                # The precondition is that the receipt is filed, which is the
+                # column, so it is read directly. ~~is_recorded_and_filed()~~
+                # was deleted 2026-11-14; find_ok_by_hash() would assert the
+                # status instead, which is a different claim.
+                self.assertIsNotNone(repo.get_receipt("r-old")["filed_path"])
                 self.assertEqual(repo.list_publish_events("r-old"), [])
             finally:
                 repo.close()
@@ -1199,7 +1203,10 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
         `app.py`~~ The three file-hash sites ask `find_ok_by_hash()` instead,
         because `filed_path` waits for Post on the `post` trigger and the block
         could refuse nothing until then. A needs_review receipt still does not
-        count, because only `ok` does, so the dependency named below holds.
+        count, because only ~~`ok` does~~ the statuses in
+        `config.HASH_DUPLICATE_STATUSES` do, `ok` and `bank_attachment`.
+        **`is_recorded_and_filed()` was deleted the same day**; its empty entry
+        below stays as the answer to "who calls the old name".
         """
         sites = {}
         for name in ("is_recorded_and_filed", "find_ok_by_hash", "is_published"):
@@ -1220,11 +1227,9 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
                               "process_extraction_result",
                               "worker/resolution/service.py::"
                               "_apply_attached_note"]},
-            f"the callers moved: {sites}. is_recorded_and_filed() must keep "
-            "its three file-hash sites in app.py and lose the semantic one, "
-            "because _move_inbox_pair_to_processed() depends on a needs_review "
-            "receipt NOT counting as filed and amendment 293 gives every "
-            "status a published row")
+            f"the callers moved: {sites}. The file-hash block is "
+            "find_ok_by_hash() at three sites in app.py, nothing calls the "
+            "deleted is_recorded_and_filed(), and is_published() keeps its two")
 
 
 class ARepublishIsNotSilentTest(unittest.TestCase):

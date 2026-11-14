@@ -289,8 +289,11 @@ class TheNoteShapeTest(unittest.TestCase):
         have gone to `failed\\` on success, which is what the first red run
         showed.
         """
+        # Step 10bu, 2026-11-14: the two rule words, considered against this
+        # sub-step. They are not receipt notes and write no client folder copy.
         self.assertEqual(NOTE_APPLIED_OUTCOMES,
-                         ("filed", "discarded", "attached", "corrected"))
+                         ("filed", "discarded", "attached", "corrected",
+                          "rule_saved", "rule_deleted"))
 
 
 class OnThePostTriggerTest(PostTimeTestCase):

@@ -96,7 +96,8 @@ class TheTwoNamesMeanTheRightThings(unittest.TestCase):
                 self.assertNotIn("vendor_code", self._columns(table))
 
     def test_rules_match_on_a_vendor_key(self):
-        columns = self._columns("categorisations_client_rules")
+        # ~~categorisations_client_rules~~, replaced by step 10bu, 2026-11-14.
+        columns = self._columns("categorisation_rules")
         self.assertIn("vendor_key", columns)
         self.assertNotIn("vendor_code", columns)
 

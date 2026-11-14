@@ -29,10 +29,11 @@ class RedirectIsInForceTest(unittest.TestCase):
             if isinstance(value, Path) and not name.startswith("_")
         }
         # 21 until step 10r added EXPORTS_DIR, 2026-09-14, amendment 359. 22
-        # until sub-step 10bs.10 added SUPPLIER_MAPPINGS_DIR, 2026-11-13.
-        self.assertEqual(len(constants), 23,
+        # until sub-step 10bs.10 added SUPPLIER_MAPPINGS_DIR, 2026-11-13. 23
+        # until step 10bu added RECEIPT_RULES_DIR, 2026-11-14.
+        self.assertEqual(len(constants), 24,
                          "the number of config Path constants moved; this test "
-                         "and tests/live_paths.py both describe 23")
+                         "and tests/live_paths.py both describe 24")
 
         for name, value in sorted(constants.items()):
             with self.subTest(constant=name):

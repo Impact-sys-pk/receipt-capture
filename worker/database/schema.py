@@ -53,19 +53,46 @@ SCHEMA_SQL = """
         CREATE INDEX IF NOT EXISTS idx_client_vendor_key
             ON categorisations_client_vendors(client_id, vendor_key);
 
-        CREATE TABLE IF NOT EXISTS categorisations_client_rules (
-            rule_id                 TEXT PRIMARY KEY,
-            client_id               TEXT NOT NULL,
+        -- Layer 0. Step 10bu, amendments 559 and 565, 2026-11-14.
+        --
+        -- ~~categorisations_client_rules~~, with client_id NOT NULL and no
+        -- scope, is no longer declared. It held 0 rows on the live database
+        -- on 2026-11-14, read read-only, so nothing is carried. Its name
+        -- described one scope of three. A database created before then still
+        -- holds it, empty: this file creates and never drops, and an
+        -- undeclared table is not drift, so it refuses nothing.
+        --
+        -- scope is client, firm or sector (config.RULE_SCOPES), and scope_id
+        -- is the client_id, firm_id or trade it answers for. One column for
+        -- the id rather than three nullable ones, so one rule cannot claim two
+        -- scopes. The vocabulary is checked by the writer, save_rule(), and not
+        -- by a CHECK here, which would be a second definition of it.
+        --
+        -- created_at is when the rule was first written and does not move on
+        -- an edit, because decision 6 resolves equal priorities oldest first.
+        -- updated_at is the last edit. No default on any column: the writer
+        -- states every value, per 10d.23 to 10d.28.
+        --
+        -- There is no column for the receipt's line items and there must not
+        -- be one: Paul's decision 1 of amendment 559, "NO".
+        CREATE TABLE IF NOT EXISTS categorisation_rules (
+            rule_id                 TEXT PRIMARY KEY NOT NULL,
+            scope                   TEXT NOT NULL,
+            scope_id                TEXT NOT NULL,
             rule_name               TEXT NOT NULL,
-            priority                INTEGER NOT NULL DEFAULT 50,
+            priority                INTEGER NOT NULL,
             vendor_key              TEXT,
             condition_type          TEXT NOT NULL,
             condition_field         TEXT NOT NULL,
             condition_value         TEXT NOT NULL,
             nominal_code            TEXT NOT NULL,
             account_name            TEXT NOT NULL,
-            created_at              TEXT NOT NULL
+            created_at              TEXT NOT NULL,
+            updated_at              TEXT NOT NULL
         );
+
+        CREATE INDEX IF NOT EXISTS idx_categorisation_rules_scope
+            ON categorisation_rules(scope, scope_id);
 
         CREATE TABLE IF NOT EXISTS categorisations (
             categorisation_id       TEXT PRIMARY KEY,

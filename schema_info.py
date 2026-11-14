@@ -30,7 +30,9 @@ tables = [
     ("email_alerts", "One row per alert sent, keyed (message_id, alert_type)"),
     ("categorisations_client_vendors", "Layer 1: this client's learned mappings"),
     ("categorisations_firm_vendors", "Layer 2: the firm's shared pool"),
-    ("categorisations_client_rules", "Layer 0: the rules a person authors by hand"),
+    # ~~categorisations_client_rules~~, replaced by step 10bu on 2026-11-14. A
+    # database created before then still holds that table, empty.
+    ("categorisation_rules", "Layer 0: the rules a person authors, scoped client, firm or sector"),
 ]
 
 for table_name, desc in tables:

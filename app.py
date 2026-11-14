@@ -31,7 +31,7 @@ from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler, console_handler
-from worker import line_items, london_time, supplier_mappings
+from worker import line_items, london_time, receipt_rules, supplier_mappings
 from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_note
 from worker.attached import (
     AttachedMessageError,
@@ -1565,6 +1565,9 @@ def process_once():
         # A file is written only where it is missing or differs from the
         # database, and a failure is logged without stopping the poll.
         supplier_mappings.publish_all(repo)
+        # Step 10bu. Each client's receipt rules, by the same method and for the
+        # same reason: a rule note is the only place a poll writes a rule.
+        receipt_rules.publish_all(repo)
 
         # Part 1: Auto-retry failed receipts with older pipeline_version
         _retry_failed_receipts(repo, extractor, engine, stats, run_id, pipeline_version)

@@ -974,41 +974,94 @@ class Repository:
         """, (now, correction_code, correction_name, correction_reason, categorisation_id))
         self._conn.commit()
 
-    # Rules repository methods
+    # Rules repository methods. Step 10bu.
+    #
+    # ~~create_client_rule()~~ and ~~delete_client_rule()~~ had no caller in
+    # production, enumerated from the syntax tree on 2026-11-14, and wrote a
+    # table with no scope. They are save_rule() and delete_rule() now, and
+    # `worker/receipt_rules.py` is their caller.
 
-    def get_client_rules(self, client_id: str) -> list[dict]:
-        """Get all rules for a client, ordered by priority (highest first)."""
+    def get_client_rules(self, client_id: str, firm_id: Optional[str],
+                         business_type: Optional[str]) -> list[dict]:
+        """Every rule that answers for this client, in the order layer 0 tries them.
+
+        A client rule on this client, a firm rule on its firm, and a sector rule
+        on its trade. **A sector rule never answers for
+        `config.UNSPECIFIED_TRADE`**, which every client carries until
+        outstanding item 29 gives them a trade; keyed on it, a sector rule would
+        answer for every client of every firm. `firm_id` None leaves firm rules
+        out, which is the `UNKNOWN` client's case.
+
+        **`priority DESC, created_at ASC`, Paul's decision 6 of 2026-11-14**, so
+        two rules on one priority resolve oldest first and raising the priority
+        stays the explicit way to override. `rule_id` last, only so two rules
+        written in the same instant still come back in one order. **Scope plays
+        no part in the order**: where a client rule and a firm rule both match,
+        the same ordering decides. Not put to Paul, reported as a question.
+        """
+        sector = business_type if business_type and business_type != config.UNSPECIFIED_TRADE else None
         rows = self._conn.execute("""
-            SELECT rule_id, rule_name, priority, vendor_key, condition_type,
-                   condition_field, condition_value, nominal_code, account_name
-            FROM categorisations_client_rules
-            WHERE client_id = ?
-            ORDER BY priority DESC
-        """, (client_id,)).fetchall()
+            SELECT rule_id, scope, scope_id, rule_name, priority, vendor_key,
+                   condition_type, condition_field, condition_value,
+                   nominal_code, account_name, created_at, updated_at
+            FROM categorisation_rules
+            WHERE (scope = ? AND scope_id = ?)
+               OR (scope = ? AND scope_id = ?)
+               OR (scope = ? AND scope_id = ?)
+            ORDER BY priority DESC, created_at ASC, rule_id ASC
+        """, (config.RULE_SCOPE_CLIENT, client_id,
+              config.RULE_SCOPE_FIRM, firm_id,
+              config.RULE_SCOPE_SECTOR, sector)).fetchall()
         return [dict(row) for row in rows]
 
-    def create_client_rule(self, rule_id: str, client_id: str, rule_name: str,
-                         priority: int, vendor_key: str, condition_type: str,
-                         condition_field: str, condition_value: str,
-                         nominal_code: str, account_name: str):
-        """Create a new client categorisation rule."""
-        now = datetime.now(timezone.utc).isoformat()
+    def get_rule(self, rule_id: str) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM categorisation_rules WHERE rule_id = ?", (rule_id,)).fetchone()
+        return dict(row) if row else None
+
+    def save_rule(self, rule_id: str, scope: str, scope_id: str, rule_name: str,
+                  priority: int, vendor_key: Optional[str], condition_type: str,
+                  condition_field: str, condition_value: str,
+                  nominal_code: str, account_name: str, saved_at: str):
+        """Write a rule, or replace one with the same `rule_id`.
+
+        **An edit keeps `created_at`**, because decision 6 resolves equal
+        priorities oldest first and an edit is not a new rule. `saved_at` is
+        `created_at` on the first write and `updated_at` on every write.
+
+        Refuses a scope outside `config.RULE_SCOPES` with ValueError. Every
+        other check on a rule's content is the note parser's, in
+        `worker/receipt_rules.py`, which is the only production caller.
+        """
+        if scope not in config.RULE_SCOPES:
+            raise ValueError(f"scope must be one of {config.RULE_SCOPES}, got {scope!r}")
         self._conn.execute("""
-            INSERT INTO categorisations_client_rules
-                (rule_id, client_id, rule_name, priority, vendor_key, condition_type,
-                 condition_field, condition_value, nominal_code, account_name, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (rule_id, client_id, rule_name, priority, vendor_key, condition_type,
-              condition_field, condition_value, nominal_code, account_name, now))
+            INSERT INTO categorisation_rules
+                (rule_id, scope, scope_id, rule_name, priority, vendor_key,
+                 condition_type, condition_field, condition_value,
+                 nominal_code, account_name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(rule_id) DO UPDATE SET
+                scope = excluded.scope, scope_id = excluded.scope_id,
+                rule_name = excluded.rule_name, priority = excluded.priority,
+                vendor_key = excluded.vendor_key,
+                condition_type = excluded.condition_type,
+                condition_field = excluded.condition_field,
+                condition_value = excluded.condition_value,
+                nominal_code = excluded.nominal_code,
+                account_name = excluded.account_name,
+                updated_at = excluded.updated_at
+        """, (rule_id, scope, scope_id, rule_name, priority, vendor_key,
+              condition_type, condition_field, condition_value,
+              nominal_code, account_name, saved_at, saved_at))
         self._conn.commit()
 
-    def delete_client_rule(self, rule_id: str):
-        """Delete a client rule."""
-        self._conn.execute(
-            "DELETE FROM categorisations_client_rules WHERE rule_id = ?",
-            (rule_id,)
-        )
+    def delete_rule(self, rule_id: str) -> bool:
+        """Delete a rule. True if one was there to delete."""
+        cursor = self._conn.execute(
+            "DELETE FROM categorisation_rules WHERE rule_id = ?", (rule_id,))
         self._conn.commit()
+        return cursor.rowcount > 0
 
     def has_alert_been_sent(self, message_id: str, alert_type: str) -> bool:
         """Check if an alert of this type has already been sent for this message."""

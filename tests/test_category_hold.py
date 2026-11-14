@@ -221,9 +221,10 @@ class PerLayerTest(unittest.TestCase):
                     self.assertEqual(client.match_source, "client")
                     self.assertFalse(client.needs_review)
 
-                repo.create_client_rule("rule-1", CLIENT, "always parking", 90,
-                                        None, "contains", "detail", "apcoa",
-                                        "7400", "Fuel")
+                # ~~create_client_rule()~~, replaced by save_rule(), step 10bu.
+                repo.save_rule("rule-1", config.RULE_SCOPE_CLIENT, CLIENT,
+                               "always parking", 90, None, "contains", "detail",
+                               "apcoa", "7400", "Fuel", NOW)
                 rule = categorise(repo, "Apcoa Parking Leeds")
                 with self.subTest(layer="0 rule"):
                     self.assertEqual(rule.match_source, "rule")
@@ -290,9 +291,10 @@ class PerLayerTest(unittest.TestCase):
                 repo.upsert_client_vendor(CLIENT, "apcoa parking", "7300",
                                           "Parking", NOW,
                                           vendor_name="Apcoa Parking")
-                repo.create_client_rule("rule-1", CLIENT, "always fuel", 90,
-                                        None, "contains", "detail", "esso",
-                                        "7400", "Fuel")
+                # ~~create_client_rule()~~, replaced by save_rule(), step 10bu.
+                repo.save_rule("rule-1", config.RULE_SCOPE_CLIENT, CLIENT,
+                               "always fuel", 90, None, "contains", "detail",
+                               "esso", "7400", "Fuel", NOW)
                 cases = (("Esso Garage", False), ("Apcoa Parking", False),
                          ("Shell", False), ("Apcoa Parkin", False),
                          ("Shel", False), ("Unseen Ltd", True),

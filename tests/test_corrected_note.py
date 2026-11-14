@@ -408,8 +408,11 @@ class TheNoteShapeTest(unittest.TestCase):
         every successfully applied Post-time message went to `failed\\` on the
         first run of sub-step 10f.37.
         """
+        # Step 10bu, 2026-11-14, added the two rule words. They are applied
+        # outcomes and are NOT receipt actions: NOTE_ACTIONS above is unchanged.
         self.assertEqual(NOTE_APPLIED_OUTCOMES,
-                         ("filed", "discarded", "attached", "corrected"))
+                         ("filed", "discarded", "attached", "corrected",
+                          "rule_saved", "rule_deleted"))
 
     def test_it_parses_with_values_and_no_filed_path(self):
         note = parse_resolution_note(corrected_note())

@@ -180,6 +180,27 @@ class CategorisationEngine:
             return None
         return extract_vendor_key(normalise_description(supplier_name), self.aliases) or None
 
+    def _first_matching_rule(self, client_id: str, business_type: str,
+                             vendor_key: str, supplier_name: str) -> Optional[dict]:
+        """Layer 0. The first rule that answers for this client and matches.
+
+        **Its parameters are the whole of what a rule can see**, and that is
+        the point of it being a function of its own. Paul's decision 1 of
+        amendment 559 is that a rule must not match the receipt's line items,
+        and decision 5 of amendment 565 is that it matches on the supplier name
+        and the vendor key and nothing else. `categorise()` holds the line items
+        and the gross; this cannot be handed either.
+        `tests/test_receipt_rules.py` holds that on the syntax tree.
+
+        The client's firm comes from the registry, the way both production
+        callers already take the trade. Step 10bu.
+        """
+        firm_id = (config.CLIENTS_BY_ID.get(client_id) or {}).get("firm_id")
+        for rule in self.repo.get_client_rules(client_id, firm_id, business_type):
+            if self._rule_matches(rule, vendor_key, supplier_name):
+                return rule
+        return None
+
     def _rule_matches(self, rule: dict, vendor_key: str, detail: str) -> bool:
         """Check if a rule matches the given vendor and detail."""
         # Vendor key must match if specified in rule
@@ -191,8 +212,16 @@ class CategorisationEngine:
         condition_field = rule.get("condition_field", "detail")
         condition_value = rule.get("condition_value", "").lower()
 
-        # Get the field to check
-        field_value = detail.lower() if condition_field == "detail" else vendor_key.lower()
+        # Get the field to check. **The supplier name or the vendor key and
+        # nothing else**, decision 5. ~~Anything other than `detail` was read as
+        # the vendor key~~, so a rule on a field nobody can match on matched on
+        # the key instead. Step 10bu.
+        if condition_field == config.RULE_FIELD_SUPPLIER_NAME:
+            field_value = detail.lower()
+        elif condition_field == config.RULE_FIELD_VENDOR_KEY:
+            field_value = vendor_key.lower()
+        else:
+            return False
 
         # Evaluate condition
         if condition_type == "contains":
@@ -247,19 +276,21 @@ class CategorisationEngine:
                 confidence="none", match_source="unmatched", needs_review=True
             )
 
-        # Layer 0: Check rules first (highest priority)
+        # Layer 0: Check rules first (highest priority). A rule beats a taught
+        # mapping because this returns before layer 1 is reached, which is
+        # Paul's decision 6 of 2026-11-14 confirmed rather than changed.
         if self.repo:
-            rules = self.repo.get_client_rules(client_id)
-            for rule in rules:
-                if self._rule_matches(rule, vendor_key, supplier_name):
-                    return CategorisationResult(
-                        receipt_id=receipt_id, extraction_id=extraction_id,
-                        client_id=client_id, business_type=business_type,
-                        vendor_key=vendor_key, suggested_code=rule["nominal_code"],
-                        suggested_name=rule["account_name"],
-                        confidence="high", match_source="rule",
-                        matched_vendor=rule.get("rule_name"), needs_review=False
-                    )
+            rule = self._first_matching_rule(client_id, business_type,
+                                             vendor_key, supplier_name)
+            if rule:
+                return CategorisationResult(
+                    receipt_id=receipt_id, extraction_id=extraction_id,
+                    client_id=client_id, business_type=business_type,
+                    vendor_key=vendor_key, suggested_code=rule["nominal_code"],
+                    suggested_name=rule["account_name"],
+                    confidence="high", match_source="rule",
+                    matched_vendor=rule.get("rule_name"), needs_review=False
+                )
 
         # Layer 1: Exact match in client lookup. By supplier name first, then by
         # key only where every name on the key agrees on the code. Sub-step

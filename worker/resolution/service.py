@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from worker import attached, london_time
+from worker import attached, london_time, receipt_rules
 from worker.categorisation.chart import get_chart_accounts_for_client
 from worker.client_copy import (
     REMOVAL_ALREADY_GONE,
@@ -96,7 +96,14 @@ NOTE_ACTIONS = ("filed", "discarded", ATTACHED_ACTION, CORRECTED_ACTION)
 #: so a third word had to be added to two files that must agree. It was not,
 #: on the first run, and every successfully applied Post-time message went to
 #: `failed\` with an ERROR.
-NOTE_APPLIED_OUTCOMES = ("filed", "discarded", ATTACHED_ACTION, CORRECTED_ACTION)
+#:
+#: **Step 10bu adds the two rule words**, `config.RULE_SAVED_ACTION` and
+#: `config.RULE_DELETED_ACTION`. They are deliberately NOT in `NOTE_ACTIONS`,
+#: which is the receipt notes' vocabulary and requires a `receipt_id`: a rule
+#: note is handed to `worker/receipt_rules.py` before that parser runs. They
+#: are here because `app.py` moves a note to `processed\` on this set alone.
+NOTE_APPLIED_OUTCOMES = ("filed", "discarded", ATTACHED_ACTION, CORRECTED_ACTION,
+                         config.RULE_SAVED_ACTION, config.RULE_DELETED_ACTION)
 
 # The note's own timestamp, which is what 12.3 step 3 keys idempotency on.
 # resolution_events has no column for it, so it lives in corrections_json, which
@@ -2888,6 +2895,16 @@ def apply_resolution_note(repo, categorisation_engine, note: dict) -> Resolution
     not, and the caller moves it to `failed\\`. Nothing in `Resolutions\\` is ever
     deleted, on any path.
     """
+    # Step 10bu. A rule note is not about a receipt and carries no receipt_id,
+    # so it is handed over before anything looks for one. Same folder, same
+    # poll, same processed\ and failed\: the route corrections already take.
+    if receipt_rules.is_rule_note(note):
+        applied = receipt_rules.apply_rule_note(repo, note)
+        return ResolutionOutcome(
+            outcome=applied.outcome, receipt_id="",
+            message=f"rule_id {applied.rule_id or 'missing'}: {applied.message}",
+            error_detail=applied.error_detail)
+
     receipt_id_hint = note.get("receipt_id") if isinstance(note, dict) else None
 
     try:

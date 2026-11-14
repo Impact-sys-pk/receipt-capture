@@ -23,10 +23,11 @@ matches. Two other test files already carried that warning in as many words.
 
 **A comment in two files is not a guard. It is a hope that the next author reads
 those two files.** This is the guard: the two roots are redirected in the
-environment before `config` computes anything from them, so **twenty-two of the
-twenty-three Path constants land in temp**, including the five no fixture pins at
+environment before `config` computes anything from them, so **twenty-three of the
+twenty-four Path constants land in temp**, including the five no fixture pins at
 all: `FIRMS_JSON`, `INTELLIBILLS_ROOT`, `PIPELINE_LOCKFILE`, `UNSYNCED_ROOT` and
-`RESOLUTIONS_DIR`. ~~twenty-one of the twenty-two~~ **Moved 2026-11-13 by
+`RESOLUTIONS_DIR`. ~~twenty-two of the twenty-three~~ **Moved 2026-11-14 by
+step 10bu, which added `RECEIPT_RULES_DIR`.** ~~twenty-one of the twenty-two~~ **Moved 2026-11-13 by
 sub-step 10bs.10, which added `SUPPLIER_MAPPINGS_DIR`.** ~~twenty of the twenty-one~~ ~~nineteen of the twenty~~
 ~~seventeen of the eighteen~~
 **Moved 2026-09-09 by stage 1 piece 3, which added `INTELLIBOOKS_ROOT` and

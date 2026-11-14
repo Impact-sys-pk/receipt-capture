@@ -65,6 +65,8 @@ REDIRECTED = (
     # Sub-step 10bs.10. Every poll publishes into it, so without this one
     # test's mappings file would be the next test's starting state.
     "SUPPLIER_MAPPINGS_DIR",
+    # Step 10bu, for the same reason: every poll publishes the rules too.
+    "RECEIPT_RULES_DIR",
 )
 
 #: Saved and restored like the rest, and assigned by hand rather than rebased.

@@ -250,6 +250,14 @@ class ThePollPublishesTest(unittest.TestCase):
             if isinstance(node, ast.Call):
                 func = node.func
                 name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                # ~~Any `publish_all`~~: step 10bu added
+                # `receipt_rules.publish_all()` beside this one, so the call is
+                # matched on its module as well as its name, 2026-11-14.
+                if name == "publish_all" and not (
+                        isinstance(func, ast.Attribute)
+                        and isinstance(func.value, ast.Name)
+                        and func.value.id == "supplier_mappings"):
+                    continue
                 if name in ("_consume_resolution_notes", "publish_all"):
                     order.append((node.lineno, name))
         self.assertEqual([name for _, name in sorted(order)],

@@ -329,6 +329,73 @@ MAPPING_ACCOUNT_NAME_FIELD = "account_name"
 MAPPING_TIMES_SEEN_FIELD = "times_seen"
 MAPPING_LAST_UPDATED_FIELD = "last_updated"
 
+# The trade a client carries until somebody sets one. Outstanding item 29: no
+# control sets a trade, so every client carries this today. Named here for
+# step 10bu, whose sector rules must never key on it. **Seven other literals of
+# the same string sit in production code and were not changed by 10bu**; they
+# are flagged in its report rather than swept here.
+UNSPECIFIED_TRADE = "UNSPECIFIED"
+
+# Receipt rules, layer 0. Step 10bu, amendments 559 and 565.
+#
+# **A rule carries a scope.** `client` answers for one client, `firm` for every
+# client of one firm, `sector` for every client of one trade. `scope_id` holds
+# the client_id, the firm_id or the trade accordingly. A sector rule is stored
+# and matched by the same path and can never match while every client is
+# UNSPECIFIED_TRADE, which is decision 2: it starts working the day a client
+# can be given a trade, with no further change here.
+RULE_SCOPE_CLIENT = "client"
+RULE_SCOPE_FIRM = "firm"
+RULE_SCOPE_SECTOR = "sector"
+RULE_SCOPES = (RULE_SCOPE_CLIENT, RULE_SCOPE_FIRM, RULE_SCOPE_SECTOR)
+# The four condition types, unchanged by 10bu.
+RULE_CONDITION_TYPES = ("contains", "exact_match", "startswith", "regex")
+# **What a rule may match on, and nothing else.** Paul's decision 5 of
+# 2026-11-14: the supplier name and the vendor key. `detail` is the stored word
+# for the supplier name, kept because it is what `_rule_matches()` has always
+# tested; 10bu's report flags the name.
+RULE_FIELD_SUPPLIER_NAME = "detail"
+RULE_FIELD_VENDOR_KEY = "vendor_key"
+RULE_CONDITION_FIELDS = (RULE_FIELD_SUPPLIER_NAME, RULE_FIELD_VENDOR_KEY)
+
+# The two resolution note actions that write rules. They travel through
+# RESOLUTIONS_DIR beside the receipt notes, which is the route corrections
+# already take, and carry no receipt_id because a rule is not about a receipt.
+RULE_SAVED_ACTION = "rule_saved"
+RULE_DELETED_ACTION = "rule_deleted"
+# In a note, `rule_id` is top level on both actions and `rule` is the object a
+# `rule_saved` note carries, keyed on the RULE_*_FIELD names below.
+RULE_NOTE_RULE_FIELD = "rule"
+
+# Each client's receipt rules, published for IntelliBooks Desktop. One file
+# per registered client, `{client_id}{RECEIPT_RULES_SUFFIX}`, written by
+# `worker/receipt_rules.py` and by nothing else. **Its own folder**, for
+# SUPPLIER_MAPPINGS_DIR's reason: every exchange folder has one writer. A
+# client's file lists every rule that answers for that client, whatever its
+# scope, in the order layer 0 tries them, so a firm rule appears in the file of
+# every client of that firm. Not created at import.
+RECEIPT_RULES_DIR = INTELLIBILLS_ROOT / "Receipt Rules"
+RECEIPT_RULES_SUFFIX = "-rules.json"
+RECEIPT_RULES_SCHEMA = 1
+RULES_SCHEMA_FIELD = "schema"
+RULES_CLIENT_ID_FIELD = "client_id"
+# A list, empty for a registered client with no rules.
+RULES_LIST_FIELD = "rules"
+# One object per rule. The same names are the keys of a note's `rule` object.
+RULE_ID_FIELD = "rule_id"
+RULE_SCOPE_FIELD = "scope"
+RULE_SCOPE_ID_FIELD = "scope_id"
+RULE_NAME_FIELD = "rule_name"
+RULE_PRIORITY_FIELD = "priority"
+RULE_VENDOR_KEY_FIELD = "vendor_key"
+RULE_CONDITION_TYPE_FIELD = "condition_type"
+RULE_CONDITION_FIELD_FIELD = "condition_field"
+RULE_CONDITION_VALUE_FIELD = "condition_value"
+RULE_NOMINAL_CODE_FIELD = "nominal_code"
+RULE_ACCOUNT_NAME_FIELD = "account_name"
+RULE_CREATED_AT_FIELD = "created_at"
+RULE_UPDATED_AT_FIELD = "updated_at"
+
 # Three of these four are REQUIRED and none of the three has a default. Item 173
 # of 2026-08-20_LIST_outstanding_items_and_decisions.md, Paul's decision,
 # 2026-09-07. They were bare os.environ[...] subscripts, which is not the defect

@@ -127,7 +127,7 @@ class TheContractRequiresTheIdTest(unittest.TestCase):
             parse_resolution_note(note)
 
     def test_an_empty_string_is_refused_too(self):
-        """`_note_text()` strips and returns None for whitespace, so `"  "` and
+        """`note_fields.optional_text()` strips and returns None for whitespace, so `"  "` and
         `""` reach the check as the same thing a null does."""
         for value in ("", "   "):
             with self.subTest(receipt_id=value):
@@ -145,7 +145,7 @@ class TheContractRequiresTheIdTest(unittest.TestCase):
         self.assertEqual(note.receipt_id, "r-1")
 
     def test_a_non_string_id_is_still_refused_by_the_type_check(self):
-        """`_note_text()` raised on this before and still does, so the new check
+        """`note_fields.optional_text()` raised on this before and still does, so the new check
         adds a reason rather than replacing one."""
         reason = self.refusal(receipt_id=7)
         self.assertIn("must be text", reason)

@@ -314,7 +314,11 @@ class CategorisationEngine:
                             suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
                             confidence=conf, match_source="fuzzy_client",
-                            matched_vendor=best_match, needs_review=True
+                            # The variant that supplied the code, as at layers
+                            # 1 and 2, not the key it was found on. Paul's
+                            # decision of 2026-11-14, amendment 558.
+                            matched_vendor=matched_vendor["vendor_name"],
+                            needs_review=True
                         )
 
             # Layer 4: Fuzzy match in firm lookup
@@ -333,7 +337,9 @@ class CategorisationEngine:
                             suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
                             confidence=conf, match_source="fuzzy_firm",
-                            matched_vendor=best_match, needs_review=True
+                            # The variant, as at layer 3.
+                            matched_vendor=matched_vendor["vendor_name"],
+                            needs_review=True
                         )
 
         # Layer 5: AI suggestion (if enabled)

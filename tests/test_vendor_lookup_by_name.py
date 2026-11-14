@@ -240,6 +240,24 @@ class MatchedVendorIsTheVariantThatAnsweredTest(_Base):
         self.teach_client(SHELL_FUEL, FUEL)
         self.assertEqual(self.categorise(SHELL_FUEL).vendor_key, "shell")
 
+    # Layers 3 and 4, Paul's decision of 2026-11-14, amendment 558, so the
+    # field means one thing at every layer. They recorded the matched KEY,
+    # while the most-seen variant on that key supplied the code.
+
+    def test_layer_three_records_the_variant_not_the_matched_key(self):
+        self.teach_client(SHELL_EV_LONG, EV, times=3)
+        self.teach_client(SHELL_FUEL, FUEL)
+        result = self.categorise(SHELL_UNSEEN)
+        self.assertEqual(result.match_source, "fuzzy_client")
+        self.assertEqual(result.matched_vendor, SHELL_EV_LONG)
+
+    def test_layer_four_records_the_variant_not_the_matched_key(self):
+        self.teach_firm(SHELL_EV_LONG, EV, times=3)
+        self.teach_firm(SHELL_FUEL, FUEL)
+        result = self.categorise(SHELL_UNSEEN)
+        self.assertEqual(result.match_source, "fuzzy_firm")
+        self.assertEqual(result.matched_vendor, SHELL_EV_LONG)
+
 
 class LayerThreeHandsBackTheRefusedMappingTest(_Base):
     """A FINDING for Paul, pinned so a change to it is deliberate. See the module docstring."""

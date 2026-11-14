@@ -1000,9 +1000,18 @@ class ReferenceNumberCaseTest(unittest.TestCase):
     internal spaces, no collapsing runs, because the wider option starts
     guessing at what a supplier meant.
 
-    **The veto itself stays**, and half the tests below are about that. A
+    ~~**The veto itself stays**, and half the tests below are about that. A
     reference number that genuinely differs still separates two transactions,
-    which is the only reason this comparison exists.
+    which is the only reason this comparison exists.~~
+
+    **The veto is removed, item 35, Paul's decision of 2026-11-14**, after it
+    let a second duplicate through: a Shell receipt read once as the footer
+    `16871102102` and once as `Receipt no.` `000013`. A differing reference
+    number now flags `possible_duplicate` like any other match and both values
+    go into the validation note. **Option 1's normalising still decides what
+    the note calls different**, so the tests below that pinned it now pin the
+    note rather than the status. `tests/test_reference_veto_removed.py` holds
+    the incident itself.
     """
 
     #: The two readings, as they sit in `C:\Intellibills\db\receipts.db`.
@@ -1075,20 +1084,30 @@ class ReferenceNumberCaseTest(unittest.TestCase):
                 ["ok", "possible_duplicate"])
             self.assertEqual(second["duplicate_of"], first["receipt_id"])
 
-    def test_a_genuinely_different_reference_number_still_separates_them(self):
-        """The veto, which is what this comparison is for and it stays.
+    def _note(self, receipt_id):
+        repo = Repository()
+        try:
+            return repo.get_extraction_for_receipt(receipt_id)["validation_notes"]
+        finally:
+            repo.close()
 
-        Same supplier, same date, same amount, same time: two RingGo sessions
-        an operator really did pay for. Both must reach `ok`.
+    def test_a_genuinely_different_reference_number_is_flagged_and_named(self):
+        """~~The veto, which is what this comparison is for and it stays.~~
+        ~~Both must reach `ok`.~~
+
+        **Item 35, 2026-11-14: flagged, with both numbers in the note.** Same
+        supplier, same date, same amount, same time. Two real sessions now cost
+        the operator one row to dismiss, which is the trade Paul accepted.
         """
         with TempEnvironment():
             first, second = self._two_readings(
                 self.REF, "LBCAMRL-2021-09-04-09999")
             self.assertEqual(
-                [first["status"], second["status"]], ["ok", "ok"],
-                "two genuinely different reference numbers were collapsed into "
-                "one transaction, so the fix has traded one fault for another")
-            self.assertIsNone(second["duplicate_of"])
+                [first["status"], second["status"]], ["ok", "possible_duplicate"])
+            self.assertEqual(second["duplicate_of"], first["receipt_id"])
+            note = self._note(second["receipt_id"])
+            self.assertIn("LBCAMRL-2021-09-04-09999", note)
+            self.assertIn(self.REF, note)
 
     def test_surrounding_whitespace_is_stripped(self):
         with TempEnvironment():
@@ -1104,21 +1123,27 @@ class ReferenceNumberCaseTest(unittest.TestCase):
         well. He chose not to, on the grounds that it starts guessing. A
         reference number with a space in the middle of it is therefore still a
         different reference number.
+
+        **Item 35, 2026-11-14: the ruling now decides the note, not the
+        status.** ~~`["ok", "ok"]`~~ The receipt is flagged whatever the
+        reference numbers say, and the note calls these two different.
         """
         with TempEnvironment():
             first, second = self._two_readings(
                 self.REF, "LB CAMRL-2021-09-04-01303")
             self.assertEqual(
-                [first["status"], second["status"]], ["ok", "ok"],
-                "internal spacing is being normalised, which is option 2 and "
-                "was not chosen")
+                [first["status"], second["status"]], ["ok", "possible_duplicate"])
+            self.assertIn("reference numbers differ", self._note(second["receipt_id"]),
+                          "internal spacing is being normalised, which is option 2 "
+                          "and was not chosen")
 
     def test_a_hyphen_is_left_alone(self):
         with TempEnvironment():
             first, second = self._two_readings(
                 self.REF, "LBCAMRL 2021-09-04-01303")
             self.assertEqual(
-                [first["status"], second["status"]], ["ok", "ok"])
+                [first["status"], second["status"]], ["ok", "possible_duplicate"])
+            self.assertIn("reference numbers differ", self._note(second["receipt_id"]))
 
     def test_one_reference_number_missing_behaves_as_it_did(self):
         """The absent case, and it falls through to the time comparison.
@@ -1174,12 +1199,17 @@ class ReferenceNumberCaseTest(unittest.TestCase):
     def test_the_signals_helper_answers_the_same_way_on_its_own(self):
         """The same matrix at the level of the function, table-driven.
 
+        **Item 35, 2026-11-14: the function is `_differing_refs()` now**, which
+        says whether the note names two reference numbers. ~~`_signals_differ()`~~
+        no longer reads them, so it answers False on every row here, where the
+        times are both 12:30, and that is asserted beside each row.
+
         The pipeline tests above are the ones that matter, per the brief: they
         prove the receipt reaches `possible_duplicate` with `duplicate_of` set.
         This one is here because it enumerates the pairs cheaply, including
         both orders of every asymmetric pair, which the pipeline tests do not.
         """
-        from worker.extraction_pipeline import _signals_differ
+        from worker.extraction_pipeline import _differing_refs, _signals_differ
 
         cases = [
             (self.REF, self.REF, False, "identical"),
@@ -1244,9 +1274,15 @@ class ReferenceNumberCaseTest(unittest.TestCase):
                             receipt_time="12:30",
                         )
                         self.assertIs(
-                            _signals_differ(self._ringgo(new), receipt_id, repo),
+                            _differing_refs(self._ringgo(new),
+                                            repo.get_extraction_for_receipt(receipt_id))
+                            is not None,
                             expected,
                             f"{new!r} against {dup!r}")
+                        self.assertIs(
+                            _signals_differ(self._ringgo(new), receipt_id, repo),
+                            False,
+                            f"{new!r} against {dup!r} vetoed the match")
             finally:
                 repo.close()
 

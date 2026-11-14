@@ -117,19 +117,61 @@ def _comparable_ref(value):
     return str(value or "").strip().lower()
 
 
+def _differing_refs(extraction, dup_extraction):
+    """The two reference numbers as read, where both are present and differ.
+
+    `(this reading's, the earlier receipt's)`, or None. **Item 35, Paul's
+    decision of 2026-11-14: they go into the validation note** of a receipt
+    flagged `possible_duplicate`, so a flagged row says why. They no longer
+    decide anything.
+
+    **`_comparable_ref()` still decides what counts as different**, Paul's
+    ruling of 2026-09-10, so a difference of case or surrounding whitespace is
+    not reported as one. The values themselves are given as read, because the
+    note is for a person comparing them against the paper.
+    """
+    if not dup_extraction:
+        return None
+    new = getattr(extraction, 'receipt_ref_number', None)
+    old = dup_extraction.get('receipt_ref_number')
+    if _comparable_ref(new) and _comparable_ref(old) \
+            and _comparable_ref(new) != _comparable_ref(old):
+        return str(new).strip(), str(old).strip()
+    return None
+
+
 def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
     """Check if extraction has distinguishing signals from a potential duplicate.
 
-    Compares receipt_ref_number and receipt_time. Returns True if they differ,
-    allowing the same-amount receipt to be filed separately (not flagged as duplicate).
+    ~~Compares receipt_ref_number and receipt_time.~~ **Compares receipt_time
+    only, from 2026-11-14.** Returns True if the times differ, allowing the
+    same-amount receipt to be filed separately (not flagged as duplicate).
 
     Returns True if:
-    - Both have different ref_numbers (both non-empty and differ, compared
-      through `_comparable_ref()` above)
+    - ~~Both have different ref_numbers (both non-empty and differ, compared
+      through `_comparable_ref()` above)~~
     - Both have different receipt times (both non-empty and differ by >5 min)
 
     Returns False if:
     - Neither field differs, or fields are missing, or signals match
+
+    ## The reference-number veto is removed. Item 35, 2026-11-14
+
+    **Paul's decision: remove the veto, keep the receipt-time comparison, and
+    carry both reference numbers into the validation note**, which
+    `_differing_refs()` above supplies. It returned True as soon as both
+    readings carried a reference number and they differed, before this
+    function reached the time. On 2026-11-14 two readings of one Shell receipt
+    gave `16871102102` and `000013`, both real fields on it, the footer line
+    and `Receipt no.`: the model chose different fields rather than disagreeing
+    about one. The times were both 06:23 and the duplicate reached the books.
+
+    **The second time this comparison let one through**, the RingGo receipt
+    below being the first, and that fix narrowed the comparison without asking
+    whether the field should veto at all. **The trade, accepted by Paul**: a
+    `possible_duplicate` routes to review rather than refusing, so a false
+    positive costs one row to dismiss and a false negative is a double-counted
+    expense in a client's books.
 
     **The reference numbers were compared with a bare `!=` until 2026-09-10**,
     and a RingGo receipt sent twice, once as the PDF and once as a screen
@@ -143,12 +185,7 @@ def _signals_differ(extraction, dup_receipt_id: str, repo: Repository) -> bool:
     if not dup_extraction:
         return False
 
-    # Check reference numbers
-    ref_new = _comparable_ref(getattr(extraction, 'receipt_ref_number', None))
-    ref_dup = _comparable_ref(dup_extraction.get('receipt_ref_number'))
-
-    if ref_new and ref_dup and ref_new != ref_dup:
-        return True
+    # ~~Check reference numbers~~ Removed 2026-11-14, item 35. See above.
 
     # Check receipt times (HH:MM format)
     time_new = getattr(extraction, 'receipt_time', None)
@@ -305,14 +342,21 @@ def process_extraction_result(
         # and then takes `LIMIT 1`, so it would otherwise hand back a discarded
         # row while a live one existed.
         if dup and repo.is_published(dup) and not repo.is_discarded(dup):
-            # Check if distinguishing signals differ (ref_number, receipt_time)
+            # Check if distinguishing signals differ. ~~(ref_number,
+            # receipt_time)~~ The receipt time only, from item 35 of
+            # 2026-11-14; the reference numbers go into the note instead.
             # Only flag as possible_duplicate if signals do NOT distinguish them
             if not _signals_differ(extraction, dup, repo):
+                notes = [f"matches {dup[:8]}... (supplier, date, amount)"]
+                refs = _differing_refs(extraction, repo.get_extraction_for_receipt(dup))
+                if refs:
+                    notes.append(f"reference numbers differ: {refs[0]} on this "
+                                 f"reading, {refs[1]} on {dup[:8]}...")
                 validation = validation._replace(
                     status="possible_duplicate"
                 ) if hasattr(validation, '_replace') else type(validation)(
                     status="possible_duplicate",
-                    notes=[f"matches {dup[:8]}... (supplier, date, amount)"]
+                    notes=notes
                 )
                 duplicate_of = dup
 

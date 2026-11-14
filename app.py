@@ -1672,18 +1672,22 @@ def process_once():
                     file_data = base64.b64decode(embedded_img.get("contentBytes", ""))
                     file_hash = compute_hash(file_data)
 
-                    # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
+                    # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
+                    # Item 34, amendment 571: block only where this client
+                    # already has an `ok` receipt with these bytes. See
+                    # Repository.find_ok_by_hash() for why `filed_path` stopped
+                    # being the question and why every other status is allowed.
                     # 10f.18. Scoped to this client: another client's identical
                     # PDF is not a duplicate of this one.
-                    # 10f.20. And only a FILED match is a duplicate, which is the
+                    # 10f.20. ~~And only a FILED match is a duplicate~~, which is the
                     # guard the attachment and folder-intake paths already had.
-                    # A hash matching a receipt that failed extraction and was
-                    # never filed is the operator's second attempt rather than
+                    # A hash matching a receipt that failed extraction
+                    # is the operator's second attempt rather than
                     # a duplicate, and this path used to swallow it. It cannot
                     # loop: mark_processed() runs for every image below and the
                     # email moves to INBOX.Processed Receipts afterwards.
-                    existing = repo.find_by_hash(file_hash, client_id)
-                    if existing and repo.is_recorded_and_filed(existing):
+                    existing = repo.find_ok_by_hash(file_hash, client_id)
+                    if existing:
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
                         repo.mark_processed(message_id, att_id, file_hash, existing, firm_id)
@@ -2002,21 +2006,28 @@ def process_once():
             receipt_client_id = intake.client_id or config.UNKNOWN_CLIENT_ID
             receipt_firm_id = intake.firm_id or config.UNATTRIBUTED_FIRM_ID
 
-            # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
-            existing = repo.find_by_hash(intake.file_hash, receipt_client_id)
+            # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
+            # Item 34, amendment 571: block only where this client already has
+            # an `ok` receipt with these bytes. Repository.find_ok_by_hash().
+            existing = repo.find_ok_by_hash(intake.file_hash, receipt_client_id)
             if existing:
-                if repo.is_recorded_and_filed(existing):
-                    logger.info(
-                        f"capture duplicate by hash of filed receipt, moving inbox pair "
-                        f"to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
-                    # 10f.21. Kept rather than deleted.
-                    _move_inbox_pair_to_processed(intake)
-                    stats["duplicates_skipped"] += 1
-                    stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
-                    continue
-                # If hash matches a failed/needs_review receipt, allow reprocessing
-                logger.info(f"capture duplicate by hash of failed receipt, allowing reprocessing {intake.filename}")
-                # Continue processing (don't skip)
+                logger.info(
+                    f"capture duplicate by hash of ok receipt {existing}, moving inbox pair "
+                    f"to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
+                # 10f.21. Kept rather than deleted.
+                _move_inbox_pair_to_processed(intake)
+                stats["duplicates_skipped"] += 1
+                stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
+                continue
+            # ~~If hash matches a failed/needs_review receipt, allow reprocessing~~
+            # The hash matches a receipt, and none of them is `ok`: every other
+            # status, discarded included, is allowed. The line used to say
+            # "of failed receipt" whatever the status, and tested `filed_path`.
+            earlier = repo.find_by_hash(intake.file_hash, receipt_client_id)
+            if earlier:
+                logger.info(
+                    f"capture hash matches {earlier} but no ok receipt, "
+                    f"allowing reprocessing {intake.filename}")
 
             receipt_id = str(uuid.uuid4())
             # receipt_client_id and receipt_firm_id are computed above the hash
@@ -2218,10 +2229,12 @@ def process_once():
                 file_data = base64.b64decode(att.get("contentBytes", ""))
                 file_hash = compute_hash(file_data)
 
-                # Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)
-                # 10f.18. Scoped to this client.
-                existing = repo.find_by_hash(file_hash, client_id)
-                if existing and repo.is_recorded_and_filed(existing):
+                # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
+                # Item 34, amendment 571: block only where this client already
+                # has an `ok` receipt with these bytes.
+                # Repository.find_ok_by_hash(). 10f.18. Scoped to this client.
+                existing = repo.find_ok_by_hash(file_hash, client_id)
+                if existing:
                     logger.warning(f"hash duplicate of {existing}, skipping {filename}")
                     stats["duplicates_skipped"] += 1
                     _log_receipt(
@@ -2233,7 +2246,8 @@ def process_once():
                     repo.mark_processed(message_id, att_id, file_hash, existing, msg_firm_id)
                     email_outcomes.append("duplicate")
                     continue
-                # If file_hash matches a failed/needs_review receipt, allow reprocessing
+                # A hash matching a receipt that is not `ok`, discarded
+                # included, is allowed. Item 34.
 
                 receipt_id = str(uuid.uuid4())
 

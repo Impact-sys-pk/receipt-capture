@@ -167,6 +167,60 @@ class Repository:
         ).fetchone()
         return row["receipt_id"] if row else None
 
+    def find_ok_by_hash(self, file_hash: str, client_id: str) -> Optional[str]:
+        """This client's `ok` receipt with this file hash, if there is one.
+
+        **The file-hash duplicate block. Item 34, amendment 571, Paul's
+        decision of 2026-11-14: a byte-identical file is refused where the
+        existing receipt's status is `ok` and it is not discarded, and allowed
+        in every other case.** `ok` excludes `discarded` because a receipt has
+        one status, so the query says `status = 'ok'` and nothing more. A
+        second clause, `status <> 'discarded'`, was written first and removed:
+        a mutation deleting it survived the whole suite, because it cannot be
+        told apart from the first.
+
+        **It replaced `is_recorded_and_filed()` at all three call sites in
+        `app.py`.** That asked `filed_path`, which is written only when the
+        client folder copy is made, and on the `post` trigger that waits for
+        IntelliBooks Desktop to say the receipt is attached to a transaction.
+        So from arrival until Post the block could refuse nothing.
+
+        **Why every other status is allowed, so it is not widened.**
+        `needs_review`, `failed`, `retry_exhausted` and `possible_duplicate`
+        mean the operator is giving the document another go, and amendment 303
+        records why a `needs_review` receipt must not count. A discarded receipt
+        stopped blocking a resend on Paul's decision of 2026-09-10.
+
+        **The status test is in the query rather than at the call site.**
+        `find_by_hash()` above is `LIMIT 1` with no order, and on 2026-11-14 one
+        hash named a discarded receipt ahead of an `ok` one: the lookup handed
+        back the discarded row and a status test on that row alone would have
+        let the arrival through. `find_by_transaction_loose()` below records the
+        same lesson for the semantic check.
+
+        **The same two sources as `find_by_hash()`**, so the set of receipts a
+        hash can name is unchanged and only the status narrows it: a
+        `processed_attachments` row, joined to `receipts` for the client, and
+        `receipts.file_hash` itself. Scoped to the client, 10f.18, with
+        `client_id` required rather than defaulted for the reason given there.
+        """
+        row = self._conn.execute(
+            """
+            SELECT r.receipt_id
+            FROM receipts r
+            WHERE r.client_id = ?
+              AND r.status = 'ok'
+              AND (r.file_hash = ?
+                   OR r.receipt_id IN (SELECT pa.receipt_id
+                                       FROM processed_attachments pa
+                                       WHERE pa.file_hash = ?))
+            ORDER BY r.created_at, r.rowid
+            LIMIT 1
+            """,
+            (client_id, file_hash, file_hash)
+        ).fetchone()
+        return row["receipt_id"] if row else None
+
     # find_by_transaction() and find_by_transaction_no_date() were here until
     # 2026-09-07. Sub-step 10f.23. Exact supplier and exact amount, one with a
     # date and one without, both selecting straight out of `extractions` with no

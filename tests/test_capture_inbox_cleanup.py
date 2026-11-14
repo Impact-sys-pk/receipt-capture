@@ -103,6 +103,11 @@ class InboxDuplicateIsMovedNotDeletedTest(unittest.TestCase):
                 )
                 repo.mark_receipt_filed(
                     "r-already-filed", str(env.path / "filed" / "earlier.pdf"))
+                # Item 34, 2026-11-14: the hash block refuses an `ok` match
+                # and nothing else, so the earlier receipt has to be `ok` to
+                # be duplicated. It was `pending` with a `filed_path`, which
+                # production never writes.
+                repo.update_receipt_status("r-already-filed", "ok")
             finally:
                 repo.close()
 

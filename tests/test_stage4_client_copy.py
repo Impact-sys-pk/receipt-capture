@@ -1193,9 +1193,16 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
         worth duplicating" but "does this pipeline agree that the receipt
         Desktop says is in the accounts ever reached them". It does not gate
         anything, it warns. See `_apply_attached_note()`.
+
+        **Item 34, 2026-11-14: `is_recorded_and_filed()` has no production
+        caller now.** ~~After 10f.24 it has three, all the file-hash dedup in
+        `app.py`~~ The three file-hash sites ask `find_ok_by_hash()` instead,
+        because `filed_path` waits for Post on the `post` trigger and the block
+        could refuse nothing until then. A needs_review receipt still does not
+        count, because only `ok` does, so the dependency named below holds.
         """
         sites = {}
-        for name in ("is_recorded_and_filed", "is_published"):
+        for name in ("is_recorded_and_filed", "find_ok_by_hash", "is_published"):
             found = []
             for path in production_files():
                 tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -1207,7 +1214,8 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
             sites[name] = sorted(found)
         self.assertEqual(
             sites,
-            {"is_recorded_and_filed": ["app.py::process_once"] * 3,
+            {"is_recorded_and_filed": [],
+             "find_ok_by_hash": ["app.py::process_once"] * 3,
              "is_published": ["worker/extraction_pipeline.py::"
                               "process_extraction_result",
                               "worker/resolution/service.py::"

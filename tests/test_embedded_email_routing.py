@@ -273,6 +273,8 @@ class AllImagesDuplicateTest(unittest.TestCase):
                 firm_id="FIRM001", client_id=CLIENT, source="email")
             repo.mark_receipt_filed(f"r-{app.compute_hash(data)[:8]}",
                                     "/clients/x/earlier.pdf")
+            # Item 34, 2026-11-14: only an `ok` match is a hash duplicate.
+            repo.update_receipt_status(f"r-{app.compute_hash(data)[:8]}", "ok")
         finally:
             repo.close()
 

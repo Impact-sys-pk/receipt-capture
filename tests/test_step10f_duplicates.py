@@ -50,7 +50,7 @@ CLIENT_B = "CLIENT002"
 SHARED_HASH = "a" * 64
 
 def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
-                 firm_id="FIRM001", published=False):
+                 firm_id="FIRM001", published=False, status=None):
     """One receipt row for `client_id`, filed unless told otherwise.
 
     Filed matters: every caller of find_by_hash() pairs it with
@@ -63,6 +63,12 @@ def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
     receipt publishes and is never filed, and before the publish step existed a
     receipt was filed and never published. A seed that set both could not tell
     the two questions apart.
+
+    **`status` is the third axis, from item 34 on 2026-11-14.** The hash block
+    stopped asking `filed_path` and asks for an `ok` receipt, so a seed meant to
+    be a hash duplicate passes `status="ok"`. Left as `None` the row keeps the
+    `pending` that `save_receipt()` writes, which is what every other test here
+    has always seeded.
     """
     repo.save_receipt(
         receipt_id=receipt_id,
@@ -79,6 +85,8 @@ def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
     )
     if filed:
         repo.mark_receipt_filed(receipt_id, f"/clients/{client_id}/shared.pdf")
+    if status is not None:
+        repo.update_receipt_status(receipt_id, status)
     if published:
         repo.save_publish_event(
             event_id=f"pub-{receipt_id}",
@@ -572,7 +580,8 @@ class EmbeddedImageGuardTest(unittest.TestCase):
             repo = Repository()
             try:
                 seed_receipt(repo, "r-filed", CLIENT_A,
-                             file_hash=app.compute_hash(DOCUMENT), filed=True)
+                             file_hash=app.compute_hash(DOCUMENT), filed=True,
+                             status="ok")
             finally:
                 repo.close()
 
@@ -604,6 +613,15 @@ class EmbeddedImageGuardTest(unittest.TestCase):
         existing:` with the check nested inside on the folder-intake path.
         Searching the whole following statement rather than only its condition
         is what makes one rule cover both.
+
+        **Item 34, 2026-11-14: the lookup is `find_ok_by_hash()` and the guard
+        is inside it.** ~~Every `find_by_hash()` call in `app.py` must be
+        followed by a statement that calls `is_recorded_and_filed()`.~~ The
+        status test moved into the query, because `find_by_hash()` is `LIMIT 1`
+        and handed back a discarded row ahead of an `ok` one on 2026-11-14. So
+        the rule now is that every `find_ok_by_hash()` call is followed by the
+        `if` that acts on it, and that there are three. `is_recorded_and_filed()`
+        having no caller is held by `tests/test_stage4_client_copy.py`.
         """
         import ast
         from pathlib import Path
@@ -613,11 +631,11 @@ class EmbeddedImageGuardTest(unittest.TestCase):
                 encoding="utf-8"))
 
         def calls_the_guard(node):
-            return any(
-                isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "is_recorded_and_filed"
-                for inner in ast.walk(node))
+            # Item 34: the `if existing:` that refuses, testing the very name
+            # the lookup was assigned to.
+            return (isinstance(node, ast.If)
+                    and isinstance(node.test, ast.Name)
+                    and node.test.id == "existing")
 
         BLOCKS = ("body", "orelse", "finalbody", "handlers")
 
@@ -645,7 +663,7 @@ class EmbeddedImageGuardTest(unittest.TestCase):
             return any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "find_by_hash"
+                and inner.func.attr == "find_ok_by_hash"
                 for inner in own_nodes(statement))
 
         # Every statement holding a find_by_hash() call, with the statement that
@@ -671,11 +689,11 @@ class EmbeddedImageGuardTest(unittest.TestCase):
         self.assertEqual(sorted(found), sorted(set(found)),
                          f"a statement was counted twice: {found}")
         self.assertEqual(len(found), 3,
-                         f"the number of find_by_hash call sites moved: {found}")
+                         f"the number of find_ok_by_hash call sites moved: {found}")
         self.assertEqual(
             offenders, [],
-            "a find_by_hash call treats a match as a duplicate without checking "
-            f"it was ever filed: {offenders}")
+            "a find_ok_by_hash call is not followed by the `if existing:` that "
+            f"refuses: {offenders}")
 
 
 class StatementHashLookupIsScopedToTheClientTest(unittest.TestCase):
@@ -792,7 +810,8 @@ class EveryArrivalRouteReachesTheSameVerdictTest(unittest.TestCase):
             repo = Repository()
             try:
                 seed_receipt(repo, "r-seed", CLIENT_A,
-                             file_hash=app.compute_hash(DOCUMENT), filed=True)
+                             file_hash=app.compute_hash(DOCUMENT), filed=True,
+                             status="ok")
             finally:
                 repo.close()
 

@@ -656,7 +656,13 @@ class TheSweepsTest(AttachedTestCase):
         to reading rather than to a shell: the first query was read and the
         function was described.
 
-        **What actually decides is the guard all three callers pair it with.**
+        **Item 34, 2026-11-14: none of this decides any more.** The three
+        callers ask `find_ok_by_hash()`, which finds an `ok` receipt and nothing
+        else, so an attached document blocks nothing before Post or after it.
+        The assertions below still hold because they ask
+        `is_recorded_and_filed()` directly. What follows is kept as written.
+
+        ~~**What actually decides is the guard all three callers pair it with.**~~
         `existing and repo.is_recorded_and_filed(existing)` is the duplicate
         test, and that asks `filed_path IS NOT NULL`, which an attached
         document has only once its copy has been written at Post. So before
@@ -714,15 +720,26 @@ class TheSweepsTest(AttachedTestCase):
             # Filter status = 'ok', which the marker is not.
             "get_unpublished_ok_receipts",
             "get_published_receipts_without_client_copy",
+            # Item 34, 2026-11-14, the file-hash duplicate block. **Does not
+            # find it, and that is a change**: before, the block asked
+            # `filed_path`, which an attached document has after Post, so a
+            # resend of its bytes was refused. Now only `ok` refuses, per
+            # Paul's decision that every other status is allowed. Reported as
+            # the first flag of
+            # `2026-11-14_REPORT_claude_code_duplicates_and_two_flags.md`.
+            "find_ok_by_hash",
             # Filters status IN ('failed', 'needs_review') and joins
             # extractions, of which an attached document has none.
             "find_failed_by_version",
             # Joins extractions, same reason.
             "find_by_transaction_loose",
             # **Finds it.** Its second query is straight off
-            # `receipts.file_hash` with no join. What decides is the
+            # `receipts.file_hash` with no join. ~~What decides is the
             # `is_recorded_and_filed()` its three callers pair it with, which
-            # asks `filed_path IS NOT NULL`. Flag 3, and the test above.
+            # asks `filed_path IS NOT NULL`. Flag 3, and the test above.~~
+            # **Since item 34 it decides nothing**: its one production caller
+            # names the match in the capture route's "allowing" log line, and
+            # `find_ok_by_hash()` above is the block.
             "find_by_hash",
             # Counts the statuses in app.REVIEW_STATUSES, which the marker is
             # not one of.

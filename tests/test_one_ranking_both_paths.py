@@ -98,6 +98,8 @@ def seed_filed(data):
             file_hash=app.compute_hash(data), firm_id="FIRM001",
             client_id=CLIENT, source="email")
         repo.mark_receipt_filed(rid, f"/clients/{CLIENT}/earlier.pdf")
+        # Item 34, 2026-11-14: only an `ok` match is a hash duplicate.
+        repo.update_receipt_status(rid, "ok")
     finally:
         repo.close()
 

@@ -30,6 +30,7 @@ Read off the live database read-only on 2026-11-14 for the shape of the
 incident; the values below are that receipt's, the ids are not.
 """
 
+import json
 import logging
 import sys
 import types
@@ -47,6 +48,7 @@ fake_openai.OpenAI = OpenAI
 sys.modules.setdefault("openai", fake_openai)
 
 import config  # noqa: E402
+import live_paths  # noqa: E402
 from resolution_fixtures import (  # noqa: E402
     DOCUMENT,
     RecordingExtractor,
@@ -291,6 +293,73 @@ class TheIncidentIsRefusedOnEveryRouteTest(unittest.TestCase):
                     self.assertEqual(receipt_ids(), before,
                                      f"the {name} route let the resend in")
                     self.assertEqual(extractor.calls, 0)
+
+
+class EveryRefusalLeavesARecordTest(unittest.TestCase):
+    """Paul's decision of 2026-11-14, flag 2 of the duplicates report.
+
+    Until item 34 the block could not fire before Post, so a refusal was rare.
+    It fires on arrival now, and only the attachment route wrote an event: the
+    embedded image wrote a `processed_attachments` row and a log line, and the
+    capture inbox wrote nothing but a log line and a move. **A document that
+    vanishes with no searchable record is the one Paul would be trying to
+    explain.** Every route now writes the attachment route's
+    `duplicate_skipped` event.
+    """
+
+    def _events(self):
+        path = config.LOGS_DIR / f"receipt_events_{live_paths.TEST_FIRM_ID}.ndjson"
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()]
+
+    def test_each_route_writes_one_duplicate_skipped_event(self):
+        import app
+
+        expected_message_id = {
+            "email attachment": "msg-att",
+            "embedded image": "msg-emb",
+            "phone": "phone:shell.jpg",
+            "Add Receipts": "desktop:shell.jpg",
+        }
+        for name, drive in TheIncidentIsRefusedOnEveryRouteTest.ROUTES:
+            with self.subTest(route=name):
+                with TempEnvironment():
+                    with_email_client(self)
+                    repo = Repository()
+                    try:
+                        seed(repo, "r-earlier", "ok", app.compute_hash(DOCUMENT))
+                    finally:
+                        repo.close()
+                    drive(Routes(arrival()))
+                    skipped = [e for e in self._events()
+                               if e["action"] == "duplicate_skipped"]
+                    self.assertEqual(len(skipped), 1, f"{name}: {skipped}")
+                    event = skipped[0]
+                    self.assertEqual(event["duplicate_of"], "r-earlier")
+                    self.assertEqual(event["duplicate_reason"], "file_hash_match")
+                    self.assertEqual(event["message_id"], expected_message_id[name])
+                    self.assertEqual(event["filename"], "shell.jpg" if name in (
+                        "phone", "Add Receipts") else "shared.pdf")
+                    self.assertNotEqual(event["receipt_id"], "r-earlier",
+                                        "the event's own id, not the matched receipt's")
+
+    def test_an_allowed_resend_writes_no_duplicate_event(self):
+        import app
+
+        for name, drive in TheIncidentIsRefusedOnEveryRouteTest.ROUTES:
+            with self.subTest(route=name):
+                with TempEnvironment():
+                    with_email_client(self)
+                    repo = Repository()
+                    try:
+                        seed(repo, "r-earlier", "needs_review", app.compute_hash(DOCUMENT))
+                    finally:
+                        repo.close()
+                    drive(Routes(arrival()))
+                    self.assertEqual(
+                        [e for e in self._events() if e["action"] == "duplicate_skipped"], [])
 
 
 class EveryOtherStatusIsAllowedTest(unittest.TestCase):

@@ -1690,6 +1690,16 @@ def process_once():
                     if existing:
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
+                        # 2026-11-14, Paul's decision: every refusal leaves the
+                        # attachment route's event. This route has the email's
+                        # own message_id and the image's name, so every field
+                        # is filled exactly as the attachment route fills it.
+                        _log_receipt(
+                            str(uuid.uuid4()), message_id, filename, "duplicate_skipped",
+                            firm_id=firm_id, duplicate_of=existing,
+                            duplicate_reason="file_hash_match",
+                            run_id=run_id
+                        )
                         repo.mark_processed(message_id, att_id, file_hash, existing, firm_id)
                         # 10f.33. Recorded rather than moved on. It used to move
                         # the email the moment it decided, so a duplicate won by
@@ -2014,6 +2024,21 @@ def process_once():
                 logger.info(
                     f"capture duplicate by hash of ok receipt {existing}, moving inbox pair "
                     f"to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
+                # 2026-11-14, Paul's decision: every refusal leaves the
+                # attachment route's event. There is no email, so message_id is
+                # `{source}:{original_name}`, the value this route already
+                # writes into receipts.message_id and its own `created` event,
+                # so the refusal can be found beside the intake it belongs to.
+                # The first argument is a fresh id, as on the attachment route:
+                # no receipt is created, and `duplicate_of` names the one that
+                # was matched.
+                _log_receipt(
+                    str(uuid.uuid4()), f"{intake.source}:{intake.original_name}",
+                    intake.filename, "duplicate_skipped",
+                    firm_id=receipt_firm_id, duplicate_of=existing,
+                    duplicate_reason="file_hash_match",
+                    run_id=run_id
+                )
                 # 10f.21. Kept rather than deleted.
                 _move_inbox_pair_to_processed(intake)
                 stats["duplicates_skipped"] += 1

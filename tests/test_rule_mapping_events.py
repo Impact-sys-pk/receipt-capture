@@ -239,6 +239,77 @@ class TheAuditCannotFailTheNoteTest(_Base):
         self.assertEqual(len(rows(self.repo, "SELECT * FROM categorisations_client_vendors")), 1)
 
 
+class TheFirmPoolLeavesARowTest(_Base):
+    """Flag K1, Paul's decision of 2026-11-14: the firm pool gets the same
+    treatment as the five client-side writers.
+
+    **Scope `sector`, `scope_id` the trade.** The pool is keyed on
+    `business_type` and shared by every firm, so what a row answers for is
+    every client of one trade, which is what the rule scopes call `sector`.
+    `firm_id` on the pool row is provenance written on insert only, so it is in
+    `before`/`after` and is not the scope.
+    """
+
+    TRADE = "PHV_DRIVER"
+
+    def firm(self, code="7301", account="Fuel", name="Shell Harborne", **kw):
+        self.repo.upsert_firm_vendor(self.TRADE, "shell", code, account,
+                                     "2026-11-14T09:00:00+00:00", vendor_name=name,
+                                     firm_id="TESTFIRM001", **kw)
+
+    def pool_events(self):
+        return [e for e in self.events() if e["scope"] == config.RULE_SCOPE_SECTOR]
+
+    def test_a_new_pool_row_is_saved_with_its_scope(self):
+        self.firm(source="classifier_confirmed")
+        (event,) = self.events()
+        row = rows(self.repo, "SELECT * FROM categorisations_firm_vendors")[0]
+        self.assertEqual(
+            (event["subject"], event["subject_id"], event["act"], event["outcome"],
+             event["scope"], event["scope_id"], event["source"]),
+            (config.AUDIT_SUBJECT_MAPPING, row["mapping_id"], config.AUDIT_ACT_SAVED,
+             config.AUDIT_OUTCOME_APPLIED, config.RULE_SCOPE_SECTOR, self.TRADE,
+             "classifier_confirmed"))
+        self.assertIsNone(event["before_json"])
+        self.assertEqual(json.loads(event["after_json"])["nominal_code"], "7301")
+
+    def test_a_reconfirmation_that_moves_the_code_is_changed_with_both_sides(self):
+        self.firm()
+        self.firm(code="7302", account="EV charging")
+        second = self.pool_events()[1]
+        self.assertEqual(second["act"], config.AUDIT_ACT_CHANGED)
+        self.assertEqual(json.loads(second["before_json"])["nominal_code"], "7301")
+        self.assertEqual(json.loads(second["after_json"])["nominal_code"], "7302")
+
+    def test_a_reconfirmation_of_the_same_code_is_changed_too(self):
+        """`times_seen` moves, so the row did change."""
+        self.firm()
+        self.firm()
+        second = self.pool_events()[1]
+        self.assertEqual(second["act"], config.AUDIT_ACT_CHANGED)
+        self.assertEqual(json.loads(second["before_json"])["times_seen"], 1)
+        self.assertEqual(json.loads(second["after_json"])["times_seen"], 2)
+
+    def test_the_sector_query_returns_the_pool_and_no_client_mapping(self):
+        self.teach()
+        self.firm()
+        found = rows(self.repo, f"SELECT * FROM {TABLE} WHERE subject = ? AND scope = ?",
+                     (config.AUDIT_SUBJECT_MAPPING, config.RULE_SCOPE_SECTOR))
+        self.assertEqual([e["scope_id"] for e in found], [self.TRADE])
+
+    def test_a_failing_audit_row_does_not_fail_the_pool_write(self):
+        with mock.patch.object(Repository, "record_rule_mapping_event",
+                               side_effect=RuntimeError("disk full")):
+            with self.assertLogs("worker.database.repository", level=logging.ERROR):
+                self.firm()
+        self.assertEqual(len(rows(self.repo, "SELECT * FROM categorisations_firm_vendors")), 1)
+
+    def test_the_pool_keeps_its_columns(self):
+        self.assertEqual(schema.declared_columns()["categorisations_firm_vendors"], [
+            "mapping_id", "business_type", "vendor_key", "nominal_code", "account_name",
+            "vendor_name", "times_seen", "last_updated", "firm_id"])
+
+
 class TheSourceGuardsTest(unittest.TestCase):
     """Append-only, one writer, and every production writer of a mapping says
     where the change came from. Read from the syntax tree."""
@@ -279,8 +350,9 @@ class TheSourceGuardsTest(unittest.TestCase):
         missing = []
         for rel, tree in self.trees():
             for node in ast.walk(tree):
+                # Flag K1, 2026-11-14: the firm pool's writer too.
                 if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "upsert_client_vendor"
+                        and node.func.attr in ("upsert_client_vendor", "upsert_firm_vendor")
                         and not any(k.arg == "source" for k in node.keywords)):
                     missing.append(f"{rel}:{node.lineno}")
         self.assertEqual(missing, [])

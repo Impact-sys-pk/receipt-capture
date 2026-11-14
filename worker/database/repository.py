@@ -926,8 +926,30 @@ class Repository:
 
     def upsert_firm_vendor(self, business_type: str, vendor_key: str,
                           nominal_code: str, account_name: str, last_updated: str,
-                          vendor_name: str = None, firm_id: str = None):
+                          vendor_name: str = None, firm_id: str = None, *,
+                          source: Optional[str] = None,
+                          requested_at: Optional[str] = None):
         """Insert or update firm vendor mapping. Each variant gets unique mapping_id.
+
+        **Flag K1, Paul's decision of 2026-11-14: every call leaves a row in
+        `rule_mapping_events`**, the same treatment as the five client-side
+        writers: after the commit, inside `_audit()`, so a failing audit row
+        cannot fail the write.
+
+        **What goes in the columns, decided rather than copied.** `subject` is
+        `mapping`, because a pool row is a mapping of the same shape as a
+        client's; `scope` is `sector` and `scope_id` is `business_type`,
+        because the pool is keyed on the trade and shared by every firm, so a
+        row answers for every client of that trade, which is what the rule
+        scopes already call `sector`. `firm_id` is provenance written on insert
+        only and is not the scope; it is in `before` and `after`. So `WHERE
+        scope = 'sector'` returns pool writes and sector rule writes, told
+        apart by `subject`. **`act` is `saved` on insert and `changed` on any
+        update, with both sides**: a re-confirmation that moves the code is
+        the same loss as a re-teach on a client mapping, and one that keeps the
+        code still moves `times_seen`.
+
+        **No backfill.** The rows written before the trail existed have none.
 
         Sub-step 10d.39. firm_id is written and never read: the unique key does
         not change, so the pool stays shared and behaviour does not change. The
@@ -940,17 +962,19 @@ class Repository:
         """
         # Check if this exact variant exists
         existing = self._conn.execute("""
-            SELECT mapping_id FROM categorisations_firm_vendors
+            SELECT * FROM categorisations_firm_vendors
             WHERE business_type = ? AND vendor_key = ? AND vendor_name = ?
         """, (business_type, vendor_key, vendor_name)).fetchone()
+        before = dict(existing) if existing else None
 
         if existing:
             # Update existing variant
+            mapping_id = existing["mapping_id"]
             self._conn.execute("""
                 UPDATE categorisations_firm_vendors
                 SET nominal_code = ?, account_name = ?, times_seen = times_seen + 1, last_updated = ?
                 WHERE mapping_id = ?
-            """, (nominal_code, account_name, last_updated, existing["mapping_id"]))
+            """, (nominal_code, account_name, last_updated, mapping_id))
         else:
             # Insert new variant
             mapping_id = str(uuid.uuid4())
@@ -961,6 +985,15 @@ class Repository:
             """, (mapping_id, business_type, vendor_key, nominal_code, account_name, vendor_name, last_updated, firm_id))
 
         self._conn.commit()
+        after = self._conn.execute(
+            "SELECT * FROM categorisations_firm_vendors WHERE mapping_id = ?",
+            (mapping_id,)).fetchone()
+        self._audit(subject=config.AUDIT_SUBJECT_MAPPING, subject_id=mapping_id,
+                    act=config.AUDIT_ACT_CHANGED if before else config.AUDIT_ACT_SAVED,
+                    outcome=config.AUDIT_OUTCOME_APPLIED,
+                    scope=config.RULE_SCOPE_SECTOR, scope_id=business_type,
+                    before=before, after=dict(after) if after else None,
+                    source=source, requested_at=requested_at)
 
     def list_firm_vendors(self, business_type: str) -> list[str]:
         """Get distinct vendor_keys for a business type for fuzzy matching candidates."""

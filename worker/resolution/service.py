@@ -976,6 +976,8 @@ def _learn_firm_mapping_if_confirmed(repo, receipt, categorisation, chosen_code,
         last_updated=_now(),
         vendor_name=vendor_name,
         firm_id=receipt.get("firm_id"),
+        # Flag K1, 2026-11-14: the audit row says where the write came from.
+        source="classifier_confirmed",
     )
     return code, name
 

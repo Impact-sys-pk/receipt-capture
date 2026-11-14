@@ -126,7 +126,7 @@ def main():
             continue
 
         try:
-            business_type = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
+            business_type = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", config.UNSPECIFIED_TRADE)
             extraction_id = extraction.get("extraction_id")
             if not extraction_id:
                 logger.warning(f"Receipt {receipt_id} extraction has no extraction_id, skipping")

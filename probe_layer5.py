@@ -99,7 +99,7 @@ def main():
 
     for r in rows:
         client = config.CLIENTS_BY_ID.get(r["client_id"]) or {}
-        trade = client.get("trade", "UNSPECIFIED")
+        trade = client.get("trade", config.UNSPECIFIED_TRADE)
         chart_code = client.get("chart_code") or "(none)"
         pool = get_eligible_accounts_for_client(r["client_id"])
 

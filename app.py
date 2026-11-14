@@ -805,7 +805,7 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
             ]
 
             # Categorise the receipt (reuse the real extraction_id, don't generate a new one)
-            trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
+            trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", config.UNSPECIFIED_TRADE)
             extraction_id = extraction["extraction_id"]
             # Read once, for the classifier below and for the published item's
             # line item count. Paul's decision of 2026-11-14 for the count.

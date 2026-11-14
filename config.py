@@ -616,7 +616,7 @@ def load_clients():
         # `trade` is amendment 105's name for what the CSV called business_type.
         # The categorisation engine still calls its own parameter business_type,
         # which is not renamed here: 10d.30 renames the column, not the engine.
-        client_data["trade"] = record.get("trade") or "UNSPECIFIED"
+        client_data["trade"] = record.get("trade") or UNSPECIFIED_TRADE
         clients_by_id[client_id] = client_data
 
         emails = record.get("emails") or []

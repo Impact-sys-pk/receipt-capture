@@ -122,7 +122,7 @@ def main():
             extraction_id="probe",
             supplier_name=result.supplier_name or "",
             client_id=client_id,
-            business_type=client.get("trade", "UNSPECIFIED"),
+            business_type=client.get("trade", config.UNSPECIFIED_TRADE),
             gross_amount=result.gross_amount,
             line_items=items if isinstance(items, list) else None,
         )

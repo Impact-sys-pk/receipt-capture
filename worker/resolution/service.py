@@ -706,7 +706,7 @@ def _client_details(client_id: Optional[str]) -> Tuple[str, str, Optional[str]]:
     entry = config.CLIENTS_BY_ID.get(client_id or "") or {}
     return (
         entry.get("client_name") or (client_id or "UNKNOWN"),
-        entry.get("trade", "UNSPECIFIED"),
+        entry.get("trade", config.UNSPECIFIED_TRADE),
         entry.get("client_folder_name") or None,
     )
 

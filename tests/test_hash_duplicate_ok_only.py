@@ -60,9 +60,12 @@ from worker.database.repository import Repository  # noqa: E402
 CLIENT = "CLIENT001"
 OTHER = "CLIENT002"
 
-#: Every receipt status there is, per `CLAUDE.md`'s list of the eight. `ok` is
-#: the only one that refuses; the other seven are listed so a test can walk
-#: them rather than pick two.
+#: Every receipt status there is, per `CLAUDE.md`'s list of the eight, split by
+#: the answer. ~~`ok` is the only one that refuses~~ **`bank_attachment` joined
+#: `ok` on 2026-11-14, Paul's decision**: it is finished work, filed against a
+#: posted transaction, so there is nothing to retry. The other six are listed so
+#: a test can walk them rather than pick two.
+REFUSED_STATUSES = ("ok", config.BANK_ATTACHMENT_STATUS)
 ALLOWED_STATUSES = (
     "pending",
     "needs_review",
@@ -70,7 +73,6 @@ ALLOWED_STATUSES = (
     "retry_exhausted",
     "possible_duplicate",
     "discarded",
-    config.BANK_ATTACHMENT_STATUS,
 )
 
 #: The 2026-11-14 receipt, as both readings gave it.
@@ -159,8 +161,21 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
             finally:
                 repo.close()
 
+    def test_a_bank_attachment_is_found_too(self):
+        """Paul's decision of 2026-11-14: finished work, like `ok`."""
+        with TempEnvironment():
+            repo = Repository()
+            try:
+                seed(repo, "r-att", config.BANK_ATTACHMENT_STATUS, "h" * 64)
+                self.assertEqual(repo.find_ok_by_hash("h" * 64, CLIENT), "r-att")
+            finally:
+                repo.close()
+
+    def test_the_refused_set_is_read_from_config(self):
+        self.assertEqual(tuple(config.HASH_DUPLICATE_STATUSES), REFUSED_STATUSES)
+
     def test_every_other_status_is_not_found(self):
-        self.assertEqual(len(ALLOWED_STATUSES) + 1, 8,
+        self.assertEqual(len(ALLOWED_STATUSES) + len(REFUSED_STATUSES), 8,
                          "the eight receipt statuses moved; read CLAUDE.md")
         for status in ALLOWED_STATUSES:
             with self.subTest(status=status):
@@ -252,6 +267,30 @@ class TheIncidentIsRefusedOnEveryRouteTest(unittest.TestCase):
                                      f"the {name} route let the duplicate in")
                     self.assertEqual(extractor.calls, 0,
                                      "a refused file must cost no extraction")
+
+    def test_a_bank_attachment_refuses_the_arrival_on_every_route(self):
+        """Paul's decision of 2026-11-14. The resend of a document attached to
+        a bank line would otherwise be extracted and published beside it, and
+        nothing else could flag it: an attachment has no extraction row for the
+        semantic check to join."""
+        import app
+
+        for name, drive in self.ROUTES:
+            with self.subTest(route=name):
+                with TempEnvironment():
+                    with_email_client(self)
+                    repo = Repository()
+                    try:
+                        seed(repo, "r-attached", config.BANK_ATTACHMENT_STATUS,
+                             app.compute_hash(DOCUMENT))
+                    finally:
+                        repo.close()
+                    before = receipt_ids()
+                    extractor = arrival()
+                    drive(Routes(extractor))
+                    self.assertEqual(receipt_ids(), before,
+                                     f"the {name} route let the resend in")
+                    self.assertEqual(extractor.calls, 0)
 
 
 class EveryOtherStatusIsAllowedTest(unittest.TestCase):

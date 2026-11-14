@@ -812,6 +812,16 @@ INTELLIBOOKS_DESTINATION = "intellibooks"
 # rather than from an extraction row that does not exist.
 BANK_ATTACHMENT_STATUS = "bank_attachment"
 
+# The receipt statuses whose byte-identical resend is refused by the file-hash
+# duplicate block, `Repository.find_ok_by_hash()`. Item 34, amendment 571, and
+# Paul's decision of 2026-11-14 that adds the second. **The test is whether
+# there is anything to retry.** `ok` worked; a `bank_attachment` is filed
+# against a posted transaction. Both are finished work, so a second copy is a
+# duplicate. `failed`, `needs_review`, `retry_exhausted` and
+# `possible_duplicate` mean the operator is giving it another go, and
+# `discarded` stopped blocking a resend on his decision of 2026-09-10.
+HASH_DUPLICATE_STATUSES = ("ok", BANK_ATTACHMENT_STATUS)
+
 
 def _is_single_folder_name(value: str) -> bool:
     """True when `value` names one folder and cannot escape its parent.

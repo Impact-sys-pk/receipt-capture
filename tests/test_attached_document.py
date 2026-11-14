@@ -720,13 +720,13 @@ class TheSweepsTest(AttachedTestCase):
             # Filter status = 'ok', which the marker is not.
             "get_unpublished_ok_receipts",
             "get_published_receipts_without_client_copy",
-            # Item 34, 2026-11-14, the file-hash duplicate block. **Does not
-            # find it, and that is a change**: before, the block asked
-            # `filed_path`, which an attached document has after Post, so a
-            # resend of its bytes was refused. Now only `ok` refuses, per
-            # Paul's decision that every other status is allowed. Reported as
-            # the first flag of
+            # Item 34, 2026-11-14, the file-hash duplicate block. ~~**Does not
+            # find it, and that is a change**~~ **Finds it, by decision.** The
+            # first build refused only `ok`, which lost the refusal an attached
+            # document had after Post; flag 1 of
             # `2026-11-14_REPORT_claude_code_duplicates_and_two_flags.md`.
+            # Paul's decision the same day put `bank_attachment` beside `ok` in
+            # `config.HASH_DUPLICATE_STATUSES`, before Post as well as after.
             "find_ok_by_hash",
             # Filters status IN ('failed', 'needs_review') and joins
             # extractions, of which an attached document has none.

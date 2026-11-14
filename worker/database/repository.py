@@ -168,13 +168,23 @@ class Repository:
         return row["receipt_id"] if row else None
 
     def find_ok_by_hash(self, file_hash: str, client_id: str) -> Optional[str]:
-        """This client's `ok` receipt with this file hash, if there is one.
+        """This client's finished receipt with this file hash, if there is one.
+
+        ~~This client's `ok` receipt~~ **Finished means a status in
+        `config.HASH_DUPLICATE_STATUSES`: `ok` and, from Paul's decision later
+        on 2026-11-14, `bank_attachment`**, which is filed against a posted
+        transaction and so has nothing to retry either. Without it a resend of
+        an attached document was extracted and published beside it, and nothing
+        else could flag it, because an attachment has no extraction row for the
+        semantic check to join. **The name still says `ok`**; see the report of
+        that date.
 
         **The file-hash duplicate block. Item 34, amendment 571, Paul's
         decision of 2026-11-14: a byte-identical file is refused where the
         existing receipt's status is `ok` and it is not discarded, and allowed
         in every other case.** `ok` excludes `discarded` because a receipt has
-        one status, so the query says `status = 'ok'` and nothing more. A
+        one status, so the query says ~~`status = 'ok'`~~ `status IN` the
+        finished statuses and nothing more. A
         second clause, `status <> 'discarded'`, was written first and removed:
         a mutation deleting it survived the whole suite, because it cannot be
         told apart from the first.
@@ -204,12 +214,13 @@ class Repository:
         `receipts.file_hash` itself. Scoped to the client, 10f.18, with
         `client_id` required rather than defaulted for the reason given there.
         """
+        statuses = tuple(config.HASH_DUPLICATE_STATUSES)
         row = self._conn.execute(
-            """
+            f"""
             SELECT r.receipt_id
             FROM receipts r
             WHERE r.client_id = ?
-              AND r.status = 'ok'
+              AND r.status IN ({", ".join("?" * len(statuses))})
               AND (r.file_hash = ?
                    OR r.receipt_id IN (SELECT pa.receipt_id
                                        FROM processed_attachments pa
@@ -217,7 +228,7 @@ class Repository:
             ORDER BY r.created_at, r.rowid
             LIMIT 1
             """,
-            (client_id, file_hash, file_hash)
+            (client_id, *statuses, file_hash, file_hash)
         ).fetchone()
         return row["receipt_id"] if row else None
 

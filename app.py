@@ -1674,7 +1674,7 @@ def process_once():
 
                     # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
                     # Item 34, amendment 571: block only where this client
-                    # already has an `ok` receipt with these bytes. See
+                    # already has an `ok` or `bank_attachment` receipt with these bytes. See
                     # Repository.find_ok_by_hash() for why `filed_path` stopped
                     # being the question and why every other status is allowed.
                     # 10f.18. Scoped to this client: another client's identical
@@ -2008,7 +2008,7 @@ def process_once():
 
             # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
             # Item 34, amendment 571: block only where this client already has
-            # an `ok` receipt with these bytes. Repository.find_ok_by_hash().
+            # an `ok` or `bank_attachment` receipt with these bytes. Repository.find_ok_by_hash().
             existing = repo.find_ok_by_hash(intake.file_hash, receipt_client_id)
             if existing:
                 logger.info(
@@ -2020,7 +2020,7 @@ def process_once():
                 stats["inbox_duplicates_removed"] = stats.get("inbox_duplicates_removed", 0) + 1
                 continue
             # ~~If hash matches a failed/needs_review receipt, allow reprocessing~~
-            # The hash matches a receipt, and none of them is `ok`: every other
+            # The hash matches a receipt, and none of them is `ok` or `bank_attachment`: every other
             # status, discarded included, is allowed. The line used to say
             # "of failed receipt" whatever the status, and tested `filed_path`.
             earlier = repo.find_by_hash(intake.file_hash, receipt_client_id)
@@ -2231,7 +2231,7 @@ def process_once():
 
                 # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
                 # Item 34, amendment 571: block only where this client already
-                # has an `ok` receipt with these bytes.
+                # has an `ok` or `bank_attachment` receipt with these bytes.
                 # Repository.find_ok_by_hash(). 10f.18. Scoped to this client.
                 existing = repo.find_ok_by_hash(file_hash, client_id)
                 if existing:
@@ -2246,7 +2246,7 @@ def process_once():
                     repo.mark_processed(message_id, att_id, file_hash, existing, msg_firm_id)
                     email_outcomes.append("duplicate")
                     continue
-                # A hash matching a receipt that is not `ok`, discarded
+                # A hash matching a receipt that is not `ok` or `bank_attachment`, discarded
                 # included, is allowed. Item 34.
 
                 receipt_id = str(uuid.uuid4())

@@ -166,8 +166,18 @@ def apply_rule_note(repo, note: dict) -> RuleNoteOutcome:
         if note.get("schema") != 1:
             raise RuleNoteError(f"unsupported note schema {note.get('schema')!r}; "
                                 "this pipeline understands 1")
-        resolved_at = note_fields.required_text(note, "resolved_at", error=RuleNoteError)
+        resolved_at, asked = note_fields.note_time(note, "resolved_at", error=RuleNoteError)
         rule_id = note_fields.required_text(note, config.RULE_ID_FIELD, error=RuleNoteError)
+        # Flag F7: a re-delivered older note must not undo a newer change. The
+        # trail holds every note time applied to this rule, deletes included,
+        # and `updated_at` covers a rule saved before the trail existed.
+        current = repo.get_rule(rule_id)
+        stale = note_fields.stale_reason(
+            resolved_at, asked,
+            repo.applied_note_times(config.AUDIT_SUBJECT_RULE, rule_id)
+            + ([current["updated_at"]] if current else []))
+        if stale:
+            raise RuleNoteError(stale)
         action = note["action"]
         if action == config.RULE_SAVED_ACTION:
             fields = _parse_rule(note.get(config.RULE_NOTE_RULE_FIELD))

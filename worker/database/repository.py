@@ -1211,6 +1211,20 @@ class Repository:
               source, requested_at, datetime.now(timezone.utc).isoformat()))
         self._conn.commit()
 
+    def applied_note_times(self, subject: str, subject_id: str) -> list:
+        """Every note time already applied to one rule or mapping. Flag F7.
+
+        From `rule_mapping_events`, outcomes `applied` and `no_change`, where a
+        note time was recorded. A refusal changed nothing, so it does not count.
+        """
+        found = self._conn.execute("""
+            SELECT requested_at FROM rule_mapping_events
+            WHERE subject = ? AND subject_id = ? AND outcome IN (?, ?)
+              AND requested_at IS NOT NULL
+        """, (subject, subject_id, config.AUDIT_OUTCOME_APPLIED,
+              config.AUDIT_OUTCOME_NO_CHANGE)).fetchall()
+        return [row["requested_at"] for row in found]
+
     def _audit(self, **event) -> None:
         """`record_rule_mapping_event()`, which must never fail the write it describes.
 

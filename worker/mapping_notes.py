@@ -99,7 +99,7 @@ def _apply(repo, note: dict) -> str:
     if note.get("schema") != 1:
         raise MappingNoteError(f"unsupported note schema {note.get('schema')!r}; "
                                "this pipeline understands 1")
-    resolved_at = note_fields.required_text(note, "resolved_at", error=MappingNoteError)
+    resolved_at, asked = note_fields.note_time(note, "resolved_at", error=MappingNoteError)
     # Flag F8: every write below leaves a row in rule_mapping_events.
     audit = {"source": config.AUDIT_SOURCE_DESKTOP_NOTE, "requested_at": resolved_at}
     client_id = note_fields.required_text(note, config.MAPPINGS_CLIENT_ID_FIELD, error=MappingNoteError)
@@ -111,6 +111,15 @@ def _apply(repo, note: dict) -> str:
         raise MappingNoteError(
             f"mapping {mapping_id} belongs to client {row['client_id']}, "
             f"not {client_id}")
+    # Flag F7: a re-delivered older note must not undo a newer change. From the
+    # trail only: `last_updated` is the pipeline's apply time, not a note time,
+    # so two notes made a minute apart and applied in one poll would otherwise
+    # read the second as stale.
+    stale = note_fields.stale_reason(
+        resolved_at, asked,
+        repo.applied_note_times(config.AUDIT_SUBJECT_MAPPING, mapping_id))
+    if stale:
+        raise MappingNoteError(stale)
 
     if note["action"] == config.MAPPING_DELETED_ACTION:
         # Called even where there is no row, so the delete of nothing is

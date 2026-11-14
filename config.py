@@ -347,14 +347,19 @@ UNSPECIFIED_TRADE = "UNSPECIFIED"
 RULE_SCOPE_CLIENT = "client"
 RULE_SCOPE_FIRM = "firm"
 RULE_SCOPE_SECTOR = "sector"
+# **Narrowest first, and the order is load-bearing**: `get_client_rules()`
+# ranks scopes in this order at equal priority, Paul's decision on flag F1,
+# amendment 568. `tests/test_receipt_rules.py` pins it.
 RULE_SCOPES = (RULE_SCOPE_CLIENT, RULE_SCOPE_FIRM, RULE_SCOPE_SECTOR)
 # The four condition types, unchanged by 10bu.
 RULE_CONDITION_TYPES = ("contains", "exact_match", "startswith", "regex")
 # **What a rule may match on, and nothing else.** Paul's decision 5 of
-# 2026-11-14: the supplier name and the vendor key. `detail` is the stored word
-# for the supplier name, kept because it is what `_rule_matches()` has always
-# tested; 10bu's report flags the name.
-RULE_FIELD_SUPPLIER_NAME = "detail"
+# 2026-11-14: the supplier name and the vendor key.
+# ~~`detail` is the stored word for the supplier name~~: renamed to
+# `supplier_name` on 2026-11-14, Paul's decision on flag F3, while the rules
+# table was empty and nothing had written a rule. `detail` also names a column
+# on categorisations_client_vendors meaning something else.
+RULE_FIELD_SUPPLIER_NAME = "supplier_name"
 RULE_FIELD_VENDOR_KEY = "vendor_key"
 RULE_CONDITION_FIELDS = (RULE_FIELD_SUPPLIER_NAME, RULE_FIELD_VENDOR_KEY)
 

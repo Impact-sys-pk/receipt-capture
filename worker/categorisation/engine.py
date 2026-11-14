@@ -209,7 +209,8 @@ class CategorisationEngine:
 
         # Check condition
         condition_type = rule.get("condition_type", "contains")
-        condition_field = rule.get("condition_field", "detail")
+        # ~~"detail"~~, renamed by flag F3, 2026-11-14.
+        condition_field = rule.get("condition_field", config.RULE_FIELD_SUPPLIER_NAME)
         condition_value = rule.get("condition_value", "").lower()
 
         # Get the field to check. **The supplier name or the vendor key and

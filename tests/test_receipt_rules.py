@@ -168,6 +168,20 @@ class TheOrderTest(_Base):
         self.assertEqual(ids, ["rule-old", "rule-new"])
         self.assertEqual(self.categorise("Apcoa Parking Leeds").suggested_code, "7300")
 
+    def test_oldest_first_whichever_way_the_ids_sort(self):
+        """Added 2026-11-14 because the test above cannot fail under
+        `rule_id DESC`: `rule-old` sorts after `rule-new`, so ordering by id
+        descending gives the right answer by accident. Here the old rule's id
+        sorts FIRST, so only `created_at` can put it in front under either
+        direction of the id. Found by mutation S5 in
+        `2026-11-14_REPORT_claude_code_rule_scope_order.md`."""
+        self.save("z-new", saved_at=LATE, code="7400")
+        self.save("a-old", saved_at=EARLY, code="7300")
+        self.assertEqual(self.categorise("Apcoa Parking Leeds").suggested_code, "7300")
+        self.save("a-new-2", saved_at="2026-11-14T11:00:00+00:00", code="7410")
+        self.save("z-old-2", saved_at="2026-11-14T08:00:00+00:00", code="7310")
+        self.assertEqual(self.categorise("Apcoa Parking Leeds").suggested_code, "7310")
+
     def test_a_higher_priority_beats_an_older_rule(self):
         self.save("rule-old", saved_at=EARLY, priority=50, code="7300")
         self.save("rule-new", saved_at=LATE, priority=60, code="7400")
@@ -186,14 +200,78 @@ class TheOrderTest(_Base):
         self.assertEqual(stored["rule-old"]["nominal_code"], "7310")
         self.assertEqual(self.categorise("Apcoa Parking Leeds").suggested_code, "7310")
 
-    def test_the_order_is_one_ordering_across_scopes(self):
-        """Not decided by Paul, and reported as a question: where a client rule
-        and a firm rule both match, this build applies decision 6's ordering
-        across both, so scope plays no part. Pinned so a change is deliberate."""
-        self.save("firm-old", saved_at=EARLY, scope=config.RULE_SCOPE_FIRM,
+    # ~~test_the_order_is_one_ordering_across_scopes~~, which pinned scope as
+    # playing no part, so an older firm rule beat a newer client rule at equal
+    # priority. Superseded 2026-11-14 by Paul's decision on flag F1, amendment
+    # 568, and replaced by TheScopeOrderTest below.
+
+
+class TheScopeOrderTest(_Base):
+    """Amendment 568, Paul's decision on flag F1: at equal priority the narrower
+    scope wins, client then firm then sector, and only then oldest first.
+
+    **Every case is built so the old order would give the other answer**: the
+    broader rule is saved first, so it is older, and its id sorts first, so
+    neither `created_at` nor `rule_id` can make the narrower rule win.
+    """
+
+    TRADE = "Taxi"
+
+    def setUp(self):
+        super().setUp()
+        self.add_client(CLIENT, firm_id=FIRM, trade=self.TRADE)
+
+    def winner(self):
+        return self.categorise("Apcoa Parking Leeds",
+                               business_type=self.TRADE).suggested_code
+
+    def test_client_beats_firm_at_equal_priority(self):
+        self.save("a-firm", saved_at=EARLY, scope=config.RULE_SCOPE_FIRM,
                   scope_id=FIRM, code="7300")
-        self.save("client-new", saved_at=LATE, code="7400")
-        self.assertEqual(self.categorise("Apcoa Parking Leeds").suggested_code, "7300")
+        self.save("b-client", saved_at=LATE, code="7400")
+        self.assertEqual(self.winner(), "7400")
+
+    def test_firm_beats_sector_at_equal_priority(self):
+        """Firm above sector: every client has a firm and none has a trade."""
+        self.save("a-sector", saved_at=EARLY, scope=config.RULE_SCOPE_SECTOR,
+                  scope_id=self.TRADE, code="7300")
+        self.save("b-firm", saved_at=LATE, scope=config.RULE_SCOPE_FIRM,
+                  scope_id=FIRM, code="7400")
+        self.assertEqual(self.winner(), "7400")
+
+    def test_client_beats_sector_at_equal_priority(self):
+        self.save("a-sector", saved_at=EARLY, scope=config.RULE_SCOPE_SECTOR,
+                  scope_id=self.TRADE, code="7300")
+        self.save("b-client", saved_at=LATE, code="7400")
+        self.assertEqual(self.winner(), "7400")
+
+    def test_priority_still_overrides_scope(self):
+        """Decision 6 does not move. Stops the change going too far: the firm
+        rule is newer and broader, and wins only because its priority is higher."""
+        self.save("a-client", saved_at=EARLY, priority=50, code="7300")
+        self.save("b-firm", saved_at=LATE, priority=60, scope=config.RULE_SCOPE_FIRM,
+                  scope_id=FIRM, code="7400")
+        self.assertEqual(self.winner(), "7400")
+
+    def test_the_published_file_is_in_the_engines_order(self):
+        """Scopes mixed, saved broadest and oldest first, plus a higher-priority
+        sector rule that must still head the list."""
+        self.save("a-sector", saved_at=EARLY, scope=config.RULE_SCOPE_SECTOR,
+                  scope_id=self.TRADE, code="7300")
+        self.save("b-firm", saved_at=EARLY, scope=config.RULE_SCOPE_FIRM,
+                  scope_id=FIRM, code="7310")
+        self.save("c-client", saved_at=LATE, code="7320")
+        self.save("d-sector-high", saved_at=LATE, priority=90,
+                  scope=config.RULE_SCOPE_SECTOR, scope_id=self.TRADE,
+                  value="nothing matches this", code="7330")
+        receipt_rules.publish_all(self.repo)
+        path = config.RECEIPT_RULES_DIR / f"{CLIENT}{config.RECEIPT_RULES_SUFFIX}"
+        listed = [r[config.RULE_ID_FIELD] for r in json.loads(
+            path.read_text(encoding="utf-8"))[config.RULES_LIST_FIELD]]
+        self.assertEqual(listed, ["d-sector-high", "c-client", "b-firm", "a-sector"])
+        # The engine skips the high rule, which does not match, and takes the
+        # next one in the file: the file and the engine agree.
+        self.assertEqual(self.winner(), "7320")
 
 
 class TheScopesTest(_Base):
@@ -254,7 +332,8 @@ class TheMatcherTest(_Base):
         self.assertEqual(self.categorise("Apcoa Parking Leeds").match_source, "rule")
 
     def test_a_field_that_is_neither_never_matches(self):
-        """Decision 5. Before this, any field other than `detail` was read as
+        """Decision 5. Before step 10bu, any field other than `detail`, the
+        supplier name's stored word until flag F3 renamed it, was read as
         the vendor key, so a rule on `amount` matched on the key instead."""
         self.repo._conn.execute(
             "INSERT INTO categorisation_rules (rule_id, scope, scope_id, rule_name,"
@@ -269,7 +348,10 @@ class TheMatcherTest(_Base):
     def test_the_four_condition_types_are_unchanged(self):
         self.assertEqual(config.RULE_CONDITION_TYPES,
                          ("contains", "exact_match", "startswith", "regex"))
-        self.assertEqual(config.RULE_CONDITION_FIELDS, ("detail", "vendor_key"))
+        # ~~("detail", "vendor_key")~~: the stored word for the supplier name
+        # became `supplier_name` on 2026-11-14, Paul's decision on flag F3,
+        # while the table was still empty.
+        self.assertEqual(config.RULE_CONDITION_FIELDS, ("supplier_name", "vendor_key"))
 
 
 class NoLineItemsTest(unittest.TestCase):
@@ -447,8 +529,10 @@ class ThePublishTest(_Base):
                                         config.RULES_CLIENT_ID_FIELD,
                                         config.RULES_LIST_FIELD})
         listed = payload[config.RULES_LIST_FIELD]
+        # ~~["firm-rule", "client-rule"]~~, the order before amendment 568: at
+        # equal priority the client rule now comes first although it is newer.
         self.assertEqual([r[config.RULE_ID_FIELD] for r in listed],
-                         ["firm-rule", "client-rule"])
+                         ["client-rule", "firm-rule"])
         self.assertEqual(set(listed[0]), {
             config.RULE_ID_FIELD, config.RULE_SCOPE_FIELD, config.RULE_SCOPE_ID_FIELD,
             config.RULE_NAME_FIELD, config.RULE_PRIORITY_FIELD,
@@ -456,11 +540,11 @@ class ThePublishTest(_Base):
             config.RULE_CONDITION_FIELD_FIELD, config.RULE_CONDITION_VALUE_FIELD,
             config.RULE_NOMINAL_CODE_FIELD, config.RULE_ACCOUNT_NAME_FIELD,
             config.RULE_CREATED_AT_FIELD, config.RULE_UPDATED_AT_FIELD})
-        self.assertEqual(listed[0][config.RULE_SCOPE_FIELD], config.RULE_SCOPE_FIRM)
-        # The firm rule is in the other client's file too.
+        self.assertEqual(listed[1][config.RULE_SCOPE_FIELD], config.RULE_SCOPE_FIRM)
+        # The firm rule is in the other client's file too, after its client rule.
         self.assertEqual([r[config.RULE_ID_FIELD] for r in
                           self.read("CLIENT002")[config.RULES_LIST_FIELD]],
-                         ["firm-rule", "other-client"])
+                         ["other-client", "firm-rule"])
 
     def test_a_client_with_no_rules_gets_an_empty_list(self):
         receipt_rules.publish_all(self.repo)

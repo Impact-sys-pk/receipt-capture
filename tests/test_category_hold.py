@@ -223,7 +223,7 @@ class PerLayerTest(unittest.TestCase):
 
                 # ~~create_client_rule()~~, replaced by save_rule(), step 10bu.
                 repo.save_rule("rule-1", config.RULE_SCOPE_CLIENT, CLIENT,
-                               "always parking", 90, None, "contains", "detail",
+                               "always parking", 90, None, "contains", "supplier_name",
                                "apcoa", "7400", "Fuel", NOW)
                 rule = categorise(repo, "Apcoa Parking Leeds")
                 with self.subTest(layer="0 rule"):
@@ -293,7 +293,7 @@ class PerLayerTest(unittest.TestCase):
                                           vendor_name="Apcoa Parking")
                 # ~~create_client_rule()~~, replaced by save_rule(), step 10bu.
                 repo.save_rule("rule-1", config.RULE_SCOPE_CLIENT, CLIENT,
-                               "always fuel", 90, None, "contains", "detail",
+                               "always fuel", 90, None, "contains", "supplier_name",
                                "esso", "7400", "Fuel", NOW)
                 cases = (("Esso Garage", False), ("Apcoa Parking", False),
                          ("Shell", False), ("Apcoa Parkin", False),

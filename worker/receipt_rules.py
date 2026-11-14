@@ -21,7 +21,7 @@ A `rule_saved` note::
      "rule_id": "<id Desktop mints>",
      "rule": {"scope": "client", "scope_id": "CLIENT001", "rule_name": "...",
               "priority": 50, "vendor_key": null, "condition_type": "contains",
-              "condition_field": "detail", "condition_value": "apcoa",
+              "condition_field": "supplier_name", "condition_value": "apcoa",
               "nominal_code": "7300", "account_name": "Parking"}}
 
 A `rule_deleted` note carries `schema`, `action`, `resolved_at` and `rule_id`.

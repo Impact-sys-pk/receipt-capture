@@ -995,9 +995,22 @@ class Repository:
         **`priority DESC, created_at ASC`, Paul's decision 6 of 2026-11-14**, so
         two rules on one priority resolve oldest first and raising the priority
         stays the explicit way to override. `rule_id` last, only so two rules
-        written in the same instant still come back in one order. **Scope plays
-        no part in the order**: where a client rule and a firm rule both match,
-        the same ordering decides. Not put to Paul, reported as a question.
+        written in the same instant still come back in one order.
+        ~~Scope plays no part in the order.~~ **At equal priority the narrower
+        scope wins, client then firm then sector, and only then oldest first.**
+        Paul's decision on flag F1, amendment 568, 2026-11-14. Firm sits above
+        sector because every client has a firm and no client has a trade.
+        Priority still overrides scope.
+
+        **A rank expression here rather than a stored column.** The rank is a
+        function of `scope`, so storing it would be a second copy that could
+        disagree, and adding a column to an existing table stops the pipeline
+        starting until the live database is altered. The scope names are bound
+        from `config.RULE_SCOPES`, so the vocabulary has one definition.
+
+        **This is the only query that orders rules**, enumerated 2026-11-14.
+        Layer 0 and the published rules file both read it and neither re-sorts,
+        so the file lists rules in the order the engine tries them.
         """
         sector = business_type if business_type and business_type != config.UNSPECIFIED_TRADE else None
         rows = self._conn.execute("""
@@ -1008,10 +1021,13 @@ class Repository:
             WHERE (scope = ? AND scope_id = ?)
                OR (scope = ? AND scope_id = ?)
                OR (scope = ? AND scope_id = ?)
-            ORDER BY priority DESC, created_at ASC, rule_id ASC
+            ORDER BY priority DESC,
+                     CASE scope WHEN ? THEN 0 WHEN ? THEN 1 WHEN ? THEN 2 END,
+                     created_at ASC, rule_id ASC
         """, (config.RULE_SCOPE_CLIENT, client_id,
               config.RULE_SCOPE_FIRM, firm_id,
-              config.RULE_SCOPE_SECTOR, sector)).fetchall()
+              config.RULE_SCOPE_SECTOR, sector,
+              *config.RULE_SCOPES)).fetchall()
         return [dict(row) for row in rows]
 
     def get_rule(self, rule_id: str) -> Optional[dict]:

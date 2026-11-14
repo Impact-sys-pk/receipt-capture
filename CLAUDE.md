@@ -822,8 +822,8 @@ dangling id, and **that is exactly when somebody wants the history**.
 
 **Layer 0 is `categorisations_client_rules`**, the only layer a person authors by hand. **Layer 1 is
 `categorisations_client_vendors`**, this client's learned mappings. **Layer 2 is
-`categorisations_firm_vendors`**, the firm's shared pool. **`categorisations_firm_vendors` holds 0
-rows and has no writer**: `upsert_firm_vendor()` exists and its only caller was deleted at amendment 234. Step 10m gives it one.
+`categorisations_firm_vendors`**, the firm's shared pool. ~~**`categorisations_firm_vendors` holds 0
+rows and has no writer**: `upsert_firm_vendor()` exists and its only caller was deleted at amendment 234. Step 10m gives it one.~~ **Struck 2026-11-14, amendment 558, flag 5 of `2026-11-14_REPORT_claude_code_amendment_557_seven_items.md`. It holds 9 rows and it has a writer.** Step 10m built `_learn_firm_mapping_if_confirmed()`, which writes the pool automatically where the operator's code confirms the classifier's, and the 9 rows were read from the live database read-only on 2026-11-14. **Nine rows on nine distinct keys**, so no firm key holds two names today. **The operator has no lever on this table**: the Remember tick writes the client table only, which is why sub-step 10bs.10 publishes the client mappings to IntelliBooks Desktop and not these, Paul's decision of 2026-11-13 recorded as amendment 555.
 
 ### ~~email_delta~~ Removed 2026-09-04
 

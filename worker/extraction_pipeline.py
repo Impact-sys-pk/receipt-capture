@@ -543,7 +543,11 @@ def process_extraction_result(
         # `validation_status` instead.
         extra=extra_for(validation.notes, duplicate_of,
                         categorisation=categorisation,
-                        vendor_key=uncategorised_vendor_key),
+                        vendor_key=uncategorised_vendor_key,
+                        # The ExtractionResult still in hand, on both branches.
+                        # Only the count is published. Paul's decision,
+                        # 2026-11-14.
+                        line_items=extraction.line_items),
     )
 
     # The copy into the firm's client folder, on a successful publish and on

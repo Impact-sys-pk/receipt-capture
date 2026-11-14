@@ -806,6 +806,9 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
             # Categorise the receipt (reuse the real extraction_id, don't generate a new one)
             trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
             extraction_id = extraction["extraction_id"]
+            # Read once, for the classifier below and for the published item's
+            # line item count. Paul's decision of 2026-11-14 for the count.
+            stored_lines = line_items.from_json(extraction.get("line_items"))
             categorisation = categorisation_engine.categorise(
                 receipt_id=receipt_id,
                 extraction_id=extraction_id,
@@ -821,7 +824,7 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 # step 10p part one: they ARE stored**, so this path now sends
                 # the classifier the same lines the first read saw. That
                 # asymmetry is the defect the step exists to fix.
-                line_items=line_items.from_json(extraction.get("line_items")),
+                line_items=stored_lines,
             )
             # The suggested code has to be one the client's chart holds, whichever
             # layer produced it. Runs before the code reaches either the
@@ -885,7 +888,8 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 # same `category_unconfirmed` answer as one arriving on the
                 # poll. It is the reason `extra_for()` takes the object rather
                 # than a boolean: two call sites, one expression deciding.
-                extra=extra_for(validation_notes, categorisation=categorisation),
+                extra=extra_for(validation_notes, categorisation=categorisation,
+                                line_items=stored_lines),
             )
             if not published:
                 # publish_receipt() has already recorded why and logged it. The

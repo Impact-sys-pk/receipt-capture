@@ -181,6 +181,22 @@ CATEGORY_UNCONFIRMED_KEY = "category_unconfirmed"
 #: the pipeline would now compute can differ from the one on the item.
 VENDOR_KEY_KEY = "vendor_key"
 
+#: How many line items the extraction that produced this item holds. Paul's
+#: decision of 2026-11-14. **A count only: the lines themselves are not
+#: published.**
+#:
+#: **A number, or `null` where there are none.** Never `0`: `worker\\line_items.py`
+#: gives "no item lines" one representation, `None`, in the column and in
+#: `ExtractionResult.line_items`, and the item keeps that rather than adding a
+#: second. On every item, the review branch included, for `VENDOR_KEY_KEY`'s
+#: reason: a stated `null` is a different answer from an absent key, which is
+#: an item written before this existed.
+#:
+#: **Taken from the extraction the publisher already has**, never re-read from
+#: the document. The poll holds the `ExtractionResult` that produced the item;
+#: the recovery sweep reads the stored `extractions.line_items` back.
+LINE_ITEM_COUNT_KEY = "line_item_count"
+
 #: Every key a published item carries that the sidecar does not, in one place.
 #:
 #: **Added 2026-09-11 because adding the fifth broke a test that had the four
@@ -200,6 +216,7 @@ ITEM_ONLY_KEYS = (
     DUPLICATE_OF_KEY,
     CATEGORY_UNCONFIRMED_KEY,
     VENDOR_KEY_KEY,
+    LINE_ITEM_COUNT_KEY,
 )
 
 #: The two outcomes a `publish_events` row can carry, sub-step 10f.36. The
@@ -445,7 +462,7 @@ def category_is_unconfirmed(categorisation) -> bool:
 
 
 def extra_for(notes, duplicate_of=None, categorisation=None,
-              vendor_key=None) -> dict:
+              vendor_key=None, line_items=None) -> dict:
     """The keys amendment 293 adds to a published item, built in one place.
 
     Two callers, `process_extraction_result()` and the recovery sweep in
@@ -475,6 +492,9 @@ def extra_for(notes, duplicate_of=None, categorisation=None,
     read the key off, so the caller passes the one `vendor_key_for()` gave.
     **Passing both is refused**, so no item can carry a key that the
     categorisation passed beside it disagrees with.
+
+    `line_items` is the extraction's own list, or None, and only its length is
+    published, as `LINE_ITEM_COUNT_KEY`. An empty list is `null`, as None is.
     """
     if categorisation is not None and vendor_key is not None:
         raise ValueError(
@@ -492,6 +512,7 @@ def extra_for(notes, duplicate_of=None, categorisation=None,
         NOTES_KEY: list(notes),
         CATEGORY_UNCONFIRMED_KEY: category_is_unconfirmed(categorisation),
         VENDOR_KEY_KEY: vendor_key or None,
+        LINE_ITEM_COUNT_KEY: len(line_items) if line_items else None,
     }
     if duplicate_of:
         extra[DUPLICATE_OF_KEY] = duplicate_of

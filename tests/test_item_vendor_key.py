@@ -243,7 +243,9 @@ class ExtraForTest(unittest.TestCase):
             {publish.NOTES_KEY: ["a note"],
              publish.CATEGORY_UNCONFIRMED_KEY: True,
              publish.DUPLICATE_OF_KEY: "r-0",
-             publish.VENDOR_KEY_KEY: "shell"})
+             publish.VENDOR_KEY_KEY: "shell",
+             # Added 2026-11-14 with the key; no lines were passed.
+             publish.LINE_ITEM_COUNT_KEY: None})
 
     def test_with_no_categorisation_the_key_passed_is_published(self):
         """The non-`ok` branch's route: a key worked out from the name, with

@@ -589,14 +589,13 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
         supplied = raw_values[name]
         if name in AMOUNT_FIELDS:
             values[name] = _note_amount(supplied, name)
-        elif supplied is None:
-            values[name] = None
-        elif isinstance(supplied, str):
-            values[name] = supplied.strip() or None
         else:
-            raise ResolutionNoteError(
-                f"'values.{name}' must be text, got {type(supplied).__name__}"
-            )
+            # The shared reader, flag I1 of 2026-11-14: None stays None, text is
+            # stripped and empty becomes None, anything else is refused as
+            # "'values.<name>' must be text, got <type>". ~~Three branches here
+            # said the same thing in their own words.~~
+            values[name] = note_fields.optional_text(
+                raw_values, name, "values.", error=ResolutionNoteError)
 
     if not values.get("supplier_name"):
         raise ResolutionNoteError(

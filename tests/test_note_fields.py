@@ -23,12 +23,11 @@ USERS = {"worker/resolution/service.py", "worker/receipt_rules.py",
          "worker/mapping_notes.py"}
 READER_WORDING = "' must be text, got "
 
-#: (file, function) holding the reader's wording outside the home, and why.
-#: **One, and it is not a reader definition**: the inline check on each entry of
-#: a receipt note's `values` in `parse_resolution_note()`. The brief named the
-#: three readers and not this, and it is flagged in
-#: `2026-11-14_REPORT_claude_code_three_flags.md` rather than moved.
-ALLOWED_ELSEWHERE = {("worker/resolution/service.py", "parse_resolution_note")}
+#: (file, function) holding the reader's wording outside the home. **None.**
+#: ~~One: the inline check on each entry of a receipt note's `values` in
+#: `parse_resolution_note()`~~, flag I1, moved onto the shared reader on
+#: 2026-11-14 by `PROMPT_claude_code_2026-11-14_five_small_flags.md`, part 4.
+ALLOWED_ELSEWHERE = set()
 
 
 def production_files():
@@ -84,6 +83,39 @@ class TheHomeTest(unittest.TestCase):
                     with self.assertRaises(Refused) as caught:
                         reader(raw, "k", "p.", error=Refused)
                     self.assertEqual(str(caught.exception), message)
+
+
+class TheValuesLoopTest(unittest.TestCase):
+    """A receipt note's `values` entries, read through the shared reader. Flag I1.
+
+    **Added because nothing pinned this.** Mutations dropping the `values.`
+    prefix or swapping the error class survived every existing test on
+    2026-11-14; only a temporary capture saw them.
+    """
+
+    def note(self, field, value):
+        from worker.resolution.service import parse_resolution_note
+        values = {"supplier_name": "X", "gross_amount": 1, "invoice_date": "2026-11-01"}
+        values[field] = value
+        return parse_resolution_note({"schema": 1, "action": "corrected", "resolved_at": "t",
+                                      "receipt_id": "r-1", "values": values})
+
+    def test_every_text_field(self):
+        from worker.resolution.service import (AMOUNT_FIELDS, CORRECTABLE_FIELDS,
+                                               ResolutionNoteError)
+        fields = [f for f in CORRECTABLE_FIELDS if f not in AMOUNT_FIELDS]
+        self.assertEqual(fields, ["supplier_name", "invoice_date",
+                                  "receipt_ref_number", "receipt_time"])
+        for field in fields:
+            with self.subTest(field=field):
+                with self.assertRaises(ResolutionNoteError) as caught:
+                    self.note(field, 7)
+                self.assertEqual(str(caught.exception), f"'values.{field}' must be text, got int")
+        for field in ("receipt_ref_number", "receipt_time"):
+            with self.subTest(field=field, value="stripped"):
+                self.assertEqual(self.note(field, "  x  ").values[field], "x")
+                self.assertIsNone(self.note(field, "   ").values[field])
+                self.assertIsNone(self.note(field, None).values[field])
 
 
 class NoSecondCopyTest(unittest.TestCase):

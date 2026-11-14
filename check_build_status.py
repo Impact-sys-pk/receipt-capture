@@ -24,12 +24,20 @@ WORDS = ("BUILT", "OUTSTANDING", "CANCELLED", "MOVED")
 
 
 def status_word(text):
-    """The status a cell or a paragraph head asserts, ignoring struck wording."""
+    """The status a cell or a paragraph head asserts, ignoring struck wording.
+
+    The EARLIEST status word by position, which is the one at the head. It used
+    to be whichever came first in WORDS, found anywhere in the text, so step
+    10bp reported BUILT under a paragraph head reading OUTSTANDING: its body
+    carries the sentence "MUST BE BEFORE ANYTHING IS BUILT". Found 2026-11-14,
+    after the check had been run and its answer hand-waved past. A status word
+    at the head is the status. The same word later in the prose is prose.
+    """
     plain = re.sub(r"~~.*?~~", "", text, flags=re.S)
-    for word in WORDS:
-        if word in plain:
-            return word
-    return None
+    found = [(plain.index(word), word) for word in WORDS if word in plain]
+    if not found:
+        return None
+    return min(found)[1]
 
 
 def main():

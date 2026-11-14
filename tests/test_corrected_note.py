@@ -570,6 +570,35 @@ class NoFileMovesTest(CorrectedNoteTestCase):
                        ("r-1",)), [])
 
 
+class TheLogLineTest(CorrectedNoteTestCase):
+    """The `resolve.log` line a correction writes. Paul's decision of
+    2026-11-14, amendment 557: it printed "already filed at None" where
+    `filed_path` is NULL, which reads as a path called None."""
+
+    def correcting_line(self):
+        with self.assertLogs("worker.resolution.service", "INFO") as caught:
+            self.write_note()
+            self.poll()
+        lines = [line for line in caught.output
+                 if "correcting receipt r-1" in line]
+        self.assertEqual(len(lines), 1, caught.output)
+        return lines[0]
+
+    def test_no_filed_path_says_there_is_no_copy_in_the_client_folder(self):
+        self.seed_filed(relative=None)
+        self.learn()
+        line = self.correcting_line()
+        self.assertNotIn("None", line)
+        self.assertIn("no copy in the client folder", line)
+
+    def test_a_filed_path_is_named(self):
+        self.seed_filed()
+        self.learn()
+        line = self.correcting_line()
+        self.assertIn(self.receipt()["filed_path"].replace("\\", "\\\\"), line)
+        self.assertNotIn("no copy in the client folder", line)
+
+
 # ---------------------------------------------------------------------------
 # Applying it twice, and the tick
 # ---------------------------------------------------------------------------

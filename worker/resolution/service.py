@@ -2834,11 +2834,15 @@ def _apply_corrected_note(repo, categorisation_engine, receipt: Dict[str, Any],
         remember_gl_for_supplier=remember,
     )
 
+    # A NULL filed_path printed as "already filed at None", which reads as a
+    # path. Paul's decision of 2026-11-14, amendment 557.
+    filed_path = receipt.get("filed_path")
+    where = (f"it is already filed at {filed_path!r}" if filed_path
+             else "there is no copy in the client folder")
     logger.info(
         f"correcting receipt {receipt_id} from the IntelliBooks Desktop note "
-        f"resolved at {london_time.stamp(note.resolved_at)}: it is already filed at "
-        f"{receipt.get('filed_path')!r}, so no file moves and nothing is "
-        "copied or withdrawn"
+        f"resolved at {london_time.stamp(note.resolved_at)}: {where}, so no "
+        "file moves and nothing is copied or withdrawn"
     )
     outcome = resolve_receipt(
         repo, categorisation_engine, receipt_id, corrections,

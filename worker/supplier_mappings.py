@@ -113,8 +113,12 @@ def payload_for(repo, client_id: str) -> dict:
     }
 
 
-def _on_disk(path):
-    """What the file holds now, or None where it is missing or unreadable."""
+def on_disk(path):
+    """What the file holds now, or None where it is missing or unreadable.
+
+    Public, and was `_on_disk()` until flag F10 of 2026-11-14:
+    `worker/receipt_rules.py` publishes by the same method and imports it.
+    """
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -129,7 +133,7 @@ def publish_client(repo, client_id: str) -> bool:
     """
     payload = payload_for(repo, client_id)
     path = config.SUPPLIER_MAPPINGS_DIR / f"{client_id}{config.SUPPLIER_MAPPINGS_SUFFIX}"
-    if _on_disk(path) == payload:
+    if on_disk(path) == payload:
         return False
     config.SUPPLIER_MAPPINGS_DIR.mkdir(parents=True, exist_ok=True)
     write_atomically(path, payload)

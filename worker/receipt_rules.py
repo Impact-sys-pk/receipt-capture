@@ -44,7 +44,7 @@ from typing import Any, Optional
 
 import config
 from worker import note_fields
-from worker.supplier_mappings import _on_disk, write_atomically
+from worker.supplier_mappings import on_disk, write_atomically
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ def publish_client(repo, client_id: str) -> bool:
     """Write one client's file if it differs from the database. True if written."""
     payload = payload_for(repo, client_id)
     path = config.RECEIPT_RULES_DIR / f"{client_id}{config.RECEIPT_RULES_SUFFIX}"
-    if _on_disk(path) == payload:
+    if on_disk(path) == payload:
         return False
     config.RECEIPT_RULES_DIR.mkdir(parents=True, exist_ok=True)
     write_atomically(path, payload)

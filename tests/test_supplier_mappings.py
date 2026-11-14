@@ -279,5 +279,29 @@ class ThePollPublishesTest(unittest.TestCase):
                          ["_consume_resolution_notes", "publish_all"])
 
 
+class TheFileReaderIsPublicTest(unittest.TestCase):
+    """Flag F10, 2026-11-14. `worker/receipt_rules.py` imported the private
+    `_on_disk()` from this module. It is public as `on_disk()` now, and nothing
+    may import the old name. Read from the syntax tree."""
+
+    def test_on_disk_is_public_and_the_private_name_is_gone(self):
+        self.assertTrue(callable(getattr(supplier_mappings, "on_disk", None)))
+        self.assertFalse(hasattr(supplier_mappings, "_on_disk"))
+
+    def test_nothing_imports_the_private_name(self):
+        root = Path(__file__).resolve().parent.parent
+        excluded = {"tests", ".history", "archive", ".venv", ".git", "__pycache__"}
+        found = []
+        for path in sorted(root.rglob("*.py")):
+            rel = path.relative_to(root)
+            if set(rel.parts[:-1]) & excluded:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if (isinstance(node, ast.ImportFrom) and node.module == "worker.supplier_mappings"
+                        and any(a.name == "_on_disk" for a in node.names)):
+                    found.append(f"{rel.as_posix()}:{node.lineno}")
+        self.assertEqual(found, [])
+
+
 if __name__ == "__main__":
     unittest.main()

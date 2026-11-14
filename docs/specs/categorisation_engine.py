@@ -1,3 +1,4 @@
+# SUPERSEDED PROTOTYPE, v0.1: nothing imports it; the live key rule is worker\categorisation\normalise.py and the engine is worker\categorisation\engine.py.
 """
 Intellitax Auto-Categorisation Engine v0.1
 ==========================================

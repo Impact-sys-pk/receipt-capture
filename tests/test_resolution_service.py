@@ -1069,10 +1069,10 @@ class EventAttributionTest(unittest.TestCase):
                 env.seed(repo)
                 resolve_receipt(
                     repo, env.engine(repo), "r-1", _good_corrections(),
-                    actor="clare@intellitax.co.uk", source="console",
+                    actor="operator@example.com", source="console",
                 )
                 event = _rows(repo, "SELECT * FROM resolution_events")[0]
-                self.assertEqual(event["actor"], "clare@intellitax.co.uk")
+                self.assertEqual(event["actor"], "operator@example.com")
                 self.assertEqual(event["source"], "console")
                 self.assertEqual(event["action"], "resolve")
                 self.assertEqual(event["outcome"], "filed")

@@ -99,11 +99,16 @@ before writing any extraction of your own, and say in your report what you took 
 - **App Statements**: the existing `statements` table, whichever route they arrived by. **Do not
   widen that table.** Paul decided it stays as it is.
 - **Bank Statements and Other Attachments**: a new table of their own.
-- **All three kinds**: a row in a new record file, one per client, which IntelliBooks Desktop reads.
-  It mirrors `Intellibills\Receipts\{client_id}-receipts.json` and exists for the same reason, that
-  a browser app cannot read the database. The consultant session proposes
-  `Intellibills\Attachments\{client_id}-attachments.json`; the path is its choice and not Paul's,
-  so say if you find a reason against it.
+- **All three kinds**: a row in a new record file, one per client,
+  `Intellibills\Attachments\{client_id}-attachments.json`. **YOU DO NOT WRITE THAT FILE.**
+  **CORRECTED 2026-10-21, after this brief was issued and while you were working.** The first
+  version of this section told you to write it. That is not how the receipts side works and the
+  consultant session had not checked before writing the brief: `{client_id}-receipts.json` is
+  written by `drainInbox()` in `IntelliBooks-Desktop-v3.html`, which takes each published item out
+  of the exchange folder and stores it. The pipeline writes the sidecar; the front end writes the
+  record file. **So your half ends at publishing into the exchange folder**, and the record file is
+  the consultant session's. If you have already built a writer for it, say so in your report and
+  leave it out of the commit.
 
 Each row carries: the kind, the archive address, the client folder copy where one was made, the
 arrival date, the original filename, the source, the platform and week ending where they apply, and
@@ -176,7 +181,7 @@ and say what it expects.
 ## How to report
 
 - What you took from the Uber statement parser, and what you wrote yourself.
-- The model you propose for classification, and what it costs per document.
+- The measured cost per document for the Haiku 4.5 classification, with the token counts it came from. **The model is not yours to choose; decision sixteen settled it.**
 - The places the `Statements\` name was written, enumerated, and how you found them.
 - The migration: before and after counts, and what you read back.
 - The tests that went red, then green, and the discrimination result.

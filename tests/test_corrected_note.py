@@ -316,13 +316,17 @@ class WhatACorrectedRowStoresTest(CorrectedNoteTestCase):
         self.assertEqual(row["needs_review"], 0)
 
         # **The two fields the layer 1 mutation swapped.** `mapping_id` is
-        # the row id of the mapping that answered; `matched_vendor` is the
-        # normalised key layer 1 looked up. Swapping them leaves both
-        # populated and every other assertion true.
+        # the row id of the mapping that answered; `matched_vendor` is that
+        # mapping's `vendor_name`, the variant that answered. ~~the normalised
+        # key layer 1 looked up~~ **Changed 2026-11-14, Paul's decision,
+        # amendment 557**: since 10bs.9 the variant decides the code, so the
+        # key no longer says why. Swapping them leaves both populated and every
+        # other assertion true.
         self.assertEqual(row["mapping_id"], mapping["mapping_id"],
                          "mapping_id is the row id of the mapping that answered")
-        self.assertEqual(row["matched_vendor"], VENDOR_KEY,
-                         "matched_vendor is the normalised key, not a row id")
+        self.assertEqual(row["matched_vendor"], mapping["vendor_name"],
+                         "matched_vendor is the variant that answered")
+        self.assertNotEqual(row["matched_vendor"], VENDOR_KEY)
         self.assertNotEqual(row["mapping_id"], row["matched_vendor"])
 
         # What the PERSON chose, which sits beside the suggestion and never

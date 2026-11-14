@@ -275,7 +275,10 @@ class CategorisationEngine:
                     suggested_code=client_vendor["nominal_code"],
                     suggested_name=client_vendor["account_name"],
                     confidence="high", match_source="client",
-                    matched_vendor=vendor_key, needs_review=False
+                    # The variant that answered, not the key. Since 10bs.9 the
+                    # name decides the code, so it is what the audit row has to
+                    # say. Paul's decision of 2026-11-14, amendment 557.
+                    matched_vendor=client_vendor["vendor_name"], needs_review=False
                 )
 
             # Layer 2: Exact match in firm lookup (by business type)
@@ -288,7 +291,8 @@ class CategorisationEngine:
                     suggested_code=firm_vendor["nominal_code"],
                     suggested_name=firm_vendor["account_name"],
                     confidence="high", match_source="firm",
-                    matched_vendor=vendor_key, needs_review=False
+                    # The variant that answered, as at layer 1.
+                    matched_vendor=firm_vendor["vendor_name"], needs_review=False
                 )
 
             # Layer 3: Fuzzy match in client lookup

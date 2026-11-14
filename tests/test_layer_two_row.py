@@ -138,13 +138,16 @@ class WhatALayerTwoRowStoresTest(LayerTwoTestCase):
 
         # **The two fields the layer 1 mutation swapped, and the swap at layer 2
         # was still live until this line.** `mapping_id` is the row id of the
-        # firm mapping that answered; `matched_vendor` is the normalised key
-        # layer 2 looked up. Swapping them leaves both populated and every
-        # other assertion in this test true.
+        # firm mapping that answered; `matched_vendor` is that mapping's
+        # `vendor_name`, the variant that answered. ~~the normalised key layer 2
+        # looked up~~ **Changed 2026-11-14, Paul's decision, amendment 557.**
+        # Swapping them leaves both populated and every other assertion in this
+        # test true.
         self.assertEqual(row["mapping_id"], mapping["mapping_id"],
                          "mapping_id is the row id of the firm mapping that answered")
-        self.assertEqual(row["matched_vendor"], VENDOR_KEY,
-                         "matched_vendor is the normalised key, not a row id")
+        self.assertEqual(row["matched_vendor"], mapping["vendor_name"],
+                         "matched_vendor is the variant that answered")
+        self.assertNotEqual(row["matched_vendor"], VENDOR_KEY)
         self.assertNotEqual(row["mapping_id"], row["matched_vendor"])
 
         # What the PERSON chose, beside the suggestion and never over it.
@@ -181,7 +184,9 @@ class TheEngineAnswersFromTheFirmPoolTest(LayerTwoTestCase):
         result = self._categorise()
         self.assertEqual(result.match_source, "firm")
         self.assertEqual(result.mapping_id, mapping["mapping_id"])
-        self.assertEqual(result.matched_vendor, VENDOR_KEY)
+        # The variant that answered, 2026-11-14, amendment 557. The key is in
+        # vendor_key, one line down.
+        self.assertEqual(result.matched_vendor, mapping["vendor_name"])
         self.assertEqual(result.vendor_key, VENDOR_KEY)
         self.assertNotEqual(result.mapping_id, result.matched_vendor)
         self.assertEqual(result.suggested_code, IN_CHART[0])

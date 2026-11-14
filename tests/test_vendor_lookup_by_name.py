@@ -205,6 +205,42 @@ class FirmLookupTest(_Base):
         self.assertNotEqual(self.categorise(SHELL_UNSEEN).match_source, "firm")
 
 
+class MatchedVendorIsTheVariantThatAnsweredTest(_Base):
+    """Paul's decision of 2026-11-14, amendment 557.
+
+    `matched_vendor` recorded the key at layers 1 and 2, so the two live Shell
+    receipts both read `shell` and the audit row could not say which of three
+    taught names decided the code. Since 10bs.9 that name is what decides it.
+    """
+
+    def test_layer_one_by_name_records_that_name(self):
+        self.teach_client(SHELL_EV_LONG, EV, times=3)
+        self.teach_client(SHELL_FUEL, FUEL)
+        for name in (SHELL_FUEL, SHELL_EV_LONG):
+            with self.subTest(name=name):
+                self.assertEqual(self.categorise(name).matched_vendor, name)
+
+    def test_layer_one_by_key_records_the_variant_not_the_receipts_name(self):
+        """The key-only answer: every variant agrees, and the most-seen one
+        is the row that answered, so its name is recorded."""
+        self.teach_client(SHELL_EV, EV, times=2)
+        self.teach_client(SHELL_EV_LONG, EV)
+        result = self.categorise(SHELL_UNSEEN)
+        self.assertEqual(result.match_source, "client")
+        self.assertEqual(result.matched_vendor, SHELL_EV)
+
+    def test_layer_two_records_the_variant(self):
+        self.teach_firm(SHELL_EV_LONG, EV, times=3)
+        self.teach_firm(SHELL_FUEL, FUEL)
+        result = self.categorise(SHELL_FUEL)
+        self.assertEqual((result.match_source, result.matched_vendor),
+                         ("firm", SHELL_FUEL))
+
+    def test_the_key_is_still_on_the_result(self):
+        self.teach_client(SHELL_FUEL, FUEL)
+        self.assertEqual(self.categorise(SHELL_FUEL).vendor_key, "shell")
+
+
 class LayerThreeHandsBackTheRefusedMappingTest(_Base):
     """A FINDING for Paul, pinned so a change to it is deliberate. See the module docstring."""
 

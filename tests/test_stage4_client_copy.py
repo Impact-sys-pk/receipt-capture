@@ -625,7 +625,7 @@ class TheCopyIsImageOnlyTest(unittest.TestCase):
         """The other half of the one-copy rule, and it must not be lost.
 
         Two documents with the same date, supplier and amount are two
-        documents. `_unique_path()` gives the second a `-2`, which is the
+        documents. `unique_path()` gives the second a `-2`, which is the
         behaviour the old writer had, and the reason the one-copy rule is
         answered from `filed_path` rather than from the filename.
 

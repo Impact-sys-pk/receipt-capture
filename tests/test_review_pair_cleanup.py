@@ -5,7 +5,7 @@ Until now nothing removed it, so IntelliBooks still showed every resolved
 receipt as needing review, and completing it there filed a duplicate.
 
 The pair is located by reading the sidecars, never by reconstructing the
-filename: file_review() names the image through _unique_path(), so a second
+filename: file_review() names the image through unique_path(), so a second
 review item for the same original filename is written as {stem}-2{ext}.
 """
 
@@ -96,7 +96,7 @@ class TempEnvironment:
         return path
 
     def write_pair(self, client_id, receipt_id, original_filename, extra=None):
-        """Write a Review pair through the real writer, so _unique_path applies."""
+        """Write a Review pair through the real writer, so unique_path applies."""
         extracted = {"receipt_id": receipt_id, "original_filename": original_filename}
         if extra is not None:
             extracted = extra
@@ -168,7 +168,7 @@ class RemoveReviewPairTest(unittest.TestCase):
             self.assertEqual(list(env.review_dir.iterdir()), [])
 
     def test_second_review_item_for_the_same_filename_removes_only_its_own_pair(self):
-        # _unique_path() writes the second item as parking-2.pdf. Reconstructing
+        # unique_path() writes the second item as parking-2.pdf. Reconstructing
         # {stem}{ext} would delete the first receipt's pair instead of this one.
         with TempEnvironment() as env:
             first_image, first_sidecar = env.write_pair("CLIENT001", "r-first", "parking.pdf")

@@ -691,7 +691,7 @@ def _safe(text: str) -> str:
 
 
 def _next_free_path(directory: Path, base: str, suffix: str) -> Path:
-    """`base.txt`, then `base-2.txt`, which is `worker.filing._unique_path`'s
+    """`base.txt`, then `base-2.txt`, which is `worker.filing.unique_path`'s
     convention. Two runs in the same second must not overwrite each other: core
     rule 1 is that nothing this system writes is overwritten.
     """

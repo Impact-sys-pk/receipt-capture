@@ -45,7 +45,7 @@ Reversible with one amendment.
 written, which is what that column has always meant, and a receipt that has one
 is not copied again. 18.2b: written once, never withdrawn, and a repost does not
 duplicate it. **The filename collision is a different question and keeps
-`_unique_path()`**: two documents with the same date, supplier and amount are two
+`unique_path()`**: two documents with the same date, supplier and amount are two
 documents and the second gets a `-2`.
 
 **And the collision is decided on the bytes. Sub-step 10f.25, 2026-09-09.**
@@ -97,11 +97,12 @@ from typing import NamedTuple
 
 import config
 
-# `_unique_path()` is imported rather than copied. It is private to
-# `worker/filing.py` and a second copy of collision-avoidance logic is worse
+# `unique_path()` is imported rather than copied. It lives in
+# `worker/filing.py`, public since flag F13 of 2026-11-14, and was
+# `_unique_path()` before that. A second copy of collision-avoidance logic is worse
 # than reaching for this one: the two would drift, and the half that drifts
 # first decides whether a second document is kept or silently lost.
-from worker.filing import _unique_path, determine_tax_year, get_client_directory, \
+from worker.filing import unique_path, determine_tax_year, get_client_directory, \
     normalise_supplier
 
 logger = logging.getLogger(__name__)
@@ -259,7 +260,7 @@ def remove_client_copy(filed_path) -> ClientCopyRemoval:
     - **A relative path.** The caller resolves 12.2's practice-root convention
       with `resolve_practice_path()` in the resolution service, and a second
       copy of that here would be the drift this module already warns about for
-      `_unique_path()`.
+      `unique_path()`.
 
     **It never raises**, for `copy_for_published_receipt()`'s reason applied to
     the other direction: the status change is the point of a discard, and a file
@@ -372,7 +373,7 @@ def _same_bytes(one: Path, other: Path) -> bool:
 def _existing_under(destination_dir: Path, base_name: str, suffix: str) -> list:
     """Every file already using the name this document composed.
 
-    The contiguous run `_unique_path()` walks: the plain name, then `-2`, `-3`
+    The contiguous run `unique_path()` walks: the plain name, then `-2`, `-3`
     and so on until one is missing. Enumerated the same way it steps, so the
     two cannot disagree about what a collision is.
     """
@@ -528,7 +529,7 @@ def write_client_copy(
             return ClientCopy(path=candidate, written=False,
                               collided_with=[candidate])
 
-    destination = _unique_path(destination_dir, base_name, suffix)
+    destination = unique_path(destination_dir, base_name, suffix)
     shutil.copy2(source_file, destination)
     return ClientCopy(path=destination, written=True, collided_with=existing)
 

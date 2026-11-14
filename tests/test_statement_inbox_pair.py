@@ -19,7 +19,7 @@ The fourth, a duplicate by hash, already called `_move_inbox_pair_to_processed()
 before going, and was correctly excluded.
 
 **Two of the three never corrected themselves.** `file_review()` uses
-`_unique_path()`, so every poll wrote a fresh copy into `Intellibills\Review\`:
+`unique_path()`, so every poll wrote a fresh copy into `Intellibills\Review\`:
 `-2`, `-3`, and onwards, at 288 polls a day on the five-minute default.
 `review_flags_issued` climbed with them. Measured over three polls before the
 change, not reasoned about.
@@ -304,7 +304,7 @@ class TheReviewCopiesStopAccumulatingTest(unittest.TestCase):
 
     Before the change these two wrote a fresh copy into `Intellibills\Review\`
     on every poll, for ever, because the pair stayed in the inbox and
-    `file_review()` uses `_unique_path()`. A single-poll test cannot see it,
+    `file_review()` uses `unique_path()`. A single-poll test cannot see it,
     which is why nothing did.
     """
 

@@ -1,7 +1,7 @@
 """Sub-step 10f.25: a name collision in the client folder is decided on the bytes.
 
 **`write_client_copy()` composes `{invoice_date}_{supplier}_{gross}` and hands
-it to `_unique_path()`**, so before this a second document matching on all
+it to `unique_path()`**, so before this a second document matching on all
 three landed as `-2` with nothing compared. Two things were wrong with that and
 only one of them was the file.
 
@@ -279,7 +279,7 @@ class TheNamingConventionIsUnchangedTest(CollisionCase):
     def test_a_different_extension_is_a_different_name_and_not_a_collision(self):
         """Stated because it is easy to read the other way.
 
-        `_unique_path()` includes the extension, so the same document arriving
+        `unique_path()` includes the extension, so the same document arriving
         as a PDF and as a JPG produces two names and no collision at all. That
         is the behaviour the old writer had and 10f.25 does not change it.
         """
@@ -415,6 +415,33 @@ class TheOperatorIsToldWhichHappenedTest(CollisionCase):
                 repo.close()
         self.assertEqual(Path(second).name, f"{NAME}-2.pdf")
         self.assertEqual(names(), [f"{NAME}-2.pdf", f"{NAME}.pdf"])
+
+
+class TheCollisionHelperIsPublicTest(unittest.TestCase):
+    """Flag F13, 2026-11-14. `worker/client_copy.py` imported the private
+    `_unique_path()` from `worker/filing.py`. It is public as `unique_path()`
+    now, and nothing may import the old name. Read from the syntax tree, the
+    same shape as F10's `on_disk()`."""
+
+    def test_unique_path_is_public_and_the_private_name_is_gone(self):
+        from worker import filing
+        self.assertTrue(callable(getattr(filing, "unique_path", None)))
+        self.assertFalse(hasattr(filing, "_unique_path"))
+
+    def test_nothing_imports_the_private_name(self):
+        import ast
+        root = Path(__file__).resolve().parent.parent
+        excluded = {"tests", ".history", "archive", ".venv", ".git", "__pycache__"}
+        found = []
+        for path in sorted(root.rglob("*.py")):
+            rel = path.relative_to(root)
+            if set(rel.parts[:-1]) & excluded:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if (isinstance(node, ast.ImportFrom) and node.module == "worker.filing"
+                        and any(a.name == "_unique_path" for a in node.names)):
+                    found.append(f"{rel.as_posix()}:{node.lineno}")
+        self.assertEqual(found, [])
 
 
 if __name__ == "__main__":

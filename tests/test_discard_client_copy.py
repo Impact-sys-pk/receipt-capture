@@ -1162,7 +1162,7 @@ class TheRemoverOnItsOwnTest(unittest.TestCase):
         """The caller resolves. `resolve_practice_path()` in the resolution
         service is the one reader of 12.2's relative convention, and a second
         copy of it here would be the drift `worker\\client_copy.py` already
-        warns about for `_unique_path()`."""
+        warns about for `unique_path()`."""
         with TempEnvironment():
             result = client_copy.remove_client_copy(
                 Path("Clients/Test Client/a.pdf"))

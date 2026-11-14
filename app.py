@@ -404,7 +404,7 @@ INBOX_PROCESSED_DIRNAME = "Processed"
 def _unique_processed_stem(directory: Path, name: str) -> str:
     """A stem in `directory` that neither an image nor a sidecar already uses.
 
-    Same `-2`, `-3` convention as `_unique_path()` in worker/filing.py. The stem
+    Same `-2`, `-3` convention as `unique_path()` in worker/filing.py. The stem
     is chosen for the pair rather than the image alone, because the inbox scanner
     finds a sidecar with `Path.with_suffix('.json')`: an image landing as
     `x-2.png` needs its sidecar at `x-2.json` or the two stop being a pair.
@@ -1908,7 +1908,7 @@ def process_once():
                 # is never entered from here.
                 #
                 # **Two of the three never corrected themselves.**
-                # `file_review()` uses `_unique_path()`, so a statement whose
+                # `file_review()` uses `unique_path()`, so a statement whose
                 # client cannot be resolved, or whose sidecar carries no platform
                 # or no week ending, wrote a FRESH copy into Review on every
                 # poll: `-2`, `-3` and onwards, 288 a day on the five-minute

@@ -139,7 +139,7 @@ class TheClientFolderCopyIsTheDocumentAloneTest(unittest.TestCase):
             self.assertEqual(result, statements_dir() / "uber_2026-04-05.pdf")
 
     def test_the_collision_suffix_still_works_on_the_document(self):
-        """`_unique_path()` is untouched: two statements for one week are two
+        """`unique_path()` is untouched: two statements for one week are two
         documents and the second gets a `-2`."""
         with TempEnvironment():
             first = self.call_it()

@@ -37,7 +37,13 @@ def normalise_supplier(supplier: str) -> str:
     return text or "unknown"
 
 
-def _unique_path(directory: Path, base_name: str, suffix: str) -> Path:
+def unique_path(directory: Path, base_name: str, suffix: str) -> Path:
+    """`base_name + suffix` in `directory`, or the first free `-2`, `-3` after it.
+
+    Public, and was `_unique_path()` until flag F13 of 2026-11-14:
+    `worker/client_copy.py` names its client-folder copies by the same rule
+    and imports it.
+    """
     destination = directory / f"{base_name}{suffix}"
     if not destination.exists():
         return destination
@@ -74,7 +80,7 @@ def get_client_directory(client_folder_name: str) -> Path:
 #
 # **worker/client_copy.py holds what replaced it**, and the one-copy rule moved
 # with it: `receipts.filed_path` says whether a receipt has been copied, where
-# this function relied on _unique_path() and would happily write a second file
+# this function relied on unique_path() and would happily write a second file
 # for one receipt.
 #
 # Deleted rather than left dead. A function that writes into `Clients\` is one
@@ -127,7 +133,7 @@ def file_statement(
     opposite of the receipt discard earlier the same day, where a sidecar goes
     with a document being deleted.
 
-    **`_unique_path()` is untouched**: two statements for one week are two
+    **`unique_path()` is untouched**: two statements for one week are two
     documents and the second gets a `-2`.
     """
     client_dir = get_client_directory(client_folder_name)
@@ -136,7 +142,7 @@ def file_statement(
 
     ext = original_extension if original_extension.startswith(".") else f".{original_extension}"
     base_name = f"{platform}_{week_ending}"
-    dest_file = _unique_path(destination_dir, base_name, ext)
+    dest_file = unique_path(destination_dir, base_name, ext)
 
     shutil.copy2(source_file, dest_file)
     return dest_file
@@ -154,7 +160,7 @@ def file_review(
     review_dir.mkdir(parents=True, exist_ok=True)
 
     base_name = Path(original_filename).stem
-    dest_file = _unique_path(review_dir, base_name, source_file.suffix)
+    dest_file = unique_path(review_dir, base_name, source_file.suffix)
     dest_sidecar = dest_file.with_suffix(dest_file.suffix + REVIEW_SIDECAR_SUFFIX)
 
     shutil.copy2(source_file, dest_file)
@@ -246,7 +252,7 @@ def _find_review_sidecar(
 ) -> Path | None:
     """Find this receipt's review sidecar by reading them, never by name.
 
-    file_review() names the image through _unique_path(), so a second review
+    file_review() names the image through unique_path(), so a second review
     item for the same original filename is {stem}-2{ext} with sidecar
     {stem}-2{ext}.review.json. Rebuilding {stem}{ext} would miss that file, or
     delete a different receipt's pair.

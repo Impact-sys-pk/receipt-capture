@@ -27,6 +27,7 @@ from worker.email.reader import fetch_attachments, fetch_new_messages, move_emai
 from worker.email.alerts import send_no_attachment_alert, send_unknown_sender_alert
 from worker.extraction.factory import get_extractor
 from worker.extraction.retry_helper import extract_with_transient_retry
+from worker.extraction.stored_reply import reply_is_usable
 from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
@@ -1349,6 +1350,28 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
         receipt_id = receipt['receipt_id']
         file_path = Path(receipt['file_path'])
 
+        # Flag H4, Paul's decision of 2026-11-14: a receipt the extractor
+        # declined is not auto-retried, "Not until it is reviewed". Decided by
+        # the stored reply and not by the status, so `failed` and
+        # `needs_review` alike. A stored exception message counts as not
+        # usable too, his decision the same day: the rule is literal.
+        #
+        # **Here, in the loop, rather than in find_failed_by_version()**,
+        # because "usable" has to be decided by the same Python parsing
+        # extract() does, and SQLite's json_valid() is not that parser.
+        #
+        # **Before the lock and before the seven-day check**, so the skip
+        # writes nothing at all: no locked_at, no extraction row, and no move
+        # to retry_exhausted. The receipt stays exactly where it is and waits
+        # for the operator. It is still selected on every poll, because its
+        # latest row keeps its old version, so this is logged at DEBUG.
+        latest = repo.get_extraction_for_receipt(receipt_id)
+        if latest is not None and not reply_is_usable(latest.get('raw_response')):
+            logger.debug(f"not auto-retrying {receipt_id}: its last reply could not be "
+                         f"used, so it waits for review")
+            stats['auto_retry_skipped_declined'] = stats.get('auto_retry_skipped_declined', 0) + 1
+            continue
+
         # Try to acquire lock (handles stale-lock recovery automatically)
         acquired = repo.acquire_receipt_lock(receipt_id, allow_stale_after_minutes=60)
         if not acquired:
@@ -1502,6 +1525,10 @@ def process_once():
         "auto_retry_errors": 0,
         "possible_duplicates_found": 0,
         "retry_exhausted_count": 0,
+        # Flag H4, 2026-11-14: receipts the auto-retry passed over because the
+        # extractor's last reply could not be used. Counted on every poll they
+        # are selected, so this is a per-poll figure and not a total.
+        "auto_retry_skipped_declined": 0,
         "notes_applied": 0,
         "notes_failed": 0,
         # Sub-step 10f.38. Stated here for the reason every key above is: the

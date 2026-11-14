@@ -329,7 +329,7 @@ def process_extraction_result(
         # **The helper is not widened, it is replaced here.** ~~Its three other
         # callers are the file-hash dedup in `app.py`~~ Its three other callers
         # were the file-hash dedup in `app.py`, which item 34 moved to
-        # `find_ok_by_hash()`, and the helper was deleted on 2026-11-14. The
+        # `find_blocker_by_hash()`, and the helper was deleted on 2026-11-14. The
         # reasoning that follows is amendment 303 and still holds by status:
         # `_move_inbox_pair_to_processed()` depends in terms on a `needs_review`
         # receipt NOT counting as filed, so a widened helper would make a file

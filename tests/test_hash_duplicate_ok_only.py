@@ -148,7 +148,7 @@ def arrival():
 
 
 class TheLookupAsksAboutStatusTest(unittest.TestCase):
-    """`find_ok_by_hash()` on its own, against every status."""
+    """`find_blocker_by_hash()` on its own, against every status."""
 
     def test_an_ok_receipt_that_was_never_filed_is_found(self):
         with TempEnvironment():
@@ -159,7 +159,7 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
                     repo._conn.execute(
                         "SELECT filed_path FROM receipts WHERE receipt_id='r-ok'"
                     ).fetchone()[0])
-                self.assertEqual(repo.find_ok_by_hash("h" * 64, CLIENT), "r-ok")
+                self.assertEqual(repo.find_blocker_by_hash("h" * 64, CLIENT), ("r-ok", "ok"))
             finally:
                 repo.close()
 
@@ -169,7 +169,7 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
             repo = Repository()
             try:
                 seed(repo, "r-att", config.BANK_ATTACHMENT_STATUS, "h" * 64)
-                self.assertEqual(repo.find_ok_by_hash("h" * 64, CLIENT), "r-att")
+                self.assertEqual(repo.find_blocker_by_hash("h" * 64, CLIENT), ("r-att", config.BANK_ATTACHMENT_STATUS))
             finally:
                 repo.close()
 
@@ -185,7 +185,7 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
                     repo = Repository()
                     try:
                         seed(repo, "r-1", status, "h" * 64)
-                        self.assertIsNone(repo.find_ok_by_hash("h" * 64, CLIENT))
+                        self.assertIsNone(repo.find_blocker_by_hash("h" * 64, CLIENT))
                     finally:
                         repo.close()
 
@@ -198,7 +198,7 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
                 seed(repo, "r-second", "ok", "h" * 64)
                 # The trap is live: the old lookup hands back the discarded one.
                 self.assertEqual(repo.find_by_hash("h" * 64, CLIENT), "r-first")
-                self.assertEqual(repo.find_ok_by_hash("h" * 64, CLIENT), "r-second")
+                self.assertEqual(repo.find_blocker_by_hash("h" * 64, CLIENT), ("r-second", "ok"))
             finally:
                 repo.close()
 
@@ -208,8 +208,8 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
             repo = Repository()
             try:
                 seed(repo, "r-other", "ok", "h" * 64, client_id=OTHER)
-                self.assertIsNone(repo.find_ok_by_hash("h" * 64, CLIENT))
-                self.assertEqual(repo.find_ok_by_hash("h" * 64, OTHER), "r-other")
+                self.assertIsNone(repo.find_blocker_by_hash("h" * 64, CLIENT))
+                self.assertEqual(repo.find_blocker_by_hash("h" * 64, OTHER), ("r-other", "ok"))
             finally:
                 repo.close()
 
@@ -220,13 +220,13 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
             try:
                 seed(repo, "r-ok", "ok", "other" * 8)
                 repo.mark_processed("msg-1", "att-1", "h" * 64, "r-ok", "TESTFIRM001")
-                self.assertEqual(repo.find_ok_by_hash("h" * 64, CLIENT), "r-ok")
+                self.assertEqual(repo.find_blocker_by_hash("h" * 64, CLIENT), ("r-ok", "ok"))
             finally:
                 repo.close()
 
     def test_the_client_is_required_rather_than_defaulted(self):
         import inspect
-        parameter = inspect.signature(Repository.find_ok_by_hash).parameters["client_id"]
+        parameter = inspect.signature(Repository.find_blocker_by_hash).parameters["client_id"]
         self.assertIs(parameter.default, inspect.Parameter.empty)
 
 
@@ -403,20 +403,29 @@ class TheCaptureLogSaysWhatWasTestedTest(unittest.TestCase):
                 Routes(arrival()).inbox_file("shell.jpg", "desktop")
         return [line for line in captured.output if "capture" in line and "hash" in line]
 
-    def test_a_refusal_names_the_ok_receipt(self):
-        lines = self._capture_log(["discarded", "ok"])
-        self.assertEqual(len(lines), 1, lines)
-        self.assertIn("of ok receipt r-1", lines[0])
-        self.assertNotIn("filed", lines[0])
+    def test_a_refusal_names_the_status_it_found(self):
+        """~~`test_a_refusal_names_the_ok_receipt`~~. Paul's decision of
+        2026-11-14: the line prints the status the lookup read, rather than
+        asserting one. It said `ok` for a `bank_attachment` match after
+        `e4e1d47`, the fault amendment 571 had corrected that morning."""
+        for status in REFUSED_STATUSES:
+            with self.subTest(status=status):
+                lines = self._capture_log(["discarded", status])
+                self.assertEqual(len(lines), 1, lines)
+                self.assertIn(f"by hash of {status} receipt r-1,", lines[0])
+                self.assertNotIn("filed", lines[0])
 
     def test_an_allowance_names_no_status_it_did_not_test(self):
         lines = self._capture_log(["discarded"])
         self.assertEqual(len(lines), 1, lines)
         self.assertNotIn("failed receipt", lines[0])
-        self.assertIn("no ok receipt", lines[0])
+        # ~~"no ok receipt"~~: it matched nothing in the refused set, so it
+        # names no status and says what it did. Paul's decision, 2026-11-14.
+        self.assertNotIn("ok receipt", lines[0])
+        self.assertIn("matches r-0 but nothing that blocks a resend", lines[0])
 
 
-# The set claim, that three call sites ask `find_ok_by_hash()` and none asks
+# The set claim, that three call sites ask `find_blocker_by_hash()` and none asks
 # `is_recorded_and_filed()`, is held by the two source guards that already
 # held the old one: `test_all_three_hash_call_sites_read_the_same_way` in
 # tests/test_step10f_duplicates.py and
@@ -442,7 +451,7 @@ class TheOldGuardIsGoneTest(unittest.TestCase):
         self.assertFalse(
             source_guards.defines(tree, "is_recorded_and_filed"),
             "it was deleted on 2026-11-14 and is back. The file-hash block is "
-            "find_ok_by_hash(), which asks the status, not filed_path")
+            "find_blocker_by_hash(), which asks the status, not filed_path")
 
 
 if __name__ == "__main__":

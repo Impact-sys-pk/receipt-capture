@@ -427,7 +427,7 @@ def _move_inbox_pair_to_processed(intake) -> None:
     Design document 3.13. This runs on **every** outcome, not only `ok`. Anything
     left behind is found by the hash check on the next poll and, ~~is not
     `is_recorded_and_filed()` because `filed_path` is NULL,~~ **unless its
-    receipt is `ok` or `bank_attachment`, which `find_ok_by_hash()` refuses
+    receipt is `ok` or `bank_attachment`, which `find_blocker_by_hash()` refuses
     from 2026-11-14,** is then deliberately reprocessed: a new receipt row, a
     new extraction row, a new Review pair and one OpenAI call, every five
     minutes, indefinitely.
@@ -1677,7 +1677,7 @@ def process_once():
                     # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
                     # Item 34, amendment 571: block only where this client
                     # already has an `ok` or `bank_attachment` receipt with these bytes. See
-                    # Repository.find_ok_by_hash() for why `filed_path` stopped
+                    # Repository.find_blocker_by_hash() for why `filed_path` stopped
                     # being the question and why every other status is allowed.
                     # 10f.18. Scoped to this client: another client's identical
                     # PDF is not a duplicate of this one.
@@ -1688,8 +1688,9 @@ def process_once():
                     # a duplicate, and this path used to swallow it. It cannot
                     # loop: mark_processed() runs for every image below and the
                     # email moves to INBOX.Processed Receipts afterwards.
-                    existing = repo.find_ok_by_hash(file_hash, client_id)
-                    if existing:
+                    blocker = repo.find_blocker_by_hash(file_hash, client_id)
+                    if blocker:
+                        existing = blocker.receipt_id
                         logger.info(f"hash duplicate of {existing}, skipping embedded image {filename}")
                         stats["duplicates_skipped"] += 1
                         # 2026-11-14, Paul's decision: every refusal leaves the
@@ -2020,12 +2021,15 @@ def process_once():
 
             # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
             # Item 34, amendment 571: block only where this client already has
-            # an `ok` or `bank_attachment` receipt with these bytes. Repository.find_ok_by_hash().
-            existing = repo.find_ok_by_hash(intake.file_hash, receipt_client_id)
-            if existing:
+            # an `ok` or `bank_attachment` receipt with these bytes. Repository.find_blocker_by_hash().
+            blocker = repo.find_blocker_by_hash(intake.file_hash, receipt_client_id)
+            if blocker:
+                existing = blocker.receipt_id
+                # ~~"by hash of ok receipt"~~: the status the lookup read, not
+                # one this line asserts. Paul's decision, 2026-11-14.
                 logger.info(
-                    f"capture duplicate by hash of ok receipt {existing}, moving inbox pair "
-                    f"to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
+                    f"capture duplicate by hash of {blocker.status} receipt {existing}, "
+                    f"moving inbox pair to {INBOX_PROCESSED_DIRNAME}: {intake.filename}")
                 # 2026-11-14, Paul's decision: every refusal leaves the
                 # attachment route's event. There is no email, so message_id is
                 # `{source}:{original_name}`, the value this route already
@@ -2052,9 +2056,11 @@ def process_once():
             # "of failed receipt" whatever the status, and tested `filed_path`.
             earlier = repo.find_by_hash(intake.file_hash, receipt_client_id)
             if earlier:
+                # ~~"but no ok receipt"~~: it matched nothing in the blocking
+                # set, so it names no status. Paul's decision, 2026-11-14.
                 logger.info(
-                    f"capture hash matches {earlier} but no ok receipt, "
-                    f"allowing reprocessing {intake.filename}")
+                    f"capture hash matches {earlier} but nothing that blocks a "
+                    f"resend, allowing reprocessing {intake.filename}")
 
             receipt_id = str(uuid.uuid4())
             # receipt_client_id and receipt_firm_id are computed above the hash
@@ -2259,9 +2265,10 @@ def process_once():
                 # ~~Part 2A: Only block if genuinely filed (filed_path IS NOT NULL)~~
                 # Item 34, amendment 571: block only where this client already
                 # has an `ok` or `bank_attachment` receipt with these bytes.
-                # Repository.find_ok_by_hash(). 10f.18. Scoped to this client.
-                existing = repo.find_ok_by_hash(file_hash, client_id)
-                if existing:
+                # Repository.find_blocker_by_hash(). 10f.18. Scoped to this client.
+                blocker = repo.find_blocker_by_hash(file_hash, client_id)
+                if blocker:
+                    existing = blocker.receipt_id
                     logger.warning(f"hash duplicate of {existing}, skipping {filename}")
                     stats["duplicates_skipped"] += 1
                     _log_receipt(

@@ -3,7 +3,7 @@ import logging
 import sqlite3
 import uuid
 from datetime import datetime, time as dt_time, timedelta, timezone
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import config
 from worker import london_time
@@ -104,6 +104,20 @@ def _by_name_then_agreeing_key(rows, vendor_name: Optional[str]) -> Optional[dic
     return None
 
 
+class HashBlocker(NamedTuple):
+    """What `Repository.find_blocker_by_hash()` found: the receipt that blocks
+    a resend of these bytes, and the status it was found with.
+
+    **The status is carried so a log line can print what was read rather than
+    assert what was expected.** Paul's decision of 2026-11-14. Each value of
+    it is one of `config.HASH_DUPLICATE_STATUSES`, which stays the one place
+    that set is written.
+    """
+
+    receipt_id: str
+    status: str
+
+
 class Repository:
     def __init__(self, db_path=None):
         if db_path is None:
@@ -148,7 +162,7 @@ class Repository:
         matches nobody, where the unjoined query returned the dangling id. No
         caller can tell: ~~because every one of them pairs this with
         is_recorded_and_filed() and a receipt with no row is not filed~~ from
-        2026-11-14 the hash block is `find_ok_by_hash()` below, whose
+        2026-11-14 the hash block is `find_blocker_by_hash()` below, whose
         `processed_attachments` subquery is joined to `receipts` the same way,
         and this function's one remaining caller only names a match in a log
         line.
@@ -171,17 +185,26 @@ class Repository:
         ).fetchone()
         return row["receipt_id"] if row else None
 
-    def find_ok_by_hash(self, file_hash: str, client_id: str) -> Optional[str]:
-        """This client's finished receipt with this file hash, if there is one.
+    def find_blocker_by_hash(self, file_hash: str, client_id: str) -> Optional["HashBlocker"]:
+        """This client's receipt with these bytes that blocks a resend, if any.
 
-        ~~This client's `ok` receipt~~ **Finished means a status in
-        `config.HASH_DUPLICATE_STATUSES`: `ok` and, from Paul's decision later
-        on 2026-11-14, `bank_attachment`**, which is filed against a posted
-        transaction and so has nothing to retry either. Without it a resend of
-        an attached document was extracted and published beside it, and nothing
-        else could flag it, because an attachment has no extraction row for the
-        semantic check to join. **The name still says `ok`**; see the report of
-        that date.
+        **Returns a `HashBlocker`, the receipt's id and the status it was found
+        with, or None.** ~~`find_ok_by_hash()`, returning the id alone~~
+        Renamed and given the status on Paul's decisions of 2026-11-14, so the
+        code and the log use one word for one idea, and so the capture route's
+        log line can print the status it actually found. **It had been
+        asserting `ok` for a `bank_attachment` match**, a status nobody read,
+        which is the fault amendment 571 corrected in that line the same
+        morning. "Finished" was offered as the word and declined: it would be a
+        second definition to keep in step with the config set by hand.
+
+        ~~This client's `ok` receipt~~ ~~**Finished means**~~ **Blocks means a
+        status in `config.HASH_DUPLICATE_STATUSES`: `ok` and, from Paul's
+        decision later on 2026-11-14, `bank_attachment`**, which is filed
+        against a posted transaction and so has nothing to retry either.
+        Without it a resend of an attached document was extracted and published
+        beside it, and nothing else could flag it, because an attachment has no
+        extraction row for the semantic check to join.
 
         **The file-hash duplicate block. Item 34, amendment 571, Paul's
         decision of 2026-11-14: a byte-identical file is refused where the
@@ -221,7 +244,7 @@ class Repository:
         statuses = tuple(config.HASH_DUPLICATE_STATUSES)
         row = self._conn.execute(
             f"""
-            SELECT r.receipt_id
+            SELECT r.receipt_id, r.status
             FROM receipts r
             WHERE r.client_id = ?
               AND r.status IN ({", ".join("?" * len(statuses))})
@@ -234,7 +257,7 @@ class Repository:
             """,
             (client_id, *statuses, file_hash, file_hash)
         ).fetchone()
-        return row["receipt_id"] if row else None
+        return HashBlocker(row["receipt_id"], row["status"]) if row else None
 
     # find_by_transaction() and find_by_transaction_no_date() were here until
     # 2026-09-07. Sub-step 10f.23. Exact supplier and exact amount, one with a
@@ -562,7 +585,7 @@ class Repository:
         **Two things this changes for a reader of the column, both intended.**
         ~~`is_recorded_and_filed()` goes False, which is what lets the identical
         document be sent again~~ **From 2026-11-14 the column does not decide
-        that**: the hash block is `find_ok_by_hash()`, and the `discarded`
+        that**: the hash block is `find_blocker_by_hash()`, and the `discarded`
         status is what lets the identical document be sent again, per
         deliverable 3 of the same brief. And
         `get_published_receipts_without_client_copy()` selects on
@@ -1541,7 +1564,7 @@ class Repository:
     # decision, flag 3 of `2026-11-14_REPORT_claude_code_duplicates_and_two_flags.md`.
     # It answered whether a receipt had a `filed_path` and was not discarded,
     # and its three callers were the file-hash duplicate block in `app.py`.
-    # **Item 34 replaced all three with `find_ok_by_hash()`**, because
+    # **Item 34 replaced all three with `find_blocker_by_hash()`**, because
     # `filed_path` waits for Post on the `post` trigger, so the block could
     # refuse nothing until then; nothing called it after. Enumerated from the
     # syntax tree before the deletion: no production caller, thirteen test
@@ -1550,7 +1573,7 @@ class Repository:
     # **Its reasoning is not lost with it.** Why a `needs_review` receipt must
     # not count is amendment 303 of `2026-07-25_CONSOLE_DESIGN.md`, and why a
     # discarded receipt whose `filed_path` outlived the discard must not block
-    # a resend is amendment 538, commit `435d1b5`. `find_ok_by_hash()` holds
+    # a resend is amendment 538, commit `435d1b5`. `find_blocker_by_hash()` holds
     # both answers by status: neither `needs_review` nor `discarded` is in
     # `config.HASH_DUPLICATE_STATUSES`.
     #

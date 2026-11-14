@@ -657,14 +657,14 @@ class TheSweepsTest(AttachedTestCase):
         function was described.
 
         **Item 34, 2026-11-14: none of this decides any more.** The three
-        callers ask `find_ok_by_hash()`. ~~which finds an `ok` receipt and
+        callers ask `find_blocker_by_hash()`. ~~which finds an `ok` receipt and
         nothing else, so an attached document blocks nothing before Post or
         after it. The assertions below still hold because they ask
         `is_recorded_and_filed()` directly.~~ **Corrected the same evening,
         twice.** Paul's decision put `bank_attachment` in
         `config.HASH_DUPLICATE_STATUSES`, so an attached document blocks a
         resend **before Post as well as after**, and `is_recorded_and_filed()`
-        is deleted. The assertions below ask `find_ok_by_hash()`. What follows
+        is deleted. The assertions below ask `find_blocker_by_hash()`. What follows
         is kept as written.
 
         ~~**What actually decides is the guard all three callers pair it with.**~~
@@ -686,7 +686,7 @@ class TheSweepsTest(AttachedTestCase):
                                  RECEIPT_ID)
                 # ~~before Post it has no filed_path, so it blocks nothing~~
                 self.assertEqual(
-                    repo.find_ok_by_hash(file_hash, "CLIENT001"), RECEIPT_ID,
+                    repo.find_blocker_by_hash(file_hash, "CLIENT001").receipt_id, RECEIPT_ID,
                     "a bank_attachment blocks a resend before Post: its status "
                     "is set on arrival, and the status is what decides")
                 # Another client's identical bytes are not this client's
@@ -701,9 +701,9 @@ class TheSweepsTest(AttachedTestCase):
             repo = Repository()
             try:
                 self.assertEqual(
-                    repo.find_ok_by_hash(file_hash, "CLIENT001"), RECEIPT_ID,
+                    repo.find_blocker_by_hash(file_hash, "CLIENT001").receipt_id, RECEIPT_ID,
                     "and after Post, unchanged by the copy")
-                self.assertIsNone(repo.find_ok_by_hash(file_hash, "CLIENT002"))
+                self.assertIsNone(repo.find_blocker_by_hash(file_hash, "CLIENT002"))
             finally:
                 repo.close()
 
@@ -737,7 +737,7 @@ class TheSweepsTest(AttachedTestCase):
             # `2026-11-14_REPORT_claude_code_duplicates_and_two_flags.md`.
             # Paul's decision the same day put `bank_attachment` beside `ok` in
             # `config.HASH_DUPLICATE_STATUSES`, before Post as well as after.
-            "find_ok_by_hash",
+            "find_blocker_by_hash",
             # Filters status IN ('failed', 'needs_review') and joins
             # extractions, of which an attached document has none.
             "find_failed_by_version",
@@ -749,7 +749,7 @@ class TheSweepsTest(AttachedTestCase):
             # asks `filed_path IS NOT NULL`. Flag 3, and the test above.~~
             # **Since item 34 it decides nothing**: its one production caller
             # names the match in the capture route's "allowing" log line, and
-            # `find_ok_by_hash()` above is the block.
+            # `find_blocker_by_hash()` above is the block.
             "find_by_hash",
             # Counts the statuses in app.REVIEW_STATUSES, which the marker is
             # not one of.

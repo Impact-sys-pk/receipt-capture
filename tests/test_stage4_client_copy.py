@@ -1165,7 +1165,7 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
                     "r-old", str(config.CLIENTS_ROOT / "old.pdf"))
                 # The precondition is that the receipt is filed, which is the
                 # column, so it is read directly. ~~is_recorded_and_filed()~~
-                # was deleted 2026-11-14; find_ok_by_hash() would assert the
+                # was deleted 2026-11-14; find_blocker_by_hash() would assert the
                 # status instead, which is a different claim.
                 self.assertIsNotNone(repo.get_receipt("r-old")["filed_path"])
                 self.assertEqual(repo.list_publish_events("r-old"), [])
@@ -1200,7 +1200,7 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
 
         **Item 34, 2026-11-14: `is_recorded_and_filed()` has no production
         caller now.** ~~After 10f.24 it has three, all the file-hash dedup in
-        `app.py`~~ The three file-hash sites ask `find_ok_by_hash()` instead,
+        `app.py`~~ The three file-hash sites ask `find_blocker_by_hash()` instead,
         because `filed_path` waits for Post on the `post` trigger and the block
         could refuse nothing until then. A needs_review receipt still does not
         count, because only ~~`ok` does~~ the statuses in
@@ -1209,7 +1209,7 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
         below stays as the answer to "who calls the old name".
         """
         sites = {}
-        for name in ("is_recorded_and_filed", "find_ok_by_hash", "is_published"):
+        for name in ("is_recorded_and_filed", "find_blocker_by_hash", "is_published"):
             found = []
             for path in production_files():
                 tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -1222,13 +1222,13 @@ class DuplicateDetectionDoesNotDependOnTheTriggerTest(unittest.TestCase):
         self.assertEqual(
             sites,
             {"is_recorded_and_filed": [],
-             "find_ok_by_hash": ["app.py::process_once"] * 3,
+             "find_blocker_by_hash": ["app.py::process_once"] * 3,
              "is_published": ["worker/extraction_pipeline.py::"
                               "process_extraction_result",
                               "worker/resolution/service.py::"
                               "_apply_attached_note"]},
             f"the callers moved: {sites}. The file-hash block is "
-            "find_ok_by_hash() at three sites in app.py, nothing calls the "
+            "find_blocker_by_hash() at three sites in app.py, nothing calls the "
             "deleted is_recorded_and_filed(), and is_published() keeps its two")
 
 

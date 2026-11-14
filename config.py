@@ -813,7 +813,7 @@ INTELLIBOOKS_DESTINATION = "intellibooks"
 BANK_ATTACHMENT_STATUS = "bank_attachment"
 
 # The receipt statuses whose byte-identical resend is refused by the file-hash
-# duplicate block, `Repository.find_ok_by_hash()`. Item 34, amendment 571, and
+# duplicate block, `Repository.find_blocker_by_hash()`. Item 34, amendment 571, and
 # Paul's decision of 2026-11-14 that adds the second. **The test is whether
 # there is anything to retry.** `ok` worked; a `bank_attachment` is filed
 # against a posted transaction. Both are finished work, so a second copy is a

@@ -56,7 +56,7 @@ def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
     ~~Filed matters: every caller of find_by_hash() pairs it with
     is_recorded_and_filed(), from 10f.20 onwards, so an unfiled seed tests a
     different thing.~~ **From 2026-11-14 the hash block is
-    `find_ok_by_hash()`, which decides on `status` and never reads
+    `find_blocker_by_hash()`, which decides on `status` and never reads
     `filed_path`**, so a seed meant to be a hash duplicate passes `status`, and
     `filed` matters only to tests about the client folder copy.
 
@@ -165,7 +165,7 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
         **It changes nothing a caller can see**, and that is the point of
         asserting it: ~~all three call sites pair the lookup with
         `is_recorded_and_filed()` from 10f.20, and a receipt with no row is not
-        filed~~ **the three call sites ask `find_ok_by_hash()` from 2026-11-14,
+        filed~~ **the three call sites ask `find_blocker_by_hash()` from 2026-11-14,
         whose subquery is joined to `receipts` the same way**, so both the old
         answer and the new one allow reprocessing.
         """
@@ -174,7 +174,7 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
             try:
                 repo.mark_processed("msg-1", "att-1", SHARED_HASH, "r-gone", "TESTFIRM001")
                 self.assertIsNone(repo.find_by_hash(SHARED_HASH, CLIENT_A))
-                self.assertIsNone(repo.find_ok_by_hash(SHARED_HASH, CLIENT_A),
+                self.assertIsNone(repo.find_blocker_by_hash(SHARED_HASH, CLIENT_A),
                                   "and the block finds no row either, so the "
                                   "outcome for a caller is unchanged")
             finally:
@@ -502,7 +502,7 @@ class SettledMeansPublishedTest(unittest.TestCase):
     # helper was not widened from `filed_path` to a `published` row, which
     # amendment 303 decided because every status publishes (amendment 293) and
     # a resent review item must not look like a duplicate. **The rule is held
-    # now by status**: `find_ok_by_hash()` refuses only the statuses in
+    # now by status**: `find_blocker_by_hash()` refuses only the statuses in
     # `config.HASH_DUPLICATE_STATUSES`, and the matrix in
     # `tests/test_hash_duplicate_ok_only.py` seeds every status published.
 
@@ -602,12 +602,12 @@ class EmbeddedImageGuardTest(unittest.TestCase):
         Searching the whole following statement rather than only its condition
         is what makes one rule cover both.
 
-        **Item 34, 2026-11-14: the lookup is `find_ok_by_hash()` and the guard
+        **Item 34, 2026-11-14: the lookup is `find_blocker_by_hash()` and the guard
         is inside it.** ~~Every `find_by_hash()` call in `app.py` must be
         followed by a statement that calls `is_recorded_and_filed()`.~~ The
         status test moved into the query, because `find_by_hash()` is `LIMIT 1`
         and handed back a discarded row ahead of an `ok` one on 2026-11-14. So
-        the rule now is that every `find_ok_by_hash()` call is followed by the
+        the rule now is that every `find_blocker_by_hash()` call is followed by the
         `if` that acts on it, and that there are three. ~~`is_recorded_and_filed()`
         having no caller is held by `tests/test_stage4_client_copy.py`.~~
         `is_recorded_and_filed()` is deleted, 2026-11-14, and
@@ -621,11 +621,12 @@ class EmbeddedImageGuardTest(unittest.TestCase):
                 encoding="utf-8"))
 
         def calls_the_guard(node):
-            # Item 34: the `if existing:` that refuses, testing the very name
-            # the lookup was assigned to.
+            # Item 34: the `if` that refuses, testing the very name the lookup
+            # was assigned to. ~~`if existing:`~~ `if blocker:` from
+            # 2026-11-14, when the lookup started returning id and status.
             return (isinstance(node, ast.If)
                     and isinstance(node.test, ast.Name)
-                    and node.test.id == "existing")
+                    and node.test.id == "blocker")
 
         BLOCKS = ("body", "orelse", "finalbody", "handlers")
 
@@ -653,7 +654,7 @@ class EmbeddedImageGuardTest(unittest.TestCase):
             return any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "find_ok_by_hash"
+                and inner.func.attr == "find_blocker_by_hash"
                 for inner in own_nodes(statement))
 
         # Every statement holding a find_by_hash() call, with the statement that
@@ -679,10 +680,10 @@ class EmbeddedImageGuardTest(unittest.TestCase):
         self.assertEqual(sorted(found), sorted(set(found)),
                          f"a statement was counted twice: {found}")
         self.assertEqual(len(found), 3,
-                         f"the number of find_ok_by_hash call sites moved: {found}")
+                         f"the number of find_blocker_by_hash call sites moved: {found}")
         self.assertEqual(
             offenders, [],
-            "a find_ok_by_hash call is not followed by the `if existing:` that "
+            "a find_blocker_by_hash call is not followed by the `if blocker:` that "
             f"refuses: {offenders}")
 
 

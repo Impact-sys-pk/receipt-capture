@@ -99,7 +99,9 @@ def _apply(repo, note: dict) -> str:
     if note.get("schema") != 1:
         raise MappingNoteError(f"unsupported note schema {note.get('schema')!r}; "
                                "this pipeline understands 1")
-    note_fields.required_text(note, "resolved_at", error=MappingNoteError)
+    resolved_at = note_fields.required_text(note, "resolved_at", error=MappingNoteError)
+    # Flag F8: every write below leaves a row in rule_mapping_events.
+    audit = {"source": config.AUDIT_SOURCE_DESKTOP_NOTE, "requested_at": resolved_at}
     client_id = note_fields.required_text(note, config.MAPPINGS_CLIENT_ID_FIELD, error=MappingNoteError)
     if client_id not in config.CLIENTS_BY_ID:
         raise MappingNoteError(f"client {client_id!r} is not in the registry")
@@ -111,9 +113,11 @@ def _apply(repo, note: dict) -> str:
             f"not {client_id}")
 
     if note["action"] == config.MAPPING_DELETED_ACTION:
+        # Called even where there is no row, so the delete of nothing is
+        # recorded as no_change, flag F8. It deletes nothing in that case.
+        repo.delete_client_vendor_mapping(mapping_id, **audit)
         if row is None:
             return "There was no mapping with this id. Nothing was changed."
-        repo.delete_client_vendor_mapping(mapping_id)
         return (f"Deleted {row['vendor_name']!r} -> {row['nominal_code']} "
                 f"for {client_id}.")
 
@@ -138,11 +142,36 @@ def _apply(repo, note: dict) -> str:
         raise MappingNoteError(f"{code} is not in client {client_id}'s chart")
     name = accounts[code]
     if (row["nominal_code"], row["account_name"]) == (code, name):
+        repo._audit(subject=config.AUDIT_SUBJECT_MAPPING, subject_id=mapping_id,
+                    act=config.AUDIT_ACT_CHANGED, outcome=config.AUDIT_OUTCOME_NO_CHANGE,
+                    scope=config.RULE_SCOPE_CLIENT, scope_id=client_id,
+                    before=row, after=row, **audit)
         return f"{row['vendor_name']!r} is already {code} {name}. Nothing was changed."
     repo.change_client_mapping_code(mapping_id, code, name,
-                                   datetime.now(timezone.utc).isoformat())
+                                   datetime.now(timezone.utc).isoformat(), **audit)
     return (f"Changed {row['vendor_name']!r} from {row['nominal_code']} to "
             f"{code} {name} for {client_id}.")
+
+
+def _text_or_none(value):
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def _record_refusal(repo, note: dict, reason: str) -> None:
+    """A refused mapping note leaves a row in `rule_mapping_events`, flag F8.
+
+    Built from whatever of the note is readable. `_audit()` never raises.
+    """
+    repo._audit(
+        subject=config.AUDIT_SUBJECT_MAPPING,
+        subject_id=_text_or_none(note.get(config.MAPPING_ID_FIELD)),
+        act=(config.AUDIT_ACT_DELETED if note.get("action") == config.MAPPING_DELETED_ACTION
+             else config.AUDIT_ACT_CHANGED),
+        outcome=config.AUDIT_OUTCOME_REFUSED, reason=reason,
+        scope=config.RULE_SCOPE_CLIENT,
+        scope_id=_text_or_none(note.get(config.MAPPINGS_CLIENT_ID_FIELD)),
+        source=config.AUDIT_SOURCE_DESKTOP_NOTE,
+        requested_at=_text_or_none(note.get("resolved_at")))
 
 
 def apply_mapping_note(repo, note: dict) -> MappingNoteOutcome:
@@ -153,6 +182,7 @@ def apply_mapping_note(repo, note: dict) -> MappingNoteOutcome:
         message = _apply(repo, note)
     except MappingNoteError as exc:
         logger.error(f"unusable mapping note for {mapping_id or 'no mapping id'}: {exc}")
+        _record_refusal(repo, note, str(exc))
         return MappingNoteOutcome(
             outcome="error", mapping_id=mapping_id,
             message=f"This mapping note does not match the contract: {exc}",
@@ -160,6 +190,7 @@ def apply_mapping_note(repo, note: dict) -> MappingNoteOutcome:
     except Exception as exc:
         logger.error(f"could not apply the mapping note for {mapping_id}: {exc}",
                      exc_info=True)
+        _record_refusal(repo, note, f"{type(exc).__name__}: {exc}")
         return MappingNoteOutcome(outcome="error", mapping_id=mapping_id,
                                   message="This mapping note could not be applied.",
                                   error_detail=f"{type(exc).__name__}: {exc}")

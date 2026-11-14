@@ -1655,6 +1655,9 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                     account_name=effective_name,
                     last_updated=_now(),
                     vendor_name=merged["supplier_name"],
+                    # Flag F8: the Remember tick, through whichever tool.
+                    source=f"remember:{source}",
+                    requested_at=note_resolved_at,
                 )
                 # And the firm pool, ONLY where this code confirms what the
                 # classifier proposed. Step 10m, amendment 238. The helper
@@ -2463,6 +2466,9 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                     account_name=category_name,
                     last_updated=_now(),
                     vendor_name=merged["supplier_name"],
+                    # Flag F8: the Remember tick on a Desktop note.
+                    source=f"remember:{DESKTOP_SOURCE}",
+                    requested_at=note.resolved_at,
                 )
                 _record_vendor_learned(
                     repo, receipt_id, extraction_id,

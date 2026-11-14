@@ -74,7 +74,8 @@ def import_csv(csv_path: str, client_id: str):
                     account_name=account_name,
                     vendor_name=vendor_name,
                     detail=detail,
-                    last_updated=now
+                    last_updated=now,
+                    source="import_vendor_csv",  # flag F8
                 )
                 total_inserted += 1
                 print(f"[+] {vendor_key:30} -> {nominal_code} {account_name}")

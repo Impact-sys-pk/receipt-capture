@@ -1,3 +1,5 @@
+import json
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, time as dt_time, timedelta, timezone
@@ -7,6 +9,8 @@ import config
 from worker import london_time
 from worker.line_items import to_json as line_items_to_json
 from .schema import init_db
+
+logger = logging.getLogger(__name__)
 
 
 #: The `receipts` statuses that mean the pipeline actually read the document.
@@ -705,21 +709,32 @@ class Repository:
 
     def upsert_client_vendor(self, client_id: str, vendor_key: str,
                             nominal_code: str, account_name: str, last_updated: str,
-                            vendor_name: str = None, detail: str = None):
-        """Insert or update client vendor mapping. Each variant (vendor_name) gets unique mapping_id."""
+                            vendor_name: str = None, detail: str = None, *,
+                            source: Optional[str] = None,
+                            requested_at: Optional[str] = None):
+        """Insert or update client vendor mapping. Each variant (vendor_name) gets unique mapping_id.
+
+        **Flag F8, 2026-11-14: every call leaves a row in `rule_mapping_events`**,
+        with the row before and after. `source` says where the write came from
+        and every production caller states it, held by
+        `tests/test_rule_mapping_events.py`; `requested_at` is the note's
+        `resolved_at` where a note asked for it.
+        """
         # Check if this exact variant exists
         existing = self._conn.execute("""
-            SELECT mapping_id FROM categorisations_client_vendors
+            SELECT * FROM categorisations_client_vendors
             WHERE client_id = ? AND vendor_key = ? AND vendor_name = ?
         """, (client_id, vendor_key, vendor_name)).fetchone()
+        before = dict(existing) if existing else None
 
         if existing:
             # Update existing variant
+            mapping_id = existing["mapping_id"]
             self._conn.execute("""
                 UPDATE categorisations_client_vendors
                 SET nominal_code = ?, account_name = ?, detail = ?, times_seen = times_seen + 1, last_updated = ?
                 WHERE mapping_id = ?
-            """, (nominal_code, account_name, detail, last_updated, existing["mapping_id"]))
+            """, (nominal_code, account_name, detail, last_updated, mapping_id))
         else:
             # Insert new variant
             mapping_id = str(uuid.uuid4())
@@ -730,6 +745,12 @@ class Repository:
             """, (mapping_id, client_id, vendor_key, nominal_code, account_name, vendor_name, detail, last_updated))
 
         self._conn.commit()
+        self._audit(subject=config.AUDIT_SUBJECT_MAPPING, subject_id=mapping_id,
+                    act=config.AUDIT_ACT_CHANGED if before else config.AUDIT_ACT_SAVED,
+                    outcome=config.AUDIT_OUTCOME_APPLIED,
+                    scope=config.RULE_SCOPE_CLIENT, scope_id=client_id,
+                    before=before, after=self.get_client_vendor_mapping(mapping_id),
+                    source=source, requested_at=requested_at)
 
     def list_client_vendor_mappings(self, client_id: str) -> list[dict]:
         """Every taught mapping for one client, as stored. Sub-step 10bs.10.
@@ -755,7 +776,9 @@ class Repository:
         return dict(row) if row else None
 
     def change_client_mapping_code(self, mapping_id: str, nominal_code: str,
-                                  account_name: str, changed_at: str) -> bool:
+                                  account_name: str, changed_at: str, *,
+                                  source: Optional[str] = None,
+                                  requested_at: Optional[str] = None) -> bool:
         """Change one taught mapping's account. True if a row was changed.
 
         **Flag F2, Paul's decision of 2026-11-14.** The code and the account
@@ -767,22 +790,47 @@ class Repository:
         corrected variant overtake one genuinely seen more often.
         **`last_updated` moves**, because the row did change, and it is what
         the published file shows as when the row last changed.
+
+        Leaves a row in `rule_mapping_events` with both sides, flag F8.
         """
+        before = self.get_client_vendor_mapping(mapping_id)
         cursor = self._conn.execute("""
             UPDATE categorisations_client_vendors
             SET nominal_code = ?, account_name = ?, last_updated = ?
             WHERE mapping_id = ?
         """, (nominal_code, account_name, changed_at, mapping_id))
         self._conn.commit()
-        return cursor.rowcount > 0
+        changed = cursor.rowcount > 0
+        self._audit(subject=config.AUDIT_SUBJECT_MAPPING, subject_id=mapping_id,
+                    act=config.AUDIT_ACT_CHANGED,
+                    outcome=config.AUDIT_OUTCOME_APPLIED if changed else config.AUDIT_OUTCOME_NO_CHANGE,
+                    scope=config.RULE_SCOPE_CLIENT,
+                    scope_id=before["client_id"] if before else None,
+                    before=before, after=self.get_client_vendor_mapping(mapping_id),
+                    source=source, requested_at=requested_at)
+        return changed
 
-    def delete_client_vendor_mapping(self, mapping_id: str) -> bool:
-        """Delete one taught mapping. True if one was there. Flag F2."""
+    def delete_client_vendor_mapping(self, mapping_id: str, *,
+                                     source: Optional[str] = None,
+                                     requested_at: Optional[str] = None) -> bool:
+        """Delete one taught mapping. True if one was there. Flag F2.
+
+        Leaves a row in `rule_mapping_events` holding the row as it was, flag
+        F8, or `no_change` where there was nothing to delete.
+        """
+        before = self.get_client_vendor_mapping(mapping_id)
         cursor = self._conn.execute(
             "DELETE FROM categorisations_client_vendors WHERE mapping_id = ?",
             (mapping_id,))
         self._conn.commit()
-        return cursor.rowcount > 0
+        gone = cursor.rowcount > 0
+        self._audit(subject=config.AUDIT_SUBJECT_MAPPING, subject_id=mapping_id,
+                    act=config.AUDIT_ACT_DELETED,
+                    outcome=config.AUDIT_OUTCOME_APPLIED if gone else config.AUDIT_OUTCOME_NO_CHANGE,
+                    scope=config.RULE_SCOPE_CLIENT,
+                    scope_id=before["client_id"] if before else None,
+                    before=before, after=None, source=source, requested_at=requested_at)
+        return gone
 
     def list_client_vendors(self, client_id: str) -> list[str]:
         """Get distinct vendor_keys for a client for fuzzy matching candidates."""
@@ -1075,8 +1123,12 @@ class Repository:
     def save_rule(self, rule_id: str, scope: str, scope_id: str, rule_name: str,
                   priority: int, vendor_key: Optional[str], condition_type: str,
                   condition_field: str, condition_value: str,
-                  nominal_code: str, account_name: str, saved_at: str):
+                  nominal_code: str, account_name: str, saved_at: str, *,
+                  source: Optional[str] = None, requested_at: Optional[str] = None):
         """Write a rule, or replace one with the same `rule_id`.
+
+        Leaves a row in `rule_mapping_events` with the rule before and after,
+        flag F8: `saved` for a new rule, `changed` for an edit.
 
         **An edit keeps `created_at`**, because decision 6 resolves equal
         priorities oldest first and an edit is not a new rule. `saved_at` is
@@ -1088,6 +1140,7 @@ class Repository:
         """
         if scope not in config.RULE_SCOPES:
             raise ValueError(f"scope must be one of {config.RULE_SCOPES}, got {scope!r}")
+        before = self.get_rule(rule_id)
         self._conn.execute("""
             INSERT INTO categorisation_rules
                 (rule_id, scope, scope_id, rule_name, priority, vendor_key,
@@ -1108,13 +1161,70 @@ class Repository:
               condition_type, condition_field, condition_value,
               nominal_code, account_name, saved_at, saved_at))
         self._conn.commit()
+        self._audit(subject=config.AUDIT_SUBJECT_RULE, subject_id=rule_id,
+                    act=config.AUDIT_ACT_CHANGED if before else config.AUDIT_ACT_SAVED,
+                    outcome=config.AUDIT_OUTCOME_APPLIED, scope=scope, scope_id=scope_id,
+                    before=before, after=self.get_rule(rule_id),
+                    source=source, requested_at=requested_at)
 
-    def delete_rule(self, rule_id: str) -> bool:
-        """Delete a rule. True if one was there to delete."""
+    def delete_rule(self, rule_id: str, *, source: Optional[str] = None,
+                    requested_at: Optional[str] = None) -> bool:
+        """Delete a rule. True if one was there to delete.
+
+        Leaves a row in `rule_mapping_events` holding the rule as it was, flag
+        F8, or `no_change` where there was nothing to delete.
+        """
+        before = self.get_rule(rule_id)
         cursor = self._conn.execute(
             "DELETE FROM categorisation_rules WHERE rule_id = ?", (rule_id,))
         self._conn.commit()
-        return cursor.rowcount > 0
+        gone = cursor.rowcount > 0
+        self._audit(subject=config.AUDIT_SUBJECT_RULE, subject_id=rule_id,
+                    act=config.AUDIT_ACT_DELETED,
+                    outcome=config.AUDIT_OUTCOME_APPLIED if gone else config.AUDIT_OUTCOME_NO_CHANGE,
+                    scope=before["scope"] if before else None,
+                    scope_id=before["scope_id"] if before else None,
+                    before=before, after=None, source=source, requested_at=requested_at)
+        return gone
+
+    # The audit trail for rule and mapping writes, flag F8. -----------------
+
+    def record_rule_mapping_event(self, *, subject: str, subject_id: Optional[str],
+                                  act: str, outcome: str, reason: Optional[str] = None,
+                                  scope: Optional[str] = None, scope_id: Optional[str] = None,
+                                  before: Optional[dict] = None, after: Optional[dict] = None,
+                                  source: Optional[str] = None,
+                                  requested_at: Optional[str] = None) -> None:
+        """Append one row to `rule_mapping_events`. The only writer of that table.
+
+        **Append-only**: this inserts and nothing anywhere updates or deletes,
+        held by `tests/test_rule_mapping_events.py` on the syntax tree.
+        """
+        self._conn.execute("""
+            INSERT INTO rule_mapping_events
+                (event_id, subject, subject_id, act, outcome, reason, scope, scope_id,
+                 before_json, after_json, source, requested_at, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (str(uuid.uuid4()), subject, subject_id, act, outcome, reason, scope, scope_id,
+              json.dumps(before, sort_keys=True) if before is not None else None,
+              json.dumps(after, sort_keys=True) if after is not None else None,
+              source, requested_at, datetime.now(timezone.utc).isoformat()))
+        self._conn.commit()
+
+    def _audit(self, **event) -> None:
+        """`record_rule_mapping_event()`, which must never fail the write it describes.
+
+        **Called after the write has committed**, so a failure here cannot undo
+        it or turn an applied note into a refused one, which the brief requires.
+        The cost is that the change stands without its row; the whole event is
+        logged at ERROR so it can be recovered from `run.log`.
+        """
+        try:
+            self.record_rule_mapping_event(**event)
+        except Exception as exc:
+            logger.error("could not record a rule or mapping event, the write itself "
+                         "stands: %s. The event was %s", exc,
+                         json.dumps(event, sort_keys=True, default=str))
 
     def has_alert_been_sent(self, message_id: str, alert_type: str) -> bool:
         """Check if an alert of this type has already been sent for this message."""

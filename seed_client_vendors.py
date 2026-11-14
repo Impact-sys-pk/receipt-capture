@@ -129,7 +129,8 @@ def seed_database(client_id: str, gl_vendors: dict[str, list[str]]):
                 account_name=gl_name,
                 vendor_name=detail,
                 detail=detail,
-                last_updated=now
+                last_updated=now,
+                source="seed_client_vendors",  # flag F8
             )
             total_inserted += 1
             print(f"[+] {client_id} | {vendor_key:20} | {detail:40} -> {gl_code}")

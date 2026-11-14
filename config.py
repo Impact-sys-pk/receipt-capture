@@ -351,6 +351,21 @@ MAPPING_FIRM_POOL_ACCOUNT_NAME_FIELD = "firm_pool_account_name"
 MAPPING_CODE_CHANGED_ACTION = "mapping_code_changed"
 MAPPING_DELETED_ACTION = "mapping_deleted"
 
+# The audit trail for rule and mapping writes, table `rule_mapping_events`.
+# Flag F8, Paul's decisions of 2026-11-14: "Well we need one", and "Both", for
+# rules and taught mappings alike. Stored values, read by nobody outside this
+# product today.
+AUDIT_SUBJECT_RULE = "rule"
+AUDIT_SUBJECT_MAPPING = "mapping"
+AUDIT_ACT_SAVED = "saved"          # a new row
+AUDIT_ACT_CHANGED = "changed"      # an existing row written again
+AUDIT_ACT_DELETED = "deleted"
+AUDIT_OUTCOME_APPLIED = "applied"
+AUDIT_OUTCOME_NO_CHANGE = "no_change"  # applied, and there was nothing to do
+AUDIT_OUTCOME_REFUSED = "refused"
+# Where a write came from. Teaching writes record their own, see the callers.
+AUDIT_SOURCE_DESKTOP_NOTE = "desktop_note"
+
 # The trade a client carries until somebody sets one. Outstanding item 29: no
 # control sets a trade, so every client carries this today. Named here for
 # step 10bu, whose sector rules must never key on it. **Seven other literals of

@@ -40,6 +40,7 @@ DESCRIPTIONS = {
     # ~~categorisations_client_rules~~, replaced by step 10bu on 2026-11-14. A
     # database created before then still holds that table, empty.
     "categorisation_rules": "Layer 0: the rules a person authors, scoped client, firm or sector",
+    "rule_mapping_events": "Audit trail, append-only: every rule and mapping write or refusal. F8",
 }
 
 NO_DESCRIPTION = "NO DESCRIPTION in schema_info.py: add one to DESCRIPTIONS"

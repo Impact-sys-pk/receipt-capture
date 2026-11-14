@@ -135,6 +135,30 @@ def _parse_rule(raw: Any) -> dict:
     }
 
 
+def _text_or_none(value):
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def _record_refusal(repo, note: dict, reason: str) -> None:
+    """A refused rule note leaves a row in `rule_mapping_events`, flag F8.
+
+    Built from whatever of the note is readable, because the note is the thing
+    that failed to parse. The repository's `_audit()` never raises.
+    """
+    raw_rule = note.get(config.RULE_NOTE_RULE_FIELD)
+    raw_rule = raw_rule if isinstance(raw_rule, dict) else {}
+    repo._audit(
+        subject=config.AUDIT_SUBJECT_RULE,
+        subject_id=_text_or_none(note.get(config.RULE_ID_FIELD)),
+        act=(config.AUDIT_ACT_DELETED if note.get("action") == config.RULE_DELETED_ACTION
+             else config.AUDIT_ACT_SAVED),
+        outcome=config.AUDIT_OUTCOME_REFUSED, reason=reason,
+        scope=_text_or_none(raw_rule.get(config.RULE_SCOPE_FIELD)),
+        scope_id=_text_or_none(raw_rule.get(config.RULE_SCOPE_ID_FIELD)),
+        source=config.AUDIT_SOURCE_DESKTOP_NOTE,
+        requested_at=_text_or_none(note.get("resolved_at")))
+
+
 def apply_rule_note(repo, note: dict) -> RuleNoteOutcome:
     """Apply one `rule_saved` or `rule_deleted` note. Never raises."""
     rule_id = str(note.get(config.RULE_ID_FIELD) or "")
@@ -148,21 +172,25 @@ def apply_rule_note(repo, note: dict) -> RuleNoteOutcome:
         if action == config.RULE_SAVED_ACTION:
             fields = _parse_rule(note.get(config.RULE_NOTE_RULE_FIELD))
             existed = repo.get_rule(rule_id) is not None
-            repo.save_rule(rule_id=rule_id, saved_at=resolved_at, **fields)
+            repo.save_rule(rule_id=rule_id, saved_at=resolved_at, **fields,
+                           source=config.AUDIT_SOURCE_DESKTOP_NOTE, requested_at=resolved_at)
             message = (f"{'Changed' if existed else 'Added'} {fields['scope']} rule "
                        f"{fields['rule_name']!r} for {fields['scope_id']}.")
         else:
-            gone = repo.delete_rule(rule_id)
+            gone = repo.delete_rule(rule_id, source=config.AUDIT_SOURCE_DESKTOP_NOTE,
+                                    requested_at=resolved_at)
             message = ("Deleted the rule." if gone
                        else "There was no rule with this id. Nothing was changed.")
     except RuleNoteError as exc:
         logger.error(f"unusable rule note for {rule_id or 'no rule id'}: {exc}")
+        _record_refusal(repo, note, str(exc))
         return RuleNoteOutcome(
             outcome="error", rule_id=rule_id,
             message=f"This rule note does not match the contract: {exc}",
             error_detail=str(exc))
     except Exception as exc:
         logger.error(f"could not apply the rule note for {rule_id}: {exc}", exc_info=True)
+        _record_refusal(repo, note, f"{type(exc).__name__}: {exc}")
         return RuleNoteOutcome(outcome="error", rule_id=rule_id,
                                message="This rule note could not be applied.",
                                error_detail=f"{type(exc).__name__}: {exc}")

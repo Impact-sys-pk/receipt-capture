@@ -94,6 +94,51 @@ SCHEMA_SQL = """
         CREATE INDEX IF NOT EXISTS idx_categorisation_rules_scope
             ON categorisation_rules(scope, scope_id);
 
+        -- The audit trail for rule and mapping writes. Flag F8, 2026-11-14.
+        -- Paul: "Well we need one", and "Both", rules and taught mappings.
+        --
+        -- APPEND-ONLY. One row per write or refusal, never updated and never
+        -- deleted, held by tests/test_rule_mapping_events.py on the syntax tree.
+        --
+        -- Not resolution_events, whose receipt_id is NOT NULL: a rule is not
+        -- about a receipt, and relaxing that column means rebuilding the
+        -- receipt audit trail.
+        --
+        -- subject is 'rule' or 'mapping'; subject_id the rule_id or mapping_id,
+        -- null only on a refused note that named none. act is saved (a new
+        -- row), changed or deleted; on a refusal, the act the note asked for.
+        -- outcome is applied, no_change or refused, with reason on a refusal.
+        -- scope and scope_id say who it affected: a rule's own scope, and
+        -- 'client' with the client_id for a mapping. before_json and after_json
+        -- are the row either side of the write, null where there was none,
+        -- which is the part an overwrite used to lose. requested_at is the
+        -- note's resolved_at, null for a write that came from no note;
+        -- recorded_at is when this row was written.
+        --
+        -- No foreign key on subject_id, for resolution_events' reason: the
+        -- audit row matters most when the thing it describes has gone.
+        CREATE TABLE IF NOT EXISTS rule_mapping_events (
+            event_id            TEXT PRIMARY KEY NOT NULL,
+            subject             TEXT NOT NULL,
+            subject_id          TEXT,
+            act                 TEXT NOT NULL,
+            outcome             TEXT NOT NULL,
+            reason              TEXT,
+            scope               TEXT,
+            scope_id            TEXT,
+            before_json         TEXT,
+            after_json          TEXT,
+            source              TEXT,
+            requested_at        TEXT,
+            recorded_at         TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rule_mapping_events_subject
+            ON rule_mapping_events(subject, subject_id);
+
+        CREATE INDEX IF NOT EXISTS idx_rule_mapping_events_scope
+            ON rule_mapping_events(scope, scope_id);
+
         CREATE TABLE IF NOT EXISTS categorisations (
             categorisation_id       TEXT PRIMARY KEY,
             receipt_id              TEXT NOT NULL,

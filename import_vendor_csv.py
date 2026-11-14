@@ -16,57 +16,86 @@ from worker.database.repository import Repository
 
 
 def import_csv(csv_path: str, client_id: str):
-    """Import vendor mappings from cleaned CSV."""
+    """Import vendor mappings from cleaned CSV.
+
+    **A name the file gives under two different nominal codes is listed and
+    written under neither.** Paul's decision of 2026-11-14, amendment 558, the
+    rule `seed_client_vendors.py` was given by amendment 557. Every row used
+    to be upserted, so such a name silently kept whichever code came last.
+    Which code is right is a question for a person. A name repeated under ONE
+    code is not a conflict and is imported as before.
+    """
+    # First pass: the rows that would be written, and every code each name is
+    # under. A row with no name has nothing to conflict on and is not counted.
+    rows = []
+    codes_for = {}       # vendor_name -> {nominal_code: account_name}
+    total_skipped = 0
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+
+        for i, row in enumerate(reader, start=2):
+            # Three header spellings, oldest last. `vendor_code` was the
+            # header until 2026-09-06 and files on disk still carry it.
+            vendor_key = row.get('vendor_key') or row.get('vendor_code')
+            if not vendor_key:
+                total_skipped += 1
+                continue
+
+            vendor_key = vendor_key.strip()
+            vendor_name = row.get('vendor_name', '').strip()
+            detail = row.get('detail', '').strip()
+            nominal_code = row.get('nominal_code', '').strip()
+            account_name = row.get('account_name', '').strip()
+
+            if not vendor_key or not nominal_code:
+                total_skipped += 1
+                continue
+
+            rows.append((i, vendor_key, vendor_name, detail, nominal_code,
+                         account_name))
+            if vendor_name:
+                codes_for.setdefault(vendor_name, {})[nominal_code] = account_name
+
+    conflicts = {name: codes for name, codes in codes_for.items() if len(codes) > 1}
+
     repo = Repository()
     now = datetime.now(timezone.utc).isoformat()
-
     total_inserted = 0
-    total_skipped = 0
 
     try:
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-
-            for i, row in enumerate(reader, start=2):
-                # Three header spellings, oldest last. `vendor_code` was the
-                # header until 2026-09-06 and files on disk still carry it.
-                vendor_key = row.get('vendor_key') or row.get('vendor_code')
-                if not vendor_key:
-                    total_skipped += 1
-                    continue
-
-                vendor_key = vendor_key.strip()
-                vendor_name = row.get('vendor_name', '').strip()
-                detail = row.get('detail', '').strip()
-                nominal_code = row.get('nominal_code', '').strip()
-                account_name = row.get('account_name', '').strip()
-
-                if not vendor_key or not nominal_code:
-                    total_skipped += 1
-                    continue
-
-                try:
-                    repo.upsert_client_vendor(
-                        client_id=client_id,
-                        vendor_key=vendor_key,
-                        nominal_code=nominal_code,
-                        account_name=account_name,
-                        vendor_name=vendor_name,
-                        detail=detail,
-                        last_updated=now
-                    )
-                    total_inserted += 1
-                    print(f"[+] {vendor_key:30} -> {nominal_code} {account_name}")
-                except Exception as e:
-                    print(f"[-] Row {i}: {e}")
-                    total_skipped += 1
+        for i, vendor_key, vendor_name, detail, nominal_code, account_name in rows:
+            if vendor_name in conflicts:
+                continue
+            try:
+                repo.upsert_client_vendor(
+                    client_id=client_id,
+                    vendor_key=vendor_key,
+                    nominal_code=nominal_code,
+                    account_name=account_name,
+                    vendor_name=vendor_name,
+                    detail=detail,
+                    last_updated=now
+                )
+                total_inserted += 1
+                print(f"[+] {vendor_key:30} -> {nominal_code} {account_name}")
+            except Exception as e:
+                print(f"[-] Row {i}: {e}")
+                total_skipped += 1
 
     finally:
         repo.close()
 
+    if conflicts:
+        print("\n--- Names under more than one nominal code: NOT IMPORTED ---")
+        for name in sorted(conflicts):
+            codes = ", ".join(f"{code} {account}"
+                              for code, account in sorted(conflicts[name].items()))
+            print(f"[!] {name:40} | {codes}")
+
     print(f"\n--- Import complete ---")
     print(f"Inserted: {total_inserted}")
     print(f"Skipped:  {total_skipped}")
+    print(f"Conflicting names, not imported: {len(conflicts)}")
 
 
 def main():

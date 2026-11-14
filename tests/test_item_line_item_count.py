@@ -102,6 +102,20 @@ class OnThePollTest(unittest.TestCase):
                 self.assertNotIn(line.description, text)
 
 
+class ThePollStoresWhatTheModelReadTest(unittest.TestCase):
+    """Paul's decision of 2026-11-14. Step 10p added `extractions.line_items`
+    on 2026-09-12 and no call to `save_extraction()` passed it, so the column
+    was NULL on every row. This is the poll's call only; the other eight get
+    their own brief."""
+
+    def test_the_column_holds_the_lines_the_poll_read(self):
+        from test_category_hold import extractions
+        with TempEnvironment():
+            drive_with(self, extraction_result(line_items=LINES))
+            row, = extractions()
+            self.assertEqual(row["line_items"], to_json(LINES))
+
+
 class OnTheSweepTest(unittest.TestCase):
     """The second caller, which reads the extraction back out of the database."""
 

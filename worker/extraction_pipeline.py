@@ -337,6 +337,10 @@ def process_extraction_result(
         # What post-processing changed and why, e.g. an amount read as net that
         # was really the gross. Unrecorded until now, see design document 3.11.
         details=getattr(extraction, 'details', None),
+        # The lines the model read. Step 10p added the column on 2026-09-12 and
+        # this call never passed them, so it was NULL on every row. Paul's
+        # decision, 2026-11-14.
+        line_items=extraction.line_items,
     )
 
     filed_path = None

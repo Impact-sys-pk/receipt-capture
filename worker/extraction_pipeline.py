@@ -17,7 +17,7 @@ from worker.categorisation.fallback import resolve_against_chart
 from worker.client_copy import copy_for_published_receipt
 from worker.filing import file_review, make_enriched_sidecar
 from worker.publish import extra_for, publish_receipt
-from worker.validation.rules import validate
+from worker.validation.rules import ValidationResult, validate
 
 logger = logging.getLogger(__name__)
 
@@ -352,12 +352,13 @@ def process_extraction_result(
                 if refs:
                     notes.append(f"reference numbers differ: {refs[0]} on this "
                                  f"reading, {refs[1]} on {dup[:8]}...")
-                validation = validation._replace(
-                    status="possible_duplicate"
-                ) if hasattr(validation, '_replace') else type(validation)(
-                    status="possible_duplicate",
-                    notes=notes
-                )
+                # ~~`validation._replace(status=...) if hasattr(validation,
+                # '_replace') else type(validation)(...)`~~ Built directly,
+                # 2026-11-14, Paul's decision. `validate()` returns a
+                # `ValidationResult`, a dataclass with no `_replace`, so the
+                # first arm never ran, and it passed no notes: anything that
+                # reached it would have dropped the reference-number note.
+                validation = ValidationResult(status="possible_duplicate", notes=notes)
                 duplicate_of = dup
 
     # Save extraction (append-only)

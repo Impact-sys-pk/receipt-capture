@@ -135,6 +135,32 @@ class TwoReadingsTest(unittest.TestCase):
             self.assertEqual([first["status"], second["status"]], ["ok", "ok"])
             self.assertIsNone(second["duplicate_of"])
 
+    def test_the_note_survives_whatever_validate_returns(self):
+        """The dead branch, and why it was worse than dead. 2026-11-14.
+
+        `process_extraction_result()` built the flagged result as
+        `validation._replace(status=...) if hasattr(validation, '_replace')
+        else type(validation)(status=..., notes=notes)`. `ValidationResult` is
+        a dataclass with no `_replace`, so the first arm never ran, **and it
+        passed no notes**: anything that ever reached it would have thrown the
+        reference-number note away. Here `validate()` returns a record that
+        does have `_replace`, which is the only way to reach that arm, and the
+        note must still be there.
+        """
+        from typing import List, NamedTuple
+        from unittest import mock
+
+        class HasReplace(NamedTuple):
+            status: str
+            notes: List[str]
+
+        with TempEnvironment(), mock.patch(
+                "worker.extraction_pipeline.validate",
+                lambda extraction: HasReplace("ok", [])):
+            (_, second), extraction = self._two(shell(FOOTER), shell(RECEIPT_NO))
+            self.assertEqual(second["status"], "possible_duplicate")
+            self.assertIn("reference numbers differ", extraction["validation_notes"] or "")
+
     def test_the_receipt_time_within_five_minutes_still_flags(self):
         with TempEnvironment():
             (_, second), _ = self._two(shell(FOOTER, "06:23"),

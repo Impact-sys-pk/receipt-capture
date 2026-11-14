@@ -161,6 +161,25 @@ class TwoReadingsTest(unittest.TestCase):
             self.assertEqual(second["status"], "possible_duplicate")
             self.assertIn("reference numbers differ", extraction["validation_notes"] or "")
 
+    def test_the_pipeline_names_the_class_it_builds(self):
+        """No `type(x)(...)` in `worker/extraction_pipeline.py`. 2026-11-14.
+
+        **Paul's decision, and the reason is not consistency.** `type(x)(...)`
+        is the construction that hid the dropped note: it reads as though it
+        handles any type, which is why the arm that dropped `notes` went unread
+        for months. Naming the class removes the disguise. Read off the syntax
+        tree, so a comment quoting the old construction does not count.
+        """
+        import ast
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parent.parent / "worker" / "extraction_pipeline.py"
+        found = [
+            node.lineno for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Call)
+            and isinstance(node.func.func, ast.Name) and node.func.func.id == "type"]
+        self.assertEqual(found, [])
+
     def test_the_receipt_time_within_five_minutes_still_flags(self):
         with TempEnvironment():
             (_, second), _ = self._two(shell(FOOTER, "06:23"),

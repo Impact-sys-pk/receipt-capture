@@ -419,7 +419,11 @@ def process_extraction_result(
             if client_id == config.UNKNOWN_CLIENT_ID
             else f"client {client_id} has no client_folder_name in the registry"
         )
-        validation = type(validation)(
+        # ~~`type(validation)(...)`~~ The class by name, 2026-11-14, Paul's
+        # decision. This line was correct, but `type(x)(...)` reads as though
+        # it handles any type, and that disguise is what hid the arm above that
+        # dropped `notes` for months.
+        validation = ValidationResult(
             status="needs_review",
             notes=list(validation.notes or []) + [reason],
         )

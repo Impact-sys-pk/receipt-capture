@@ -89,7 +89,7 @@ class TempEnvironment:
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
         }
         return self
 
@@ -111,7 +111,7 @@ class TempEnvironment:
             filename=f"{receipt_id}.pdf",
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id="CLIENT001",
             source="email",
         )

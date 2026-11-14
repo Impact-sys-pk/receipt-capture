@@ -95,7 +95,7 @@ def seed_filed(data):
             receipt_id=rid, message_id=f"seed:{rid}", email_subject=None,
             email_from=None, email_received_at="2026-04-01T00:00:00+00:00",
             filename="earlier.pdf", file_path=f"/store/{rid}.pdf",
-            file_hash=app.compute_hash(data), firm_id="FIRM001",
+            file_hash=app.compute_hash(data), firm_id="TESTFIRM001",
             client_id=CLIENT, source="email")
         repo.mark_receipt_filed(rid, f"/clients/{CLIENT}/earlier.pdf")
         # Item 34, 2026-11-14: only an `ok` match is a hash duplicate.

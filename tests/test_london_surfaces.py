@@ -283,8 +283,8 @@ class StorageStillWritesUtcTest(unittest.TestCase):
 
     def test_the_per_firm_event_log_keeps_utc(self):
         import app
-        app._log_receipt("r-1", "<m@x>", "receipt.pdf", "created", "FIRM001")
-        path = config.LOGS_DIR / "receipt_events_FIRM001.ndjson"
+        app._log_receipt("r-1", "<m@x>", "receipt.pdf", "created", "TESTFIRM001")
+        path = config.LOGS_DIR / "receipt_events_TESTFIRM001.ndjson"
         entry = json.loads(path.read_text(encoding="utf-8").strip())
         self.assertStoredUtc(entry["timestamp"], "the per-firm event log")
 
@@ -302,7 +302,7 @@ class StorageStillWritesUtcTest(unittest.TestCase):
                 receipt_id="r-1", message_id="<m@x>", email_subject="s",
                 email_from="c@example.com", email_received_at=JUNE_30_LATE_UTC,
                 filename="receipt.pdf", file_path="/store/receipt.pdf",
-                file_hash="h" * 8, firm_id="FIRM001", client_id="CLIENT001",
+                file_hash="h" * 8, firm_id="TESTFIRM001", client_id="CLIENT001",
                 source="email")
             row = repo._conn.execute(
                 "SELECT created_at FROM receipts WHERE receipt_id = 'r-1'").fetchone()
@@ -492,7 +492,7 @@ class AlreadyFiledMessageTest(unittest.TestCase):
                     email_from="c@example.com",
                     email_received_at=JUNE_30_LATE_UTC, filename="receipt.pdf",
                     file_path="/store/receipt.pdf", file_hash="h" * 8,
-                    firm_id="FIRM001", client_id="CLIENT001", source="email")
+                    firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
                 repo._conn.execute(
                     "UPDATE receipts SET filed_path = ?, filed_at = ? "
                     "WHERE receipt_id = 'r-1'",

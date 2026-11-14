@@ -119,7 +119,7 @@ class TheColumnTest(unittest.TestCase):
             receipt_id="r-1", message_id="<m@x>", email_subject="s",
             email_from="c@example.com", email_received_at=None,
             filename="a.pdf", file_path="/a.pdf", file_hash="h" * 8,
-            firm_id="FIRM001", client_id="CLIENT001", source="email")
+            firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
         repo.save_extraction(
             extraction_id="e-1", receipt_id="r-1", engine="openai_vision",
             supplier_name="Asda", invoice_date="2026-09-01", net_amount=None,
@@ -233,7 +233,7 @@ class TheSameInputEveryTimeTest(unittest.TestCase):
                 receipt_id="r-1", message_id="<m@x>", email_subject="s",
                 email_from="c@example.com", email_received_at=None,
                 filename="a.pdf", file_path="/a.pdf", file_hash="h" * 8,
-                firm_id="FIRM001", client_id="CLIENT001", source="email")
+                firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
             # The first read, straight off the extraction object, as
             # `process_extraction_result()` does it.
             repo.save_extraction(
@@ -271,7 +271,7 @@ class TheSameInputEveryTimeTest(unittest.TestCase):
                 receipt_id="r-2", message_id="<m2@x>", email_subject="s",
                 email_from="c@example.com", email_received_at=None,
                 filename="b.pdf", file_path="/b.pdf", file_hash="g" * 8,
-                firm_id="FIRM001", client_id="CLIENT001", source="email")
+                firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
             repo.save_extraction(
                 extraction_id="e-2", receipt_id="r-2", engine="openai_vision",
                 supplier_name="Old Receipt", invoice_date="2026-01-01",
@@ -360,13 +360,13 @@ class TheSwitchTest(unittest.TestCase):
     """Per firm, on the firm record, default off."""
 
     def _read(self, firm):
-        firms = {"FIRM001": firm} if firm is not None else {}
+        firms = {"TESTFIRM001": firm} if firm is not None else {}
         return config._classifier_enabled(firms)
 
     def test_a_firm_record_with_no_setting_leaves_the_classifier_off(self):
         """**The case that matters most.** Every firm record written before
         2026-09-12 is this one, and an upgrade must not switch anybody on."""
-        self.assertFalse(self._read({"firm_id": "FIRM001", "name": "Test"}))
+        self.assertFalse(self._read({"firm_id": "TESTFIRM001", "name": "Test"}))
 
     def test_no_firm_record_at_all_is_off(self):
         self.assertFalse(self._read(None))

@@ -85,7 +85,7 @@ class TempEnvironment:
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
         }
         # A chart holding the codes this file seeds, so the fallback check has
         # something to check against and the test does not read the real bundle
@@ -112,7 +112,7 @@ class TempEnvironment:
             filename=f"{receipt_id}.pdf",
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id="CLIENT001",
             source="email",
         )
@@ -343,7 +343,7 @@ class NotFoundTest(unittest.TestCase):
                     receipt_id="r-bare", message_id="m", email_subject=None,
                     email_from=None, email_received_at=None, filename="bare.pdf",
                     file_path=file_path, file_hash="h",
-                    firm_id="INTELLITAX", client_id="CLIENT001", source="email",
+                    firm_id="TESTFIRM001", client_id="CLIENT001", source="email",
                 )
                 outcome = resolve_receipt(
                     repo, env.engine(repo), "r-bare", _good_corrections(),

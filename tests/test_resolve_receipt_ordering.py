@@ -50,7 +50,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
             }
 
             repo = None
@@ -69,7 +69,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                     filename="test-receipt.pdf",
                     file_path=file_path,
                     file_hash="hash2",
-                    firm_id="INTELLITAX",
+                    firm_id="TESTFIRM001",
                     client_id="CLIENT001",
                     source="email",
                 )
@@ -162,7 +162,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
             }
 
             repo = None
@@ -181,7 +181,7 @@ class ResolveReceiptOrderingTest(unittest.TestCase):
                     filename="test-receipt.pdf",
                     file_path=file_path,
                     file_hash="hash3",
-                    firm_id="INTELLITAX",
+                    firm_id="TESTFIRM001",
                     client_id="CLIENT001",
                     source="email",
                 )

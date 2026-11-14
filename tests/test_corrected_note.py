@@ -190,7 +190,7 @@ class CorrectedNoteTestCase(unittest.TestCase):
                     receipt_id=receipt_id, message_id=f"msg-{receipt_id}",
                     email_subject=None, email_from=None, email_received_at=None,
                     filename=f"{receipt_id}.pdf", file_path=file_path,
-                    file_hash=f"hash-{receipt_id}", firm_id="INTELLITAX",
+                    file_hash=f"hash-{receipt_id}", firm_id="TESTFIRM001",
                     client_id="CLIENT001", source="desktop")
                 repo.update_receipt_status(receipt_id, status)
             if relative:

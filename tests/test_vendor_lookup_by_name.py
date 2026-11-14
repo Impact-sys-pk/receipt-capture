@@ -102,7 +102,7 @@ class _Base(unittest.TestCase):
             self.repo.upsert_firm_vendor(
                 business_type=TRADE, vendor_key=key_of(name),
                 nominal_code=code[0], account_name=code[1],
-                last_updated=when, vendor_name=name, firm_id="INTELLITAX")
+                last_updated=when, vendor_name=name, firm_id="TESTFIRM001")
 
     def categorise(self, name):
         return CategorisationEngine(repo=self.repo, enable_ai_fallback=False).categorise(

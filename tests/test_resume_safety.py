@@ -61,7 +61,7 @@ class ResumeSafetyTest(unittest.TestCase):
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {
                     "client_id": "CLIENT001", "client_name": "Test Client",
-                    "client_folder_name": "Test Client", "firm_id": "INTELLITAX",
+                    "client_folder_name": "Test Client", "firm_id": "TESTFIRM001",
                     "trade": "UNSPECIFIED",
                 }
             }
@@ -88,7 +88,7 @@ class ResumeSafetyTest(unittest.TestCase):
                     filename="test-receipt.pdf",
                     file_path=file_path,
                     file_hash="hash1",
-                    firm_id="INTELLITAX",
+                    firm_id="TESTFIRM001",
                     client_id="CLIENT001",
                     source="email",
                 )

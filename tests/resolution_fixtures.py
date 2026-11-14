@@ -265,7 +265,10 @@ class TempEnvironment:
                 "client_name": "Test Client",
                 "client_folder_name": "Test Client",
                 "client_id": "CLIENT001",
-                "firm_id": "INTELLITAX",
+                # Flag F6, 2026-11-14. ~~`INTELLITAX`~~, which no firm record
+                # registered: the fixture's own client named a firm the
+                # fixture's own record did not hold. The record's id now.
+                "firm_id": live_paths.TEST_FIRM_ID,
                 "trade": "UNSPECIFIED",
             }
         }
@@ -290,7 +293,7 @@ class TempEnvironment:
             filename=f"{receipt_id}.pdf",
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
-            firm_id="INTELLITAX",
+            firm_id=live_paths.TEST_FIRM_ID,
             client_id="CLIENT001",
             source="email",
         )

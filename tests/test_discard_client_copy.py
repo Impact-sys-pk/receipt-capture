@@ -843,7 +843,7 @@ class ADiscardedReceiptDoesNotBlockAResendTest(DiscardTestCase):
                     email_from="sender@example.com",
                     email_received_at="2026-09-10T09:00:00Z",
                     filename="resend.pdf", file_path=arriving,
-                    file_hash="hash-r-2", firm_id="INTELLITAX",
+                    file_hash="hash-r-2", firm_id="TESTFIRM001",
                     client_id="CLIENT001", source="email")
 
                 with patch.object(repo, "find_by_transaction_loose",
@@ -855,7 +855,7 @@ class ADiscardedReceiptDoesNotBlockAResendTest(DiscardTestCase):
                             invoice_date="2026-04-01", net_amount=80.0,
                             vat_amount=16.0, gross_amount=96.0),
                         file_path=arriving, filename="resend.pdf",
-                        firm_id="INTELLITAX", client_id="CLIENT001",
+                        firm_id="TESTFIRM001", client_id="CLIENT001",
                         source="email", message_id="msg-r-2", repo=repo,
                         categorisation_engine=env_engine(repo), stats={},
                         run_id="test-run", pipeline_version="test-version")

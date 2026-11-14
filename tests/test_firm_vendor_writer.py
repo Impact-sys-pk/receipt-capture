@@ -106,7 +106,7 @@ class TheRuleTest(CorrectedNoteTestCase):
                                business_type=business_type)
             resolve_against_chart(result, repo=repo)
             taught = service._learn_firm_mapping_if_confirmed(
-                repo, {"firm_id": "INTELLITAX", "client_id": "CLIENT001"},
+                repo, {"firm_id": "TESTFIRM001", "client_id": "CLIENT001"},
                 result, chosen_code=chosen_code,
                 vendor_key=VENDOR_KEY, vendor_name=SUPPLIER)
             firm = rows(repo, "SELECT * FROM categorisations_firm_vendors")
@@ -126,7 +126,7 @@ class TheRuleTest(CorrectedNoteTestCase):
         self.assertEqual(firm[0]["business_type"], BUSINESS_TYPE)
         self.assertEqual(firm[0]["vendor_key"], VENDOR_KEY)
         self.assertEqual(firm[0]["vendor_name"], SUPPLIER)
-        self.assertEqual(firm[0]["firm_id"], "INTELLITAX")
+        self.assertEqual(firm[0]["firm_id"], "TESTFIRM001")
         self.assertEqual(firm[0]["times_seen"], 1)
 
     def test_different_codes_write_nothing(self):
@@ -148,7 +148,7 @@ class TheRuleTest(CorrectedNoteTestCase):
                     result.match_source = source
                     resolve_against_chart(result, repo=repo)
                     taught = service._learn_firm_mapping_if_confirmed(
-                        repo, {"firm_id": "INTELLITAX"}, result,
+                        repo, {"firm_id": "TESTFIRM001"}, result,
                         chosen_code=IN_CHART[0], vendor_key=VENDOR_KEY,
                         vendor_name=SUPPLIER)
                     firm = rows(repo,
@@ -200,7 +200,7 @@ class TheSubstitutionTest(CorrectedNoteTestCase):
 
             # The operator accepts what is on screen, which is the fallback.
             taught = service._learn_firm_mapping_if_confirmed(
-                repo, {"firm_id": "INTELLITAX"}, result,
+                repo, {"firm_id": "TESTFIRM001"}, result,
                 chosen_code=IN_CHART[0], vendor_key=VENDOR_KEY,
                 vendor_name=SUPPLIER)
             firm = rows(repo, "SELECT * FROM categorisations_firm_vendors")
@@ -248,7 +248,7 @@ class TheUnreadableChartTest(CorrectedNoteTestCase):
             resolve_against_chart(result, repo=repo)
             self.assertEqual(result.chart_outcome, "unreadable_chart")
             taught = service._learn_firm_mapping_if_confirmed(
-                repo, {"firm_id": "INTELLITAX"}, result,
+                repo, {"firm_id": "TESTFIRM001"}, result,
                 chosen_code=IN_CHART[0], vendor_key=VENDOR_KEY,
                 vendor_name=SUPPLIER)
             firm = rows(repo, "SELECT * FROM categorisations_firm_vendors")

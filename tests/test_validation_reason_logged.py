@@ -68,7 +68,7 @@ CLIENT = "CLIENT001"
 
 #: The firm on `TempEnvironment`'s one client record, which is what names the
 #: ndjson event log file.
-FIRM = "INTELLITAX"
+FIRM = "TESTFIRM001"
 
 #: One extraction result per outcome, read out of `worker/validation/rules.py`
 #: the way `tests/test_publish_trigger.py` reads them: a missing gross is

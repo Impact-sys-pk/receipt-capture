@@ -293,6 +293,18 @@ CLIENT_COPY_TRIGGER_FIELD = "client_copy_trigger"
 #: `tests/test_stage4_client_copy.py`'s `trigger()` does.
 TEMP_CLIENT_COPY_TRIGGER = "publish"
 
+#: The pretend firm's id. **Flag F6, Paul's decision of 2026-11-14, option B of
+#: two.** It was `FIRM001`, which is his real firm's id in
+#: `Intellibills\firms.json` and is `config.DEFAULT_FIRM_ID`, while the
+#: fixture's pretend client carried `INTELLITAX`, which no record registered.
+#: **His reason, and it is the one this is built to**: the only thing keeping
+#: a test out of his real folders is the root redirect working every time, and
+#: a write that escaped under `FIRM001` would land under his firm's own name,
+#: in files such as `receipt_events_FIRM001.ndjson`, and look like real data.
+#: With a plainly fake id the same accident is obvious on sight. `FIRM001`
+#: stays only where a test is about the production default.
+TEST_FIRM_ID = "TESTFIRM001"
+
 
 def write_firm_record(practice_root=None, client_top_folder=None,
                       publish_folder=None, copy_trigger=None) -> Path:
@@ -329,7 +341,7 @@ def write_firm_record(practice_root=None, client_top_folder=None,
             {
                 "version": 1,
                 "firms": [{
-                    "firm_id": "FIRM001",
+                    "firm_id": TEST_FIRM_ID,
                     "name": "Test Firm",
                     CLIENT_TOP_FOLDER_FIELD: str(client_top_folder),
                     # Sub-step 10f.2, added 2026-09-09. `config` refuses a firm

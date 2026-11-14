@@ -62,7 +62,7 @@ class ChartBundleEnvironment:
             "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
         }
         config.CHARTS_DIR = self.path
-        record = {"client_id": "CLIENT001", "firm_id": "FIRM001", "trade": "UNSPECIFIED"}
+        record = {"client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
         if self._chart_code is not None:
             record["chart_code"] = self._chart_code
         config.CLIENTS_BY_ID = {"CLIENT001": record}

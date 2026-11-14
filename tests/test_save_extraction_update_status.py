@@ -37,7 +37,7 @@ class SaveExtractionUpdateStatusTest(unittest.TestCase):
             filename=f"{receipt_id}.pdf",
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id="CLIENT001",
             source="email",
         )

@@ -270,7 +270,7 @@ class AllImagesDuplicateTest(unittest.TestCase):
                 email_received_at="2026-04-01T00:00:00+00:00",
                 filename="earlier.pdf", file_path="/store/earlier.pdf",
                 file_hash=app.compute_hash(data),
-                firm_id="FIRM001", client_id=CLIENT, source="email")
+                firm_id="TESTFIRM001", client_id=CLIENT, source="email")
             repo.mark_receipt_filed(f"r-{app.compute_hash(data)[:8]}",
                                     "/clients/x/earlier.pdf")
             # Item 34, 2026-11-14: only an `ok` match is a hash duplicate.

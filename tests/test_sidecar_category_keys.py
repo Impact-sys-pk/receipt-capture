@@ -92,7 +92,7 @@ class TempEnvironment:
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
         }
         # A chart holding the codes this file seeds, so the fallback check has
         # something to check against and the test does not read the real bundle
@@ -137,7 +137,7 @@ class TempEnvironment:
             filename=filename,
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id="CLIENT001",
             source="email",
         )
@@ -221,7 +221,7 @@ def _run_pipeline(env, repo, receipt_id, extraction, file_path):
         extraction=extraction,
         file_path=file_path,
         filename="parking.pdf",
-        firm_id="INTELLITAX",
+        firm_id="TESTFIRM001",
         client_id="CLIENT001",
         source="email",
         message_id=f"msg-{receipt_id}",
@@ -488,7 +488,7 @@ class ChartFallbackThroughThePipelineTest(unittest.TestCase):
                 finally:
                     repo.close()
                 sidecar = env.filed_sidecar()
-                log = config.LOGS_DIR / "receipt_events_INTELLITAX.ndjson"
+                log = config.LOGS_DIR / "receipt_events_TESTFIRM001.ndjson"
                 entries = [json.loads(line) for line in
                            log.read_text(encoding="utf-8").splitlines() if line.strip()]
         return sidecar, events, entries

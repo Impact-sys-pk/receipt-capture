@@ -391,7 +391,7 @@ CHILD = (
 )
 
 FIRM = {
-    "firm_id": "FIRM001",
+    "firm_id": "TESTFIRM001",
     "name": "Test Firm",
     "email": "bills@example.com",
     "client_top_folder": r"C:\practice\Client Folders",
@@ -752,7 +752,7 @@ class TheTriggerDecidesTest(unittest.TestCase):
             config.CLIENTS_BY_ID = dict(config.CLIENTS_BY_ID)
             config.CLIENTS_BY_ID["CLIENT002"] = {
                 "client_name": "No Folder", "client_id": "CLIENT002",
-                "firm_id": "INTELLITAX", "trade": "UNSPECIFIED"}
+                "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
             source = config.FILES_DIR / "doc.pdf"
             source.write_bytes(DOCUMENT)
             repo = Repository()
@@ -817,7 +817,7 @@ class RecordingTheCopyCanFailTooTest(unittest.TestCase):
             filename="doc.pdf",
             file_path=str(source),
             file_hash="heals",
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id=CLIENT,
             source="email",
         )

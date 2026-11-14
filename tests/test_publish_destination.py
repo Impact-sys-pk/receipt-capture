@@ -91,7 +91,7 @@ KEY = "intellibooks"
 #: `client_top_folder` is present because its own refusal runs first and would
 #: otherwise answer every case here.
 FIRM = {
-    "firm_id": "FIRM001",
+    "firm_id": "TESTFIRM001",
     "name": "Test Firm",
     "email": "bills@example.com",
     "phone_app_url": "https://example.invalid",
@@ -290,10 +290,10 @@ class RefusedTest(unittest.TestCase):
 
     def test_two_firms(self):
         stderr = self._refused([
-            dict(firm_with({KEY: "Incoming"}), firm_id="FIRM001"),
+            dict(firm_with({KEY: "Incoming"}), firm_id="TESTFIRM001"),
             dict(firm_with({KEY: "Incoming"}), firm_id="FIRM002"),
         ])
-        self.assertIn("FIRM001", stderr)
+        self.assertIn("TESTFIRM001", stderr)
         self.assertIn("FIRM002", stderr)
 
     def test_the_key_is_absent(self):
@@ -393,12 +393,12 @@ class FunctionInIsolationTest(unittest.TestCase):
 
     def test_two_firms_are_refused(self):
         firms = {
-            "FIRM001": {"publish_destinations": {KEY: "Incoming"}},
+            "TESTFIRM001": {"publish_destinations": {KEY: "Incoming"}},
             "FIRM002": {"publish_destinations": {KEY: "Incoming"}},
         }
         with self.assertRaises(RuntimeError) as caught:
             config._publish_destination(firms)
-        self.assertIn("FIRM001", str(caught.exception))
+        self.assertIn("TESTFIRM001", str(caught.exception))
         self.assertIn("FIRM002", str(caught.exception))
         self.assertIn(FIELD, str(caught.exception))
 
@@ -406,7 +406,7 @@ class FunctionInIsolationTest(unittest.TestCase):
         # The control for the two above, and the shape of the return value:
         # a bare folder name, never a path.
         value = config._publish_destination(
-            {"FIRM001": {"publish_destinations": {KEY: "Incoming"}}})
+            {"TESTFIRM001": {"publish_destinations": {KEY: "Incoming"}}})
         self.assertEqual(value, "Incoming")
 
 

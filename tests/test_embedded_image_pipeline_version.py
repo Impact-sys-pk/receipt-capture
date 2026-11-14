@@ -112,12 +112,12 @@ class TempEnvironment:
             "CLIENT001": {
                 "client_name": "Test Client", "client_folder_name": "Test Client",
                 "trade": "UNSPECIFIED",
-                "client_id": "CLIENT001", "firm_id": "INTELLITAX",
+                "client_id": "CLIENT001", "firm_id": "TESTFIRM001",
             }
         }
         config.CLIENTS = {
             "sender@example.com": {
-                "client_id": "CLIENT001", "firm_id": "INTELLITAX",
+                "client_id": "CLIENT001", "firm_id": "TESTFIRM001",
             }
         }
         return self

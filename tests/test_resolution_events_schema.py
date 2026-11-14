@@ -115,7 +115,7 @@ class ResolutionEventsSchemaTest(unittest.TestCase):
                 repo._conn.execute(
                     "INSERT INTO receipts (receipt_id, firm_id, client_id, source, message_id, "
                     "filename, file_path, file_hash, status, created_at) "
-                    "VALUES ('r-1','INTELLITAX','C1','email','m1','f.pdf','p','h','needs_review','now')"
+                    "VALUES ('r-1','TESTFIRM001','C1','email','m1','f.pdf','p','h','needs_review','now')"
                 )
                 repo._conn.execute(
                     "INSERT INTO resolution_events (event_id, receipt_id, extraction_id, "
@@ -157,12 +157,12 @@ class ListResolutionEventsTest(unittest.TestCase):
                 repo._conn.execute(
                     "INSERT INTO receipts (receipt_id, firm_id, client_id, source, message_id, "
                     "filename, file_path, file_hash, status, created_at) "
-                    "VALUES ('r-1','INTELLITAX','C1','email','m1','f.pdf','p','h','ok','now')"
+                    "VALUES ('r-1','TESTFIRM001','C1','email','m1','f.pdf','p','h','ok','now')"
                 )
                 repo._conn.execute(
                     "INSERT INTO receipts (receipt_id, firm_id, client_id, source, message_id, "
                     "filename, file_path, file_hash, status, created_at) "
-                    "VALUES ('r-2','INTELLITAX','C1','email','m2','g.pdf','p','h2','ok','now')"
+                    "VALUES ('r-2','TESTFIRM001','C1','email','m2','g.pdf','p','h2','ok','now')"
                 )
                 for event_id, receipt_id, created_at in [
                     ("e-old", "r-1", "2026-07-01T00:00:00+00:00"),

@@ -97,7 +97,7 @@ class InboxDuplicateIsMovedNotDeletedTest(unittest.TestCase):
                     filename="earlier.pdf",
                     file_path=env.path / "Documents" / "earlier.pdf",
                     file_hash=app.compute_hash(CONTENT),
-                    firm_id="FIRM001",
+                    firm_id="TESTFIRM001",
                     client_id=CLIENT,
                     source="phone",
                 )

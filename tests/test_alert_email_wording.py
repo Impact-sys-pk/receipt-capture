@@ -281,17 +281,17 @@ class MailboxFirmReplyAddressTest(unittest.TestCase):
         self.addCleanup(setattr, config, "FIRMS", config.FIRMS)
 
     def test_one_firm_gives_its_email(self):
-        config.FIRMS = {"FIRM001": {"firm_id": "FIRM001", "name": FIRM_NAME,
+        config.FIRMS = {"TESTFIRM001": {"firm_id": "TESTFIRM001", "name": FIRM_NAME,
                                     "email": REPLY_ADDRESS}}
         self.assertEqual(app._mailbox_firm_reply_address(), REPLY_ADDRESS)
 
     def test_one_firm_with_no_email_gives_nothing(self):
-        config.FIRMS = {"FIRM001": {"firm_id": "FIRM001", "name": FIRM_NAME}}
+        config.FIRMS = {"TESTFIRM001": {"firm_id": "TESTFIRM001", "name": FIRM_NAME}}
         self.assertEqual(app._mailbox_firm_reply_address(), "")
 
     def test_several_firms_give_nothing(self):
         config.FIRMS = {
-            "FIRM001": {"firm_id": "FIRM001", "name": "A", "email": "a@example.org"},
+            "TESTFIRM001": {"firm_id": "TESTFIRM001", "name": "A", "email": "a@example.org"},
             "FIRM002": {"firm_id": "FIRM002", "name": "B", "email": "b@example.org"},
         }
         self.assertEqual(app._mailbox_firm_reply_address(), "")

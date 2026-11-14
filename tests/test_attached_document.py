@@ -380,7 +380,7 @@ class OnArrivalTest(AttachedTestCase):
             self.assertIsNotNone(row, "no receipts row was written")
             self.assertEqual(row["status"], config.BANK_ATTACHMENT_STATUS)
             self.assertEqual(row["client_id"], "CLIENT001")
-            self.assertEqual(row["firm_id"], "INTELLITAX")
+            self.assertEqual(row["firm_id"], "TESTFIRM001")
             # 10d.40's four words and no fifth. IntelliBooks Desktop is the
             # route in, which is what `desktop` already means.
             self.assertEqual(row["source"], "desktop")

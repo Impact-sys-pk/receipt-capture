@@ -20,7 +20,7 @@ REGISTRY = {
         "client_id": "CLIENT001",
         "client_name": "Test Client",
         "client_folder_name": "Test Client",
-        "firm_id": "FIRM001",
+        "firm_id": "TESTFIRM001",
         "trade": "UNSPECIFIED",
     }
 }
@@ -71,7 +71,7 @@ class FolderReaderTest(unittest.TestCase):
         intake = scan_inbox()[0]
 
         self.assertEqual(intake.client_id, "CLIENT001")
-        self.assertEqual(intake.firm_id, "FIRM001", "the firm comes off the client record")
+        self.assertEqual(intake.firm_id, "TESTFIRM001", "the firm comes off the client record")
         self.assertEqual(intake.source, "phone")
 
     def test_the_folder_name_is_not_read(self):

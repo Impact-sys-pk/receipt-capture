@@ -99,7 +99,7 @@ def seed(repo, receipt_id, status, file_hash, client_id=CLIENT,
         filename="shell.jpg",
         file_path=f"/store/{receipt_id}.jpg",
         file_hash=file_hash,
-        firm_id="FIRM001",
+        firm_id="TESTFIRM001",
         client_id=client_id,
         source="desktop",
     )
@@ -202,7 +202,7 @@ class TheLookupAsksAboutStatusTest(unittest.TestCase):
             repo = Repository()
             try:
                 seed(repo, "r-ok", "ok", "other" * 8)
-                repo.mark_processed("msg-1", "att-1", "h" * 64, "r-ok", "FIRM001")
+                repo.mark_processed("msg-1", "att-1", "h" * 64, "r-ok", "TESTFIRM001")
                 self.assertEqual(repo.find_ok_by_hash("h" * 64, CLIENT), "r-ok")
             finally:
                 repo.close()

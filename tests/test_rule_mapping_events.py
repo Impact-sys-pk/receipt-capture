@@ -203,14 +203,16 @@ class Q5_AppliedOrRefusedTest(_Base):
 class Q6_WhichClientOrFirmTest(_Base):
 
     def test_scope_is_on_every_row(self):
-        config.FIRMS = dict(config.FIRMS, INTELLITAX={"firm_id": "INTELLITAX"})
+        # Flag F6, 2026-11-14: the fixture's firm is registered, so the line
+        # that registered ~~INTELLITAX~~ by hand here is deleted.
+        self.assertIn("TESTFIRM001", config.FIRMS)
         self.apply(rule_saved("client-rule"))
         self.apply(rule_saved("firm-rule", **{config.RULE_SCOPE_FIELD: config.RULE_SCOPE_FIRM,
-                                              config.RULE_SCOPE_ID_FIELD: "INTELLITAX"}))
+                                              config.RULE_SCOPE_ID_FIELD: "TESTFIRM001"}))
         self.teach()
         scopes = [(e["subject_id"], e["scope"], e["scope_id"]) for e in self.events()]
         self.assertEqual(scopes[0], ("client-rule", config.RULE_SCOPE_CLIENT, CLIENT))
-        self.assertEqual(scopes[1], ("firm-rule", config.RULE_SCOPE_FIRM, "INTELLITAX"))
+        self.assertEqual(scopes[1], ("firm-rule", config.RULE_SCOPE_FIRM, "TESTFIRM001"))
         self.assertEqual(scopes[2][1:], (config.RULE_SCOPE_CLIENT, CLIENT))
         one_client = rows(self.repo, f"SELECT * FROM {TABLE} WHERE scope = ? AND scope_id = ?",
                           (config.RULE_SCOPE_CLIENT, CLIENT))

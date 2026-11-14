@@ -78,7 +78,7 @@ class WhatCountsAsProcessedTest(AttachedTestCase):
             email_subject="s", email_from="c@example.com",
             email_received_at=None, filename=f"{receipt_id}.pdf",
             file_path=file_path, file_hash=receipt_id * 3,
-            firm_id="FIRM001", client_id="CLIENT001", source="email")
+            firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
         if status != "pending":
             repo.update_receipt_status(receipt_id, status)
 
@@ -216,7 +216,7 @@ class WhichDayTest(unittest.TestCase):
             email_subject="s", email_from="c@example.com",
             email_received_at=None, filename=f"{receipt_id}.pdf",
             file_path=f"/{receipt_id}.pdf", file_hash=receipt_id * 3,
-            firm_id="FIRM001", client_id="CLIENT001", source="email")
+            firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
         repo.update_receipt_status(receipt_id, "ok")
         repo._conn.execute(
             "UPDATE receipts SET created_at = ? WHERE receipt_id = ?",
@@ -352,7 +352,7 @@ class TheFilenameFallbackTest(unittest.TestCase):
             email_subject="s", email_from="c@example.com",
             email_received_at=None, filename=filename or self.FILENAME,
             file_path=f"/{receipt_id}.pdf", file_hash=receipt_id * 3,
-            firm_id="FIRM001", client_id="CLIENT001", source="email")
+            firm_id="TESTFIRM001", client_id="CLIENT001", source="email")
         self.repo.update_receipt_status(receipt_id, status)
 
     def test_the_lookup_itself_is_left_alone_and_still_returns_everything(self):

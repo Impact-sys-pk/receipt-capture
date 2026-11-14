@@ -46,7 +46,7 @@ CLIENT = {
     "client_id": "Client_004",
     "client_name": "Test Sole Trader",
     "client_folder_name": "Test Sole Trader",
-    "firm_id": "FIRM001",
+    "firm_id": "TESTFIRM001",
     "trade": "UNSPECIFIED",
     "emails": ["st@example.invalid"],
 }
@@ -438,12 +438,12 @@ class MailboxFirmTest(unittest.TestCase):
         self.addCleanup(setattr, config, "FIRMS", config.FIRMS)
 
     def test_one_firm_is_the_answer(self):
-        config.FIRMS = {"FIRM001": {"firm_id": "FIRM001", "name": "Intellitax"}}
+        config.FIRMS = {"TESTFIRM001": {"firm_id": "TESTFIRM001", "name": "Intellitax"}}
         self.assertEqual(app._mailbox_firm_name(), "Intellitax")
 
     def test_two_firms_name_nobody_rather_than_the_first(self):
         config.FIRMS = {
-            "FIRM001": {"firm_id": "FIRM001", "name": "Intellitax"},
+            "TESTFIRM001": {"firm_id": "TESTFIRM001", "name": "Intellitax"},
             "FIRM002": {"firm_id": "FIRM002", "name": "Best Accounting"},
         }
         self.assertEqual(app._mailbox_firm_name(), "")

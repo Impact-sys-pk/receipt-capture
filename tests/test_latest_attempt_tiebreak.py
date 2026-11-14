@@ -102,7 +102,7 @@ def seed(conn, receipt_id="r-tie", client_id="CLIENT001", status="needs_review",
         INSERT INTO receipts
             (receipt_id, firm_id, client_id, source, message_id, filename,
              file_path, file_hash, status, created_at)
-        VALUES (?, 'INTELLITAX', ?, 'phone', ?, 'r.pdf', 'p', 'h', ?,
+        VALUES (?, 'TESTFIRM001', ?, 'phone', ?, 'r.pdf', 'p', 'h', ?,
                 '2026-09-01T09:00:00+00:00')
         """,
         (receipt_id, client_id, f"msg-{receipt_id}", status),
@@ -318,7 +318,7 @@ class ProbeTest(unittest.TestCase):
                     INSERT INTO receipts
                         (receipt_id, firm_id, client_id, source, message_id,
                          filename, file_path, file_hash, status, created_at)
-                    VALUES ('r-none', 'INTELLITAX', 'CLIENT001', 'phone',
+                    VALUES ('r-none', 'TESTFIRM001', 'CLIENT001', 'phone',
                             'msg-none', 'n.pdf', 'p', 'h2', 'pending',
                             '2026-09-02T09:00:00+00:00')
                     """)

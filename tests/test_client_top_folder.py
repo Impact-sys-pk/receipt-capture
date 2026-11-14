@@ -53,7 +53,7 @@ FIELD = "client_top_folder"
 #: A record with everything a firm has today except the field under test, so a
 #: refusal cannot be blamed on a record that was malformed for another reason.
 FIRM = {
-    "firm_id": "FIRM001",
+    "firm_id": "TESTFIRM001",
     "name": "Test Firm",
     "email": "bills@example.com",
     "phone_app_url": "https://example.invalid",
@@ -212,8 +212,10 @@ class AcceptedTest(unittest.TestCase):
 
         Mutating `next(iter(firms.items()))` to `firms.get(DEFAULT_FIRM_ID, {})`
         on 2026-09-07 was caught by the source-level test alone, because the
-        one firm the suite writes happens to be FIRM001, so naming it and
-        taking the only one give the same answer. This is the case where they
+        one firm the suite wrote happened to be FIRM001, so naming it and
+        taking the only one gave the same answer. **Since flag F6 of
+        2026-11-14 the suite's firm is `TESTFIRM001`**, so the two now differ
+        in every test as well, and this one still pins the case directly. This is the case where they
         differ: another firm's installation has another firm's id and must not
         need this repository's default to match it.
         """
@@ -289,7 +291,7 @@ class RefusalTest(unittest.TestCase):
         ]
         stderr = self._refused(records)
         self.assertIn("firms.json", stderr)
-        self.assertIn("FIRM001", stderr)
+        self.assertIn("TESTFIRM001", stderr)
         self.assertIn("FIRM002", stderr)
 
     def test_the_refusal_creates_no_client_folder(self):

@@ -50,7 +50,7 @@ CLIENT_B = "CLIENT002"
 SHARED_HASH = "a" * 64
 
 def seed_receipt(repo, receipt_id, client_id, file_hash=SHARED_HASH, filed=True,
-                 firm_id="FIRM001", published=False, status=None):
+                 firm_id="TESTFIRM001", published=False, status=None):
     """One receipt row for `client_id`, filed unless told otherwise.
 
     Filed matters: every caller of find_by_hash() pairs it with
@@ -144,7 +144,7 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
             repo = Repository()
             try:
                 seed_receipt(repo, "r-a", CLIENT_A)
-                repo.mark_processed("msg-1", "att-1", SHARED_HASH, "r-a", "FIRM001")
+                repo.mark_processed("msg-1", "att-1", SHARED_HASH, "r-a", "TESTFIRM001")
                 self.assertEqual(repo.find_by_hash(SHARED_HASH, CLIENT_A), "r-a")
                 self.assertIsNone(repo.find_by_hash(SHARED_HASH, CLIENT_B))
             finally:
@@ -167,7 +167,7 @@ class HashLookupIsScopedToTheClientTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                repo.mark_processed("msg-1", "att-1", SHARED_HASH, "r-gone", "FIRM001")
+                repo.mark_processed("msg-1", "att-1", SHARED_HASH, "r-gone", "TESTFIRM001")
                 self.assertIsNone(repo.find_by_hash(SHARED_HASH, CLIENT_A))
                 self.assertFalse(repo.is_recorded_and_filed("r-gone"),
                                  "and it was never filed, so the outcome for a "
@@ -924,7 +924,7 @@ class EveryArrivalRouteReachesTheSameVerdictTest(unittest.TestCase):
                         "client_name": "Other Client",
                         "client_folder_name": "Other Client",
                         "client_id": CLIENT_B,
-                        "firm_id": "FIRM001",
+                        "firm_id": "TESTFIRM001",
                         "trade": "UNSPECIFIED",
                     }
                     with_email_client(self, CLIENT_B)

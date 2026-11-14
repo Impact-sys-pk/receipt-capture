@@ -58,7 +58,7 @@ class AutoRetryNoLoopTest(unittest.TestCase):
             filename=f"{receipt_id}.pdf",
             file_path=file_path,
             file_hash=f"hash-{receipt_id}",
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id="CLIENT001",
             source="email",
         )
@@ -111,7 +111,7 @@ class AutoRetryNoLoopTest(unittest.TestCase):
             "LOGS_DIR": temp_path / "logs",
             "CLIENTS_BY_ID": {"CLIENT001": {"client_name": "Test Client",
                                         "client_folder_name": "Test Client",
-                                        "client_id": "CLIENT001", "firm_id": "INTELLITAX",
+                                        "client_id": "CLIENT001", "firm_id": "TESTFIRM001",
                                         "trade": "UNSPECIFIED"}},
         }
 

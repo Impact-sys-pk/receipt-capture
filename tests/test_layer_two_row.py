@@ -78,7 +78,7 @@ class LayerTwoTestCase(CorrectedNoteTestCase):
                 business_type=business_type, vendor_key=VENDOR_KEY,
                 nominal_code=code, account_name=name,
                 last_updated="2026-09-01T00:00:00+00:00",
-                vendor_name=SUPPLIER, firm_id="INTELLITAX")
+                vendor_name=SUPPLIER, firm_id="TESTFIRM001")
             firm = rows(repo, "SELECT * FROM categorisations_firm_vendors")
             client = rows(repo, "SELECT * FROM categorisations_client_vendors")
         finally:

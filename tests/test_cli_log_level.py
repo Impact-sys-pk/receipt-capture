@@ -282,7 +282,7 @@ repo.save_receipt(
     receipt_id='r-1', message_id='m-1', email_subject=None, email_from=None,
     email_received_at='2026-09-10T00:00:00Z', filename='r-1.pdf',
     file_path=config.FILES_DIR / 'r-1.pdf', file_hash='h',
-    firm_id='FIRM001', client_id='CLIENT001', source='email')
+    firm_id='TESTFIRM001', client_id='CLIENT001', source='email')
 repo.close()
 
 before = log_path_for('discard')
@@ -322,7 +322,7 @@ repo.save_receipt(
     receipt_id='r-1', message_id='m-1', email_subject=None, email_from=None,
     email_received_at='2026-09-10T00:00:00Z', filename='r-1.pdf',
     file_path=config.FILES_DIR / 'r-1.pdf', file_hash='h',
-    firm_id='FIRM001', client_id='CLIENT001', source='email')
+    firm_id='TESTFIRM001', client_id='CLIENT001', source='email')
 repo.save_extraction(
     extraction_id='x-1', receipt_id='r-1', engine='fake',
     supplier_name='Apcoa Parking', invoice_date='2026-04-01',
@@ -381,14 +381,14 @@ def run_child(tmp: Path, script=CHILD):
         "version": 1,
         "clients": [{
             "client_id": "CLIENT001", "client_name": "Test Client",
-            "client_folder_name": "Test Client", "firm_id": "FIRM001",
+            "client_folder_name": "Test Client", "firm_id": "TESTFIRM001",
             "emails": ["driver@example.com"], "trade": "UNSPECIFIED",
         }],
     }), encoding="utf-8")
     (practice / "Intellibills" / "firms.json").write_text(json.dumps({
         "version": 1,
         "firms": [{
-            "firm_id": "FIRM001", "name": "Test Firm",
+            "firm_id": "TESTFIRM001", "name": "Test Firm",
             "email": "bills@example.com",
             "client_top_folder": str(practice / "Clients"),
             "publish_destinations": {"intellibooks": "Incoming"},

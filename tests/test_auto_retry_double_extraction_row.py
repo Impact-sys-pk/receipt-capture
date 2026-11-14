@@ -108,7 +108,7 @@ class RetryDoesNotDoubleWriteTest(unittest.TestCase):
                 "client_name": "Test Client",
                 "client_folder_name": "Test Client",
                 "client_id": "CLIENT001",
-                "firm_id": "INTELLITAX",
+                "firm_id": "TESTFIRM001",
                 "trade": "UNSPECIFIED",
             }},
         }
@@ -132,7 +132,7 @@ class RetryDoesNotDoubleWriteTest(unittest.TestCase):
             filename=receipt_id + ".pdf",
             file_path=file_path,
             file_hash="hash-" + receipt_id,
-            firm_id="INTELLITAX",
+            firm_id="TESTFIRM001",
             client_id="CLIENT001",
             source="email",
         )

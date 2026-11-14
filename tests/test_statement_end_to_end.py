@@ -215,7 +215,7 @@ class TheSeamTest(unittest.TestCase):
             drop_pair(STATEMENT_FILENAME, phone_statement_sidecar())
             record, = scan_inbox()
             self.assertEqual(record.client_id, "CLIENT001")
-            self.assertEqual(record.firm_id, "INTELLITAX")
+            self.assertEqual(record.firm_id, "TESTFIRM001")
             self.assertEqual(record.source, "phone")
 
     def test_the_keys_scan_inbox_ignores_do_not_stop_it_working(self):

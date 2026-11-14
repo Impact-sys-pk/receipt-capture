@@ -62,11 +62,11 @@ class LogsIsolationTest(unittest.TestCase):
                     message_id="msg-isolation-check",
                     filename="isolation-check.pdf",
                     action="extracted",
-                    firm_id="INTELLITAX",
+                    firm_id="TESTFIRM001",
                     run_id="test-run",
                 )
 
-                written = config.LOGS_DIR / "receipt_events_INTELLITAX.ndjson"
+                written = config.LOGS_DIR / "receipt_events_TESTFIRM001.ndjson"
                 self.assertTrue(
                     written.exists(),
                     "the redirected write should land in the temp log directory",

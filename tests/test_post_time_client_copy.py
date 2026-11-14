@@ -723,7 +723,7 @@ class TheAwkwardCasesTest(PostTimeTestCase):
             self.seed(env)
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {"client_name": "Test Client",
-                              "client_id": "CLIENT001", "firm_id": "INTELLITAX",
+                              "client_id": "CLIENT001", "firm_id": "TESTFIRM001",
                               "trade": "UNSPECIFIED"}}
             note = self.write_note(attached_note())
 

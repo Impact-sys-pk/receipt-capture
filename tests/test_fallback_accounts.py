@@ -78,7 +78,7 @@ class FallbackEnvironment:
         self._saved_clients = config.CLIENTS_BY_ID
         config.CHARTS_DIR = self.path
         config.CLIENTS_BY_ID = {
-            "CLIENT001": {"client_id": "CLIENT001", "firm_id": "FIRM001",
+            "CLIENT001": {"client_id": "CLIENT001", "firm_id": "TESTFIRM001",
                           "trade": "UNSPECIFIED"}
         }
         # Module-level caches, so they survive between tests unless cleared. They

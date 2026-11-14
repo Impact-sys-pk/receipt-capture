@@ -122,7 +122,7 @@ class ExportFixture(unittest.TestCase):
             INSERT INTO receipts
                 (receipt_id, firm_id, client_id, source, message_id, filename,
                  file_path, file_hash, status, created_at)
-            VALUES (?, 'FIRM001', 'CLI001', 'email', ?, 'r.pdf', 'p', 'h', ?, ?)
+            VALUES (?, 'TESTFIRM001', 'CLI001', 'email', ?, 'r.pdf', 'p', 'h', ?, ?)
             """,
             (receipt_id, f"msg-{receipt_id}", status, created_at),
         )
@@ -274,7 +274,7 @@ class NoExtractionTest(ExportFixture):
 
     def test_its_own_columns_are_not(self):
         row = self.only_row()
-        self.assertEqual(row["firm_id"], "FIRM001")
+        self.assertEqual(row["firm_id"], "TESTFIRM001")
         self.assertEqual(row["status"], "pending")
 
 

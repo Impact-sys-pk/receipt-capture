@@ -40,7 +40,7 @@ from worker.resolution.service import NOTE_APPLIED_OUTCOMES, apply_resolution_no
 
 ROOT = Path(__file__).resolve().parent.parent
 CLIENT = "CLIENT001"
-FIRM = "INTELLITAX"
+FIRM = "TESTFIRM001"
 EARLY = "2026-11-14T09:00:00+00:00"
 LATE = "2026-11-14T10:00:00+00:00"
 
@@ -439,12 +439,13 @@ class TheNoteRouteTest(_Base):
     def test_a_firm_rule_from_a_client_screen(self):
         """Decision 7.
 
-        **The fixture's firm registry is keyed on the firm record
+        ~~**The fixture's firm registry is keyed on the firm record
         `tests\\live_paths.py` wrote, not on `INTELLITAX`**, which is the firm its
-        test client carries, so the firm is registered here. `TempEnvironment`
-        restores `config.FIRMS` on exit.
+        test client carries, so the firm is registered here.~~ **Flag F6,
+        2026-11-14: the test client's firm is the registered one now**, so the
+        line that registered it by hand is deleted.
         """
-        config.FIRMS = dict(config.FIRMS, **{FIRM: {"firm_id": FIRM}})
+        self.assertIn(FIRM, config.FIRMS)
         outcome = self.apply(saved_note(scope=config.RULE_SCOPE_FIRM, scope_id=FIRM))
         self.assertEqual(outcome.outcome, config.RULE_SAVED_ACTION, outcome.message)
 

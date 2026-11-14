@@ -62,6 +62,40 @@ class TheArticleIsNotTheKeyTest(unittest.TestCase):
         self.assertIsNone(key("LA"))
 
 
+#: The plural definite article in French and Spanish. Added 2026-11-14, Paul's
+#: decision, amendment 557 of `2026-07-25_CONSOLE_DESIGN.md`. Checked read-only
+#: first against every vendor name, supplier name and stored key in the live
+#: database and the recovery CSV: none changes.
+PLURALS = ("les", "los", "las")
+
+#: Deliberately left out by the same decision: prepositions, indefinite
+#: articles, and Italian `gli`. Pinned so a later "obvious improvement" is a
+#: decision and not an accident.
+LEFT_OUT = ("de", "di", "du", "del", "un", "une", "una", "uno", "gli")
+
+
+class ThePluralIsNotTheKeyEitherTest(unittest.TestCase):
+
+    def test_each_plural_is_in_noise_words(self):
+        for article in PLURALS:
+            with self.subTest(article=article):
+                self.assertIn(article, NOISE_WORDS)
+
+    def test_each_plural_is_dropped_from_the_front_of_a_name(self):
+        for article in PLURALS:
+            with self.subTest(article=article):
+                self.assertEqual(key(f"{article.upper()} PETIT CAFE"),
+                                 "petit cafe")
+
+    def test_a_word_merely_starting_with_one_is_kept(self):
+        self.assertEqual(normalise_description("Lester Garage"), "lester garage")
+
+    def test_what_paul_left_out_stays_out(self):
+        for word in LEFT_OUT:
+            with self.subTest(word=word):
+                self.assertNotIn(word, NOISE_WORDS)
+
+
 class NothingElseMovedTest(unittest.TestCase):
 
     def test_the_first_word_rule_is_unchanged(self):

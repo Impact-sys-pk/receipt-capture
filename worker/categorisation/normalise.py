@@ -41,6 +41,12 @@ NOISE_WORDS = {
     # deliberately left out: see
     # 2026-11-13_REPORT_claude_code_vendor_key_articles.md.
     "la", "le", "il", "el",
+    # The plural definite article in French and Spanish. Added 2026-11-14,
+    # Paul's decision, amendment 557 of 2026-07-25_CONSOLE_DESIGN.md, after a
+    # read-only check that no stored key changes. Prepositions, indefinite
+    # articles and Italian `gli` stay out by the same decision, and
+    # tests/test_vendor_key_articles.py holds that.
+    "les", "los", "las",
     "ref", "reference", "txn",
 }
 

@@ -1819,34 +1819,18 @@ def process_once():
                             repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
                             continue
                         stats["extraction_failures"] += 1
-                        # The same word the row below records, and the same folder
-                        # the attachment path sends a raised extraction to.
+                        # ~~The same word the row below records, and~~ The same
+                        # folder the attachment path sends a raised extraction to.
                         email_outcomes.append("failed")
-                        repo.save_extraction(
-                            extraction_id=str(uuid.uuid4()),
-                            receipt_id=receipt_id,
-                            # extractor.name, not a hardcoded string: this row
-                            # would otherwise say OpenAI produced a failure that
-                            # a different provider produced. Design document 3.8.
-                            engine=extractor.name,
-                            supplier_name=None,
-                            invoice_date=None,
-                            net_amount=None,
-                            vat_amount=None,
-                            gross_amount=None,
-                            currency=config.DEFAULT_CURRENCY,
-                            raw_response=str(exc),
-                            validation_status="failed",
-                            validation_notes=[f"extraction error: {exc}"],
-                            pipeline_version=pipeline_version,  # design document 3.12
-                        )
-                        _log_receipt(
-                            receipt_id, message_id, filename, "extraction_failed",
-                            firm_id=firm_id,
-                            extraction_status="failed",
-                            review_reason=str(exc),
-                            run_id=run_id
-                        )
+                        # F3, Paul's decision of 2026-11-15: a row for this
+                        # attempt already exists, written by
+                        # process_extraction_result() before it raised. Write
+                        # nothing over it, as _retry_failed_receipts() does.
+                        # ~~A failed row and an extraction_failed event were
+                        # written here~~, flipping an ok receipt to failed.
+                        logger.info(
+                            f"extraction error for {receipt_id} came after its extraction "
+                            f"row was written; leaving that row as the record of the attempt")
 
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
 
@@ -2185,43 +2169,16 @@ def process_once():
                     )
                     continue
                 stats["extraction_failures"] += 1
-                repo.save_extraction(
-                    extraction_id=str(uuid.uuid4()),
-                    receipt_id=receipt_id,
-                    engine=extractor.name,  # design document 3.8
-                    supplier_name=None,
-                    invoice_date=None,
-                    net_amount=None,
-                    vat_amount=None,
-                    gross_amount=None,
-                    currency=config.DEFAULT_CURRENCY,
-                    raw_response=str(exc),
-                    validation_status="failed",
-                    validation_notes=[f"extraction error: {exc}"],
-                    pipeline_version=pipeline_version,
-                )
-                file_review(
-                    intake.source_path,
-                    _review_key(receipt_client_id),
-                    intake.filename,
-                    "failed",
-                    [str(exc)],
-                    {
-                        "receipt_id": receipt_id,
-                        "source": intake.source,
-                        "client_id": receipt_client_id,
-                        "client_name": (config.CLIENTS_BY_ID.get(receipt_client_id) or {}).get("client_name", ""),
-                        "original_filename": intake.filename,
-                        "error": str(exc),
-                    },
-                )
-                _log_receipt(
-                    receipt_id, f"{intake.source}:{intake.original_name}", intake.filename, "extraction_failed",
-                    firm_id=receipt_firm_id,
-                    extraction_status="failed",
-                    review_reason=str(exc),
-                    run_id=run_id
-                )
+                # F3, Paul's decision of 2026-11-15: a row for this attempt
+                # already exists, so process_extraction_result() wrote it, filed
+                # any Review copy and logged the true outcome before raising.
+                # Write nothing over it, as _retry_failed_receipts() has done
+                # since sub-step 10ay. ~~A failed row, a Review copy and an
+                # extraction_failed event were written here~~, which flipped an
+                # ok receipt to failed and recorded a failure that did not happen.
+                logger.info(
+                    f"capture error for {receipt_id} came after its extraction row "
+                    f"was written; leaving that row as the record of the attempt")
 
             finally:
                 # Every outcome, per design document 3.13, and last: the failure
@@ -2427,28 +2384,15 @@ def process_once():
                         repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
                         continue
                     stats["extraction_failures"] += 1
-                    repo.save_extraction(
-                        extraction_id=str(uuid.uuid4()),
-                        receipt_id=receipt_id,
-                        engine=extractor.name,  # design document 3.8
-                        supplier_name=None,
-                        invoice_date=None,
-                        net_amount=None,
-                        vat_amount=None,
-                        gross_amount=None,
-                        currency=config.DEFAULT_CURRENCY,
-                        raw_response=str(exc),
-                        validation_status="failed",
-                        validation_notes=[f"extraction error: {exc}"],
-                        pipeline_version=pipeline_version,
-                    )
-                    _log_receipt(
-                        receipt_id, message_id, filename, "extraction_failed",
-                        firm_id=firm_id,
-                        extraction_status="failed",
-                        review_reason=str(exc),
-                        run_id=run_id
-                    )
+                    # F3, Paul's decision of 2026-11-15: a row for this attempt
+                    # already exists, written by process_extraction_result()
+                    # before it raised. Write nothing over it, as
+                    # _retry_failed_receipts() does. ~~A failed row and an
+                    # extraction_failed event were written here~~, flipping an
+                    # ok receipt to failed.
+                    logger.info(
+                        f"extraction error for {receipt_id} came after its extraction "
+                        f"row was written; leaving that row as the record of the attempt")
                     email_outcomes.append("failed")
                     # Mark processed even on failure (extraction error)
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)

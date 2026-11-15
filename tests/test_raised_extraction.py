@@ -204,6 +204,30 @@ class ALateRaiseDoesNotRepublishTest(unittest.TestCase):
                              "published twice: the late raise republished")
             self.assertEqual(_item(receipt["receipt_id"])["validation_status"], "ok")
 
+    def test_a_late_raise_writes_nothing_over_the_row(self):
+        """F3 of `2026-11-15_REPORT_claude_code_raised_extraction.md`, Paul's
+        decision of 2026-11-15. The row `process_extraction_result()` wrote is
+        the record of the attempt. The `except` used to write a `failed` row on
+        top, flipping an `ok` receipt to `failed`, and an `extraction_failed`
+        event for a receipt that was extracted. As `_retry_failed_receipts()`
+        already does since sub-step 10ay: write nothing."""
+        for route in ("inbox", "email_attachment", "embedded_image"):
+            with self.subTest(route=route), TempEnvironment():
+                routes = Routes(RecordingExtractor(extraction_result()))
+                with patch("worker.extraction_pipeline.copy_for_published_receipt",
+                           side_effect=RuntimeError("raised after the publish")):
+                    if route == "inbox":
+                        routes.inbox_file("receipt.jpg", "desktop")
+                    else:
+                        with_email_client(self)
+                        getattr(routes, route)()
+                receipt, extractions, _ = _only_receipt()
+                self.assertEqual(len(extractions), 1, "a failed row was written on top")
+                self.assertEqual(receipt["status"], "ok",
+                                 "the late raise flipped the receipt to failed")
+                self.assertNotIn("extraction_failed",
+                                 _event_actions(receipt["receipt_id"]))
+
 
 if __name__ == "__main__":
     unittest.main()

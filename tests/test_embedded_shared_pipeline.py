@@ -198,9 +198,11 @@ class TheSharedFunctionIsCalledTest(unittest.TestCase):
     def test_the_loop_no_longer_validates_or_saves_an_extraction_itself(self):
         """What goes, rather than only what arrives.
 
-        `save_extraction()` survives in the `except` branch, which is correct
+        ~~`save_extraction()` survives in the `except` branch, which is correct
         and is section 4 of the brief: the shared function takes an extraction,
-        so it cannot be what handles a raise. What must be gone is the success
+        so it cannot be what handles a raise.~~ Struck 2026-11-15: the shared
+        function does handle a raise now, through `raised_note`, and the
+        `except` branch writes nothing of its own. What must be gone is the success
         branch's own copy, and the way to tell them apart is `validate()`, which
         only the success branch had.
         """
@@ -210,10 +212,29 @@ class TheSharedFunctionIsCalledTest(unittest.TestCase):
                          "answers to what an extraction is worth")
 
     def test_the_exception_branch_still_writes_its_own_row(self):
-        calls = self._loop_calls()
-        self.assertIn("repo.save_extraction", calls,
-                      "the raise branch lost its extraction row, so a failed "
-                      "extraction leaves a receipt with no extraction at all")
+        """~~`save_extraction()` in the loop is how the raise branch writes its
+        row.~~ **Changed 2026-11-15.** Part 1 of the raised-extraction brief
+        sends a raise through the shared function with `raised_note`, which
+        writes the row; F3, the same day, removed the loop's own late-raise
+        write. The intent is unchanged, a raised extraction never leaves a
+        receipt with no extraction row, and `tests/test_raised_extraction.py`
+        asserts it on the rows themselves. This checks the loop still makes
+        that call."""
+        import ast
+        from pathlib import Path
+
+        tree = ast.parse(
+            (Path(__file__).resolve().parent.parent / "app.py").read_text(
+                encoding="utf-8"))
+        loop = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.For) and isinstance(node.target, ast.Name)
+                    and node.target.id == "embedded_img")
+        raised = [call for call in ast.walk(loop) if isinstance(call, ast.Call)
+                  and ast.unparse(call.func) == "process_extraction_result"
+                  and any(k.arg == "raised_note" for k in call.keywords)]
+        self.assertEqual(len(raised), 1,
+                         "the raise branch lost its extraction row, so a failed "
+                         "extraction leaves a receipt with no extraction at all")
 
 
 class TheEmbeddedPathRetriesATransientFailureTest(unittest.TestCase):

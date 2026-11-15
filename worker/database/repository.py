@@ -1579,7 +1579,7 @@ class Repository:
     #
     # Amendment 344's reasoning for `increment_firm_vendor_count()` applies: a
     # function nobody calls is one edit away from looking as though it decides
-    # something. `tests/test_hash_duplicate_ok_only.py` asserts it stays gone.
+    # something. `tests/test_hash_duplicate_blocker.py` asserts it stays gone.
 
     def is_published(self, receipt_id: str) -> bool:
         """Whether this receipt has ever landed at a destination. 10f.24.

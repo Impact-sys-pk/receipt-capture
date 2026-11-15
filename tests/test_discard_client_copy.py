@@ -1410,7 +1410,7 @@ class ADiscardedRowThatKeptItsFiledPathTest(DiscardTestCase):
     # is DELETED, 2026-11-14, with `is_recorded_and_filed()`. It existed only to
     # pin that function's answer per status when every row carried a
     # `filed_path`; `find_blocker_by_hash()` never reads `filed_path`, and its own
-    # status matrix is in `tests/test_hash_duplicate_ok_only.py`.
+    # status matrix is in `tests/test_hash_duplicate_blocker.py`.
 
     def test_the_identical_file_can_be_sent_again_even_though_the_column_stuck(self):
         """The consequence, driven through a real poll rather than reasoned about.

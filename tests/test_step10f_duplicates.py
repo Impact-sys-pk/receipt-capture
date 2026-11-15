@@ -504,7 +504,7 @@ class SettledMeansPublishedTest(unittest.TestCase):
     # a resent review item must not look like a duplicate. **The rule is held
     # now by status**: `find_blocker_by_hash()` refuses only the statuses in
     # `config.HASH_DUPLICATE_STATUSES`, and the matrix in
-    # `tests/test_hash_duplicate_ok_only.py` seeds every status published.
+    # `tests/test_hash_duplicate_blocker.py` seeds every status published.
 
 
 class EmbeddedImageGuardTest(unittest.TestCase):
@@ -611,7 +611,7 @@ class EmbeddedImageGuardTest(unittest.TestCase):
         `if` that acts on it, and that there are three. ~~`is_recorded_and_filed()`
         having no caller is held by `tests/test_stage4_client_copy.py`.~~
         `is_recorded_and_filed()` is deleted, 2026-11-14, and
-        `tests/test_hash_duplicate_ok_only.py` holds that it stays gone.
+        `tests/test_hash_duplicate_blocker.py` holds that it stays gone.
         """
         import ast
         from pathlib import Path

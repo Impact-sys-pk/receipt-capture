@@ -1248,7 +1248,12 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             # ~~`type(validation)(...)`~~ The class by name, 2026-11-15, item 41,
             # Paul's decision. Correct before and after; `type(x)(...)` reads as
             # though it handles any type, and that disguise is what hid the arm
-            # in the pipeline that dropped `notes`. The notes are kept here.
+            # in the pipeline that dropped `notes`. ~~The notes are kept here.~~
+            # **Corrected 2026-11-15: there are no notes to keep.** `validate()`
+            # sets `ok` only when its notes list is empty, so on this branch
+            # `validation.notes` is always `[]`. `list(validation.notes or []) +`
+            # is defensive: it keeps any note the day `validate()` learns to pass
+            # with one, and nothing today depends on it.
             validation = ValidationResult(
                 status="needs_review",
                 notes=list(validation.notes or []) + [
@@ -1284,10 +1289,16 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 "row rather than used to block it, and no figure was "
                 "recalculated",
                 receipt_id, source, len(despite), ", ".join(despite))
-            # The class by name, 2026-11-15, item 41. **`notes=[]` drops the
+            # The class by name, 2026-11-15, item 41. ~~**`notes=[]` drops the
             # failed checks on purpose**: they are logged at WARNING just above
             # and carried forward in `despite`, and an `ok` result does not
-            # carry the notes it overrides.
+            # carry the notes it overrides.~~ **Corrected 2026-11-15: nothing is
+            # dropped, because nothing reads this field again.** On this path
+            # `validation.notes` is read only inside `if validation.status !=
+            # "ok":` below, which this line has just made false. The failed
+            # checks reach the person by two other routes: the WARNING above,
+            # and `despite`, which is what the event and the extraction row are
+            # written from.
             validation = ValidationResult(status="ok", notes=[])
 
         if validation.status != "ok":

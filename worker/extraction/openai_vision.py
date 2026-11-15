@@ -10,7 +10,8 @@ from openai import OpenAI
 import config
 from worker import vat_rates
 from worker.line_items import MAX_LINE_ITEMS, LineItem
-from .base import BaseExtractor, ExtractionReplyError, ExtractionResult
+from .base import (BaseExtractor, ExtractionReplyError, ExtractionResult,
+                   MULTIPLE_RECEIPTS_NOTE)
 from .postprocess import establish_gross_from_vat, resolve_invoice_date
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,17 @@ class OpenAIVisionExtractor(BaseExtractor):
             except json.JSONDecodeError:
                 logger.warning(f"Non-JSON response for {filename}: {raw}")
                 parsed = {}
+            # A list of several entries is what a photo of more than one receipt
+            # produced on 2026-11-15, part 3 of the raised-extraction brief. It
+            # fails here with a note the operator can act on, rather than on the
+            # first .get() below with "'list' object has no attribute 'get'".
+            # **Not multi-receipt support**, and the count stays out of the note:
+            # nothing establishes that one entry is one receipt. An empty list or
+            # a list of one is not evidence of several, and falls through.
+            if isinstance(parsed, list) and len(parsed) > 1:
+                raise ExtractionReplyError(
+                    f"the reply is a list of {len(parsed)} entries, not one receipt's fields",
+                    raw_response=raw, note=MULTIPLE_RECEIPTS_NOTE)
             # Post-process extraction for common patterns, e.g. VAT-inclusive totals
             net = parsed.get("net_amount")
             vat = parsed.get("vat_amount")

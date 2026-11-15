@@ -46,6 +46,18 @@ class ExtractionResult:
     """
 
 
+#: What the operator reads on a receipt whose reply was a list of several
+#: entries, which is what a photo of more than one receipt produced on
+#: 2026-11-15. Worded to be told apart from an unreadable image, which gets
+#: `validate()`'s `missing supplier_name` and the rest, because the two need
+#: different actions. **No count**: nothing establishes that one entry is one
+#: receipt. Part 3 of the raised-extraction brief.
+MULTIPLE_RECEIPTS_NOTE = (
+    "this image appears to hold more than one receipt: the reader returned "
+    "several entries where it reads one receipt. Send each receipt as its own image"
+)
+
+
 class ExtractionReplyError(Exception):
     """A reply came back from the provider and could not be used. 2026-11-15.
 

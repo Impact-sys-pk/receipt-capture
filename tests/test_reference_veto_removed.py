@@ -169,15 +169,22 @@ class TwoReadingsTest(unittest.TestCase):
         handles any type, which is why the arm that dropped `notes` went unread
         for months. Naming the class removes the disguise. Read off the syntax
         tree, so a comment quoting the old construction does not count.
+
+        **Extended to `worker/resolution/service.py` on 2026-11-15**, item 41,
+        Paul's decision. The resolve path held the last two, both building a
+        `ValidationResult`. One guard over both files rather than a second one.
         """
         import ast
         from pathlib import Path
 
-        path = Path(__file__).resolve().parent.parent / "worker" / "extraction_pipeline.py"
-        found = [
-            node.lineno for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Call)
-            and isinstance(node.func.func, ast.Name) and node.func.func.id == "type"]
+        root = Path(__file__).resolve().parent.parent / "worker"
+        found = []
+        for path in (root / "extraction_pipeline.py", root / "resolution" / "service.py"):
+            found += [
+                f"{path.name}:{node.lineno}"
+                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Call)
+                and isinstance(node.func.func, ast.Name) and node.func.func.id == "type"]
         self.assertEqual(found, [])
 
     def test_the_receipt_time_within_five_minutes_still_flags(self):

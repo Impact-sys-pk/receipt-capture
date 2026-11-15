@@ -43,6 +43,7 @@ from worker.filing import (
     remove_review_pair,
 )
 from worker.validation.rules import (
+    ValidationResult,
     unreadable_year,
     unreadable_year_reason,
     validate,
@@ -1244,7 +1245,11 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         # path with the string "None" in it.
         _, _, folder_check = _client_details(receipt.get("client_id"))
         if validation.status == "ok" and not folder_check:
-            validation = type(validation)(
+            # ~~`type(validation)(...)`~~ The class by name, 2026-11-15, item 41,
+            # Paul's decision. Correct before and after; `type(x)(...)` reads as
+            # though it handles any type, and that disguise is what hid the arm
+            # in the pipeline that dropped `notes`. The notes are kept here.
+            validation = ValidationResult(
                 status="needs_review",
                 notes=list(validation.notes or []) + [
                     f"client {receipt.get('client_id')} has no client_folder_name in the registry, "
@@ -1279,7 +1284,11 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 "row rather than used to block it, and no figure was "
                 "recalculated",
                 receipt_id, source, len(despite), ", ".join(despite))
-            validation = type(validation)(status="ok", notes=[])
+            # The class by name, 2026-11-15, item 41. **`notes=[]` drops the
+            # failed checks on purpose**: they are logged at WARNING just above
+            # and carried forward in `despite`, and an `ok` result does not
+            # carry the notes it overrides.
+            validation = ValidationResult(status="ok", notes=[])
 
         if validation.status != "ok":
             attempt_id = str(uuid.uuid4())

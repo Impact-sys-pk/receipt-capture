@@ -10,7 +10,7 @@ from openai import OpenAI
 import config
 from worker import vat_rates
 from worker.line_items import MAX_LINE_ITEMS, LineItem
-from .base import BaseExtractor, ExtractionResult
+from .base import BaseExtractor, ExtractionReplyError, ExtractionResult
 from .postprocess import establish_gross_from_vat, resolve_invoice_date
 
 logger = logging.getLogger(__name__)
@@ -165,51 +165,61 @@ class OpenAIVisionExtractor(BaseExtractor):
 
         raw = response.choices[0].message.content
 
+        # From here on there is a reply, and it is the only evidence of what the
+        # model read. Any failure past this point is raised as an
+        # ExtractionReplyError carrying it, so the caller can store the reply
+        # rather than the exception's message. 2026-11-15, part 1 of
+        # PROMPT_claude_code_2026-11-15_a_raised_extraction_must_not_vanish.md.
         try:
-            # Strip markdown code block wrapper if present
-            text = raw.strip()
-            if text.startswith("```json"):
-                text = text[7:]  # Remove ```json
-            if text.startswith("```"):
-                text = text[3:]  # Remove ```
-            if text.endswith("```"):
-                text = text[:-3]  # Remove trailing ```
-            parsed = json.loads(text.strip())
-        except json.JSONDecodeError:
-            logger.warning(f"Non-JSON response for {filename}: {raw}")
-            parsed = {}
-        # Post-process extraction for common patterns, e.g. VAT-inclusive totals
-        net = parsed.get("net_amount")
-        vat = parsed.get("vat_amount")
-        gross = parsed.get("gross_amount")
-        details = parsed.get("details")
-        invoice_date = parsed.get("invoice_date")
-        invoice_date_raw = parsed.get("invoice_date_raw")
+            try:
+                # Strip markdown code block wrapper if present
+                text = raw.strip()
+                if text.startswith("```json"):
+                    text = text[7:]  # Remove ```json
+                if text.startswith("```"):
+                    text = text[3:]  # Remove ```
+                if text.endswith("```"):
+                    text = text[:-3]  # Remove trailing ```
+                parsed = json.loads(text.strip())
+            except json.JSONDecodeError:
+                logger.warning(f"Non-JSON response for {filename}: {raw}")
+                parsed = {}
+            # Post-process extraction for common patterns, e.g. VAT-inclusive totals
+            net = parsed.get("net_amount")
+            vat = parsed.get("vat_amount")
+            gross = parsed.get("gross_amount")
+            details = parsed.get("details")
+            invoice_date = parsed.get("invoice_date")
+            invoice_date_raw = parsed.get("invoice_date_raw")
 
-        # Post-processing is provider-independent and lives in postprocess.py, so
-        # a second provider inherits it rather than silently losing it.
-        # config.PREFER_DAYFIRST is read here, at call time, as it was before, and
-        # so are the rates: vat_rates.impliable_rates() reads the table
-        # IntelliCharts publishes into CHARTS_DIR, item 163.
-        net, vat, gross, details = establish_gross_from_vat(
-            net, vat, gross, details,
-            vat_rates.impliable_rates(), config.VAT_RATE_ROUNDING_ALLOWANCE,
-        )
-        invoice_date, details = resolve_invoice_date(
-            invoice_date, invoice_date_raw, details, config.PREFER_DAYFIRST
-        )
+            # Post-processing is provider-independent and lives in postprocess.py, so
+            # a second provider inherits it rather than silently losing it.
+            # config.PREFER_DAYFIRST is read here, at call time, as it was before, and
+            # so are the rates: vat_rates.impliable_rates() reads the table
+            # IntelliCharts publishes into CHARTS_DIR, item 163.
+            net, vat, gross, details = establish_gross_from_vat(
+                net, vat, gross, details,
+                vat_rates.impliable_rates(), config.VAT_RATE_ROUNDING_ALLOWANCE,
+            )
+            invoice_date, details = resolve_invoice_date(
+                invoice_date, invoice_date_raw, details, config.PREFER_DAYFIRST
+            )
 
-        return ExtractionResult(
-            supplier_name=parsed.get("supplier_name"),
-            invoice_date=invoice_date or parsed.get("invoice_date"),
-            net_amount=net,
-            vat_amount=vat,
-            gross_amount=gross,
-            details=details,
-            currency=parsed.get("currency", config.DEFAULT_CURRENCY),
-            raw_response=raw,
-            engine="openai_vision",
-            receipt_ref_number=parsed.get("receipt_ref_number"),
-            receipt_time=parsed.get("receipt_time"),
-            line_items=_normalise_line_items(parsed.get("line_items")),
-        )
+            return ExtractionResult(
+                supplier_name=parsed.get("supplier_name"),
+                invoice_date=invoice_date or parsed.get("invoice_date"),
+                net_amount=net,
+                vat_amount=vat,
+                gross_amount=gross,
+                details=details,
+                currency=parsed.get("currency", config.DEFAULT_CURRENCY),
+                raw_response=raw,
+                engine="openai_vision",
+                receipt_ref_number=parsed.get("receipt_ref_number"),
+                receipt_time=parsed.get("receipt_time"),
+                line_items=_normalise_line_items(parsed.get("line_items")),
+            )
+        except ExtractionReplyError:
+            raise
+        except Exception as exc:
+            raise ExtractionReplyError(str(exc), raw_response=raw) from exc

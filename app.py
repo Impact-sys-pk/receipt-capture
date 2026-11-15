@@ -29,7 +29,7 @@ from worker.extraction.factory import get_extractor
 from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.extraction.stored_reply import reply_is_usable
 from worker.client_copy import copy_for_published_receipt
-from worker.extraction_pipeline import process_extraction_result
+from worker.extraction_pipeline import process_extraction_result, raised_extraction
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler, console_handler
 from worker import line_items, london_time, receipt_rules, supplier_mappings
@@ -1493,7 +1493,13 @@ def _retry_failed_receipts(repo: Repository, extractor, categorisation_engine, s
                     supplier_name=None, invoice_date=None,
                     net_amount=None, vat_amount=None, gross_amount=None,
                     currency=config.DEFAULT_CURRENCY,
-                    raw_response=str(exc),
+                    # The reply where the extractor received one, 2026-11-15:
+                    # it is the only record of what the model read.
+                    # reply_is_usable() then judges the reply itself: one that
+                    # is not a JSON object waits for review, as the stored
+                    # message did, and one that is an object is retried on the
+                    # next version, because then the fault was in our code.
+                    raw_response=getattr(exc, "raw_response", None) or str(exc),
                     validation_status="failed",
                     validation_notes=[f"auto-retry extraction error: {exc}"],
                     pipeline_version=pipeline_version,
@@ -1784,6 +1790,34 @@ def process_once():
                         email_outcomes.append(status)
                     except Exception as exc:
                         logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
+                        # 2026-11-15, the same as the capture route: a raise
+                        # before any row was written goes through the shared
+                        # pipeline as `failed`, so it is published. Its status
+                        # is `failed`, the word this list has always been given.
+                        if repo.get_extraction_for_receipt(receipt_id) is None:
+                            failed, note = raised_extraction(exc, extractor.name)
+                            status, _filed_path = process_extraction_result(
+                                receipt_id=receipt_id,
+                                extraction=failed,
+                                file_path=file_path,
+                                filename=filename,
+                                firm_id=firm_id,
+                                client_id=client_id,
+                                source=EMAIL_SOURCE,
+                                message_id=message_id,
+                                attachment_id=att_id,
+                                file_hash=file_hash,
+                                asserted_values=None,
+                                repo=repo,
+                                categorisation_engine=engine,
+                                stats=stats,
+                                run_id=run_id,
+                                pipeline_version=pipeline_version,
+                                raised_note=note,
+                            )
+                            email_outcomes.append(status)
+                            repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
+                            continue
                         stats["extraction_failures"] += 1
                         # The same word the row below records, and the same folder
                         # the attachment path sends a raised extraction to.
@@ -2121,6 +2155,35 @@ def process_once():
 
             except Exception as exc:
                 logger.error(f"capture extraction failed {receipt_id[:8]}... [{intake.filename}]: {exc}", exc_info=True)
+                # 2026-11-15. A raise BEFORE process_extraction_result() wrote a
+                # row is an extraction that never produced a result, and it goes
+                # through that function as `failed` so it is published and
+                # reaches the operator. It used to stop here, so Paul's photo of
+                # four receipts reached no screen. A raise AFTER the row was
+                # written came from inside that function, which has already
+                # published, and keeps the handling below unchanged.
+                if repo.get_extraction_for_receipt(receipt_id) is None:
+                    failed, note = raised_extraction(exc, extractor.name)
+                    process_extraction_result(
+                        receipt_id=receipt_id,
+                        extraction=failed,
+                        file_path=file_path,
+                        filename=intake.filename,
+                        firm_id=receipt_firm_id,
+                        client_id=receipt_client_id,
+                        source=intake.source,
+                        message_id=None,
+                        attachment_id=None,
+                        file_hash=None,
+                        asserted_values=asserted_values,
+                        repo=repo,
+                        categorisation_engine=engine,
+                        stats=stats,
+                        run_id=run_id,
+                        pipeline_version=pipeline_version,
+                        raised_note=note,
+                    )
+                    continue
                 stats["extraction_failures"] += 1
                 repo.save_extraction(
                     extraction_id=str(uuid.uuid4()),
@@ -2333,6 +2396,36 @@ def process_once():
 
                 except Exception as exc:
                     logger.error(f"extraction failed {receipt_id[:8]}... [{filename}]: {exc}", exc_info=True)
+                    # 2026-11-15, the same as the capture route: a raise before
+                    # any row was written goes through the shared pipeline as
+                    # `failed`, so it is published.
+                    if repo.get_extraction_for_receipt(receipt_id) is None:
+                        failed, note = raised_extraction(exc, extractor.name)
+                        status, filed_path = process_extraction_result(
+                            receipt_id=receipt_id,
+                            extraction=failed,
+                            file_path=file_path,
+                            filename=filename,
+                            firm_id=firm_id,
+                            client_id=client_id,
+                            source=EMAIL_SOURCE,
+                            message_id=message_id,
+                            attachment_id=att_id,
+                            file_hash=file_hash,
+                            asserted_values=None,
+                            repo=repo,
+                            categorisation_engine=engine,
+                            stats=stats,
+                            run_id=run_id,
+                            pipeline_version=pipeline_version,
+                            raised_note=note,
+                        )
+                        email_outcomes.append(status)
+                        # Unconditional, as the branch below has always been:
+                        # the shared pipeline marks only when all three ids are
+                        # present. INSERT OR IGNORE, so twice is harmless.
+                        repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
+                        continue
                     stats["extraction_failures"] += 1
                     repo.save_extraction(
                         extraction_id=str(uuid.uuid4()),

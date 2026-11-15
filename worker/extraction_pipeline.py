@@ -257,6 +257,37 @@ def _log_receipt(receipt_id, message_id, filename, action, firm_id, client_id=No
         f.write(json.dumps(entry) + "\n")
 
 
+def raised_extraction(exc, engine: str):
+    """The failed result and its note for an extraction that raised. 2026-11-15.
+
+    Returns `(ExtractionResult, note)` for `process_extraction_result(...,
+    raised_note=note)`. Every figure is None, because nothing was read.
+
+    **`raw_response` is the provider's reply when the exception carries one**,
+    an `ExtractionReplyError`, and the exception's message only when there was
+    no reply. A stored message still reads as not usable to
+    `stored_reply.reply_is_usable()`, and so does a reply the extractor could
+    not use, so either way auto-retry leaves the receipt for review, Paul's
+    decision of 2026-11-14.
+
+    `note` is the exception's own `note` where it names the failure better, and
+    otherwise `extraction error: <message>`, the wording these rows have
+    always carried.
+    """
+    from worker.extraction.base import ExtractionResult
+
+    reply = getattr(exc, "raw_response", None)
+    note = getattr(exc, "note", None) or f"extraction error: {exc}"
+    result = ExtractionResult(
+        supplier_name=None, invoice_date=None,
+        net_amount=None, vat_amount=None, gross_amount=None,
+        currency=config.DEFAULT_CURRENCY,
+        raw_response=reply if reply else str(exc),
+        engine=engine,
+    )
+    return result, note
+
+
 def process_extraction_result(
     receipt_id: str,
     extraction,
@@ -273,10 +304,20 @@ def process_extraction_result(
     categorisation_engine: CategorisationEngine = None,
     stats: dict = None,
     run_id: str = None,
-    pipeline_version: str = None
+    pipeline_version: str = None,
+    raised_note: str = None,
 ) -> tuple:
     """
     Shared extraction processing pipeline: validate → duplicate-check → categorise → file.
+
+    **`raised_note` is set only for an extraction that raised.** 2026-11-15,
+    brief `PROMPT_claude_code_2026-11-15_a_raised_extraction_must_not_vanish.md`.
+    The receipt is then `failed` with that one note, `validate()` is not asked,
+    and the event log keeps the word it has always written for a raised
+    extraction, `extraction_failed`. Everything else is this function's
+    ordinary non-`ok` path, **and what matters is the publish**: an arrival route's
+    `except` used to write its own row and publish nothing, so such a receipt
+    reached no screen. Build the `extraction` with `raised_extraction()`.
 
     Used by ALL three call sites:
     - Email intake (normal processing)
@@ -299,8 +340,13 @@ def process_extraction_result(
     if stats is None:
         stats = {}
 
-    # Validate extraction
-    validation = validate(extraction)
+    # Validate extraction. A raised one is failed by what raised, not by what
+    # validate() would say about an all-null result, which is three "missing"
+    # notes that would hide the cause.
+    if raised_note is not None:
+        validation = ValidationResult(status="failed", notes=[raised_note])
+    else:
+        validation = validate(extraction)
 
     duplicate_of = None
 
@@ -662,7 +708,9 @@ def process_extraction_result(
         receipt_id,
         message_id or f"folder:{filename}",
         filename,
-        "extracted",
+        # The word each kind of attempt has always written: the event log is
+        # append-only, so a raised extraction keeps `extraction_failed`.
+        "extraction_failed" if raised_note is not None else "extracted",
         firm_id=firm_id,
         client_id=client_id,
         extraction_status=validation.status,

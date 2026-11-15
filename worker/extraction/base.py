@@ -46,6 +46,26 @@ class ExtractionResult:
     """
 
 
+class ExtractionReplyError(Exception):
+    """A reply came back from the provider and could not be used. 2026-11-15.
+
+    Brief `PROMPT_claude_code_2026-11-15_a_raised_extraction_must_not_vanish.md`.
+    Raised by an extractor for any failure AFTER it holds the provider's reply,
+    so the caller can store what the model actually said. Until this existed a
+    raise left only `str(exc)` in `extractions.raw_response`, and Paul's live
+    test of a photo of four receipts lost the reply that explained it.
+
+    `raw_response` is the reply exactly as received. `note` is optional: what
+    the operator reads on the receipt when the failure has a better name than
+    the exception's message. Absent, callers say `extraction error: <message>`.
+    """
+
+    def __init__(self, message, raw_response, note=None):
+        super().__init__(message)
+        self.raw_response = raw_response
+        self.note = note
+
+
 class BaseExtractor(ABC):
     @property
     @abstractmethod

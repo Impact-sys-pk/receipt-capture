@@ -258,11 +258,17 @@ class EveryStatusPublishesTest(unittest.TestCase):
 
     The three statuses this class used to assert were unpublishable are the
     three a review queue is made of, and 10f.15 moves that queue onto the
-    inbox. **An extraction that RAISED still publishes nothing**, and that is
+    inbox. ~~**An extraction that RAISED still publishes nothing**, and that is
     not an oversight: no `receipts` row reaches
     `process_extraction_result()` on that path at all, so there is nothing to
-    publish. The last two tests are unchanged and are the ones that still say
-    "nothing".
+    publish.~~ **Inverted 2026-11-15**, brief
+    `PROMPT_claude_code_2026-11-15_a_raised_extraction_must_not_vanish.md`. The
+    struck reason described the mechanism rather than a decision, and Paul's
+    live test showed what it cost: a photo of four receipts made the extraction
+    raise and the receipt reached no screen. A raised extraction now goes
+    through `process_extraction_result()` as `failed` and publishes like any
+    other failed receipt. ~~The last two tests~~ The unknown-sender test is the
+    one that still says "nothing".
     """
 
     def _drive(self, outcome):
@@ -287,12 +293,19 @@ class EveryStatusPublishesTest(unittest.TestCase):
             self.assertEqual([r["outcome"] for r in publish_rows()],
                              [publish.PUBLISHED])
 
-    def test_an_extraction_that_raised_publishes_nothing(self):
+    def test_an_extraction_that_raised_publishes_one_failed_item(self):
+        """~~`test_an_extraction_that_raised_publishes_nothing`~~, inverted
+        2026-11-15; see the class docstring. Every route is covered in
+        `tests/test_raised_extraction.py`; this keeps the set this class
+        describes complete."""
         with TempEnvironment():
             with_email_client(self, CLIENT)
             Routes(RecordingExtractor(RuntimeError("unreadable"))).email_attachment()
-            self.assertEqual(published_items(), [])
-            self.assertEqual(publish_rows(), [])
+            receipt, = receipts()
+            self.assertEqual(receipt["status"], "failed")
+            self.assertEqual(published_items(), [f"{receipt['receipt_id']}.json"])
+            self.assertEqual([r["outcome"] for r in publish_rows()],
+                             [publish.PUBLISHED])
 
     def test_a_possible_duplicate_publishes_too(self):
         """~~10f.24 makes it explicit and it is not in this scope.~~

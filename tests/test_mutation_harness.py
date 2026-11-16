@@ -374,5 +374,69 @@ class TheReportListsEveryCatchTest(unittest.TestCase):
         self.assertNotIn("more line(s)", printed)
 
 
+class FailuresAreKeyedOnTheTestTest(unittest.TestCase):
+    """K1 of `2026-11-16_REPORT_claude_code_three_comment_fixes.md`, Paul's
+    decision of 2026-11-16. `_failures()` keyed each line on its first two
+    space-separated words. A subtest whose parameters hold a space then lost
+    its test name, and two different tests failing with the same parameters
+    became one entry, so the count was short and a name was missing.
+
+    The lines below are the shape pytest prints with the harness's own
+    `-q --tb=no`, copied from a real run on 2026-11-16, including a parameter
+    holding " - " and parentheses.
+    """
+
+    A = "SUBFAILED(path='x', outcomes='a+b') tests/test_s.py::A::test_one"
+    B = "SUBFAILED(path='x', outcomes='a+b') tests/test_s.py::B::test_one"
+    # ~~`outcomes='c - d) (e'`~~: on that string a parser that ignored quotes
+    # closed the brackets early and still rebuilt the same line, so it could not
+    # tell the two apart. ")" then a word then " - " is what separates them.
+    ODD = "SUBFAILED(path='y', outcomes='c) x - y') tests/test_s.py::A::test_one"
+    PLAIN = "FAILED tests/test_s.py::A::test_plain"
+
+    def _failures(self, *lines):
+        from mutation_harness import _failures
+
+        return _failures("\n".join(("....F", "=== short test summary info ===")
+                                   + lines + ("3 failed, 2 passed in 0.01s",)))
+
+    def test_two_tests_with_the_same_parameters_stay_two(self):
+        found = self._failures(self.A, self.B)
+        self.assertEqual(len(found), 2, f"two tests merged into one entry: {found}")
+
+    def test_every_entry_names_its_test(self):
+        found = self._failures(self.A, self.B, self.ODD, self.PLAIN)
+        for nodeid in ("tests/test_s.py::A::test_one", "tests/test_s.py::B::test_one",
+                       "tests/test_s.py::A::test_plain"):
+            with self.subTest(nodeid=nodeid):
+                self.assertTrue(any(nodeid in entry for entry in found),
+                                f"{nodeid} is named by no entry: {found}")
+        self.assertEqual(len(found), 4, found)
+
+    def test_each_entry_is_exactly_its_line(self):
+        """Stronger than "names its test". Added the same day, after a mutation
+        that stopped tracking quotes survived the test above. With `ODD` as it
+        now stands, a parser that ignores quotes closes the brackets at "c)",
+        takes "x" as the node id and loses the test."""
+        lines = (self.A, self.B, self.ODD, self.PLAIN)
+        self.assertEqual(self._failures(*lines), sorted(lines))
+
+    def test_a_message_after_the_node_id_is_dropped(self):
+        found = self._failures(self.ODD + " - AssertionError: 1 != 2")
+        self.assertEqual(found, [self.ODD])
+
+    def test_a_refused_anchor_is_shown_whole(self):
+        """K2, Paul's decision of 2026-11-16. The refusal showed the first 120
+        characters of the anchor, so a long one could not be recognised."""
+        anchor = "x = 1  # " + "a long anchor that runs well past the old cut " * 4 + "END\n"
+        self.assertGreater(len(repr(anchor)), 120)
+        with self.assertRaises(AnchorNotUnique) as caught:
+            replace_once(anchor * 2, anchor, "y = 2\n")
+        self.assertIn(repr(anchor), str(caught.exception))
+
+    def test_the_same_line_twice_counts_once(self):
+        self.assertEqual(len(self._failures(self.A, self.A, self.PLAIN, self.PLAIN)), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -107,7 +107,9 @@ def replace_once(source: str, old: str, new: str) -> str:
     if count != 1:
         raise AnchorNotUnique(
             f"the anchor appears {count} times and must appear once. "
-            f"Anchor: {old[:120]!r}"
+            # Whole, K2, Paul's decision of 2026-11-16. ~~`old[:120]`~~ cut a
+            # long anchor so it could not be recognised.
+            f"Anchor: {old!r}"
             + ("" if count else "")
             + ("\nWhen an anchor matches twice the usual cause is indentation: "
                "a string indented n spaces is a substring of the identical line "
@@ -205,12 +207,61 @@ class Result:
                 "prose as though it were code")
 
 
+def _subtest_end(line: str) -> int:
+    """Where `SUBFAILED(...)`'s parameters close, or -1 if they never do.
+
+    The parameters are `repr`s, so a string in them can hold a space, a
+    parenthesis or " - ". Quotes are tracked, with backslash escapes, and only a
+    bracket outside a quote counts.
+    """
+    depth, quote, escaped = 0, None, False
+    for index, char in enumerate(line):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
+
+
+def _failure_key(line: str) -> str:
+    """One failure line reduced to what identifies it: its kind, any subtest
+    parameters, and the test it names. A trailing " - message" is dropped."""
+    if line.startswith("SUBFAILED"):
+        end = _subtest_end(line)
+        if end == -1:
+            return line
+        head, rest = line[:end + 1], line[end + 1:]
+    else:
+        head, _, rest = line.partition(" ")
+    nodeid = rest.strip().split(" - ", 1)[0].strip()
+    return f"{head} {nodeid}"
+
+
 def _failures(stdout: str) -> list[str]:
-    """The tests that reported a failure, one line each, deduplicated."""
+    """The tests that reported a failure, one line each, deduplicated.
+
+    ~~Keyed on `" ".join(line.split(" ")[:2])`~~, the first two words. **Struck
+    2026-11-16, Paul's decision on flag K1.** A subtest whose parameters held a
+    space lost its test name, and two different tests failing with the same
+    parameters became one entry, so the list was short and a name was missing:
+    the evidence every "caught by that test only" rests on. Now keyed on the
+    kind, the parameters read to their closing bracket, and the test's node id.
+    """
     seen = {}
     for line in stdout.splitlines():
         if line.startswith(("FAILED ", "ERROR ", "SUBFAILED")):
-            seen[" ".join(line.split(" ")[:2])] = None
+            seen[_failure_key(line)] = None
     return sorted(seen)
 
 

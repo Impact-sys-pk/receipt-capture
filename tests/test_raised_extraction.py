@@ -229,5 +229,81 @@ class ALateRaiseDoesNotRepublishTest(unittest.TestCase):
                                  _event_actions(receipt["receipt_id"]))
 
 
+def _late_raise(test_case, route):
+    """Drive one `ok` receipt down `route` and raise after the publish.
+
+    Returns the `Routes` it used, so the caller can read where the email went.
+    """
+    routes = Routes(RecordingExtractor(extraction_result()))
+    with patch("worker.extraction_pipeline.copy_for_published_receipt",
+               side_effect=RuntimeError("raised after the publish")):
+        if route == "inbox":
+            routes.inbox_file("receipt.jpg", "desktop")
+        else:
+            with_email_client(test_case)
+            getattr(routes, route)()
+    return routes
+
+
+def _last_run():
+    lines = [line for line in
+             config.RUNS_LOG.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return json.loads(lines[-1])
+
+
+class ALateRaiseMovesTheEmailByTheReceiptTest(unittest.TestCase):
+    """F3a of `2026-11-15_REPORT_claude_code_f3.md`, Paul's decision of
+    2026-11-15. The late-raise branch put the literal "failed" into the email's
+    outcomes, so an email whose receipt is `ok` was moved to Failed Processing.
+    It now puts the receipt's own status there, and the email goes where that
+    status sends it."""
+
+    def test_an_ok_receipt_moves_its_email_to_processed_receipts(self):
+        for route in ("email_attachment", "embedded_image"):
+            with self.subTest(route=route), TempEnvironment():
+                routes = _late_raise(self, route)
+                self.assertEqual(routes.only_landing(), "INBOX.Processed Receipts",
+                                 "an ok receipt's email went to the failed folder")
+
+
+class ALateRaiseIsCountedUnderItsOwnKeyTest(unittest.TestCase):
+    """F3b of the same report, in the shape Paul chose: a NEW run-summary key,
+    so historical `runs.ndjson` lines keep their meaning. `extraction_failures`
+    stays an extraction that failed, and a late raise on a receipt that was
+    extracted is not one."""
+
+    def test_the_late_raise_is_counted_as_a_post_extraction_error(self):
+        for route in ("inbox", "email_attachment", "embedded_image"):
+            with self.subTest(route=route), TempEnvironment():
+                _late_raise(self, route)
+                run = _last_run()
+                self.assertEqual(run.get("post_extraction_errors"), 1,
+                                 "the late raise was not counted under its own key")
+                self.assertEqual(run["extraction_failures"], 0,
+                                 "an extracted receipt was counted as a failed extraction")
+
+    def test_the_key_is_on_a_run_with_none(self):
+        """Present at zero, so its absence never has to be interpreted."""
+        with TempEnvironment():
+            Routes(RecordingExtractor(extraction_result())).inbox_file(
+                "receipt.jpg", "desktop")
+            self.assertEqual(_last_run().get("post_extraction_errors"), 0)
+
+    def test_a_raised_extraction_is_still_an_extraction_failure(self):
+        """The genuine failure keeps its key. Counted once, by the shared
+        function, and not under the new one."""
+        for route in ("inbox", "email_attachment", "embedded_image"):
+            with self.subTest(route=route), TempEnvironment():
+                routes = Routes(RecordingExtractor(RuntimeError(ERROR)))
+                if route == "inbox":
+                    routes.inbox_file("photo.jpg", "desktop")
+                else:
+                    with_email_client(self)
+                    getattr(routes, route)()
+                run = _last_run()
+                self.assertEqual(run["extraction_failures"], 1)
+                self.assertEqual(run.get("post_extraction_errors"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

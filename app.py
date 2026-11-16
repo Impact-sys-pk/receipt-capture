@@ -1526,6 +1526,12 @@ def process_once():
         "receipts_created": 0,
         "duplicates_skipped": 0,
         "extraction_failures": 0,
+        # F3b, Paul's decision of 2026-11-15: a raise on an arrival route
+        # AFTER the receipt's extraction row was written. The extraction
+        # did not fail, so it is not an extraction_failures, and a new key
+        # rather than a redefinition keeps every older runs.ndjson line
+        # meaning what it meant.
+        "post_extraction_errors": 0,
         "extractions_succeeded": 0,
         "review_flags_issued": 0,
         "auto_retried_ok": 0,
@@ -1818,10 +1824,13 @@ def process_once():
                             email_outcomes.append(status)
                             repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
                             continue
-                        stats["extraction_failures"] += 1
-                        # ~~The same word the row below records, and~~ The same
-                        # folder the attachment path sends a raised extraction to.
-                        email_outcomes.append("failed")
+                        stats["post_extraction_errors"] += 1
+                        # ~~The same word the row below records, and~~ ~~The same
+                        # folder the attachment path sends a raised extraction to.~~
+                        # F3a, 2026-11-15: the receipt's own status, which the row
+                        # written before the raise set. The literal "failed" sent
+                        # an email whose receipt is ok to Failed Processing.
+                        email_outcomes.append(repo.get_receipt(receipt_id)["status"])
                         # F3, Paul's decision of 2026-11-15: a row for this
                         # attempt already exists, written by
                         # process_extraction_result() before it raised. Write
@@ -2168,7 +2177,7 @@ def process_once():
                         raised_note=note,
                     )
                     continue
-                stats["extraction_failures"] += 1
+                stats["post_extraction_errors"] += 1
                 # F3, Paul's decision of 2026-11-15: a row for this attempt
                 # already exists, so process_extraction_result() wrote it, filed
                 # any Review copy and logged the true outcome before raising.
@@ -2181,10 +2190,17 @@ def process_once():
                     f"was written; leaving that row as the record of the attempt")
 
             finally:
-                # Every outcome, per design document 3.13, and last: the failure
+                # Every outcome, per design document 3.13, ~~and last: the failure
                 # branch above copies the original into the Review folder, so the
-                # move has to happen after it, and a `finally` is the only place
+                # move has to happen after it,~~ and a `finally` is the only place
                 # that covers both branches without repeating the call.
+                # F3c, 2026-11-15: the Review copy is made in one place on this
+                # route, `file_review()` inside process_extraction_result(), on
+                # either branch above. It copies `file_path`, the document-store
+                # copy save_inbox_file() made before the `try`, so it no longer
+                # reads the inbox original and the move does not have to wait for
+                # it. Last is still where the move belongs: after everything that
+                # could fail.
                 _move_inbox_pair_to_processed(intake)
 
         for msg in messages:
@@ -2383,7 +2399,7 @@ def process_once():
                         # present. INSERT OR IGNORE, so twice is harmless.
                         repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
                         continue
-                    stats["extraction_failures"] += 1
+                    stats["post_extraction_errors"] += 1
                     # F3, Paul's decision of 2026-11-15: a row for this attempt
                     # already exists, written by process_extraction_result()
                     # before it raised. Write nothing over it, as
@@ -2393,7 +2409,10 @@ def process_once():
                     logger.info(
                         f"extraction error for {receipt_id} came after its extraction "
                         f"row was written; leaving that row as the record of the attempt")
-                    email_outcomes.append("failed")
+                    # F3a, 2026-11-15: the receipt's own status, which the row
+                    # written before the raise set. ~~"failed"~~ sent an email
+                    # whose receipt is ok to Failed Processing.
+                    email_outcomes.append(repo.get_receipt(receipt_id)["status"])
                     # Mark processed even on failure (extraction error)
                     repo.mark_processed(message_id, att_id, file_hash, receipt_id, firm_id)
 

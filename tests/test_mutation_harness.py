@@ -330,5 +330,29 @@ class NotCollectedTest(unittest.TestCase):
                 self.assertNotIn(banned, imported)
 
 
+class TheReportListsEveryCatchTest(unittest.TestCase):
+    """H2 of `2026-11-16_REPORT_claude_code_two_flags.md`, Paul's decision of
+    2026-11-16. The report cut the list of tests that caught a mutation at
+    fifteen and printed "... N more", and on 2026-11-16 both of the tests a
+    brief was about sat in the hidden four. The list is the evidence a second
+    session checks the work against, so it is printed whole."""
+
+    def test_twenty_catches_print_twenty_names(self):
+        import contextlib
+        import io
+
+        from mutation_harness import Result, report
+
+        names = [f"FAILED tests/test_x.py::T::test_{i:02d}" for i in range(20)]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            report(Result(name="m", hunks=1, caught=list(names)))
+        printed = out.getvalue()
+        for name in names:
+            with self.subTest(name=name):
+                self.assertIn(name, printed, "a catching test was left off the report")
+        self.assertNotIn("more\n", printed.split("caught by", 1)[1])
+
+
 if __name__ == "__main__":
     unittest.main()

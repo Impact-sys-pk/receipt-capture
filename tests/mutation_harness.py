@@ -288,10 +288,11 @@ def report(result: Result) -> None:
         print(f"    ... {len(result.changed) - 12} more line(s)")
     print(f"last line: {result.last_line}")
     print(f"caught by {len(result.caught)} reported failure(s):")
-    for name in result.caught[:15]:
+    # Every one, Paul's decision of 2026-11-16. ~~`result.caught[:15]` and
+    # "... N more"~~: on 2026-11-16 both tests a brief was about sat in the
+    # hidden four, and this list is the evidence another session checks.
+    for name in result.caught:
         print(f"  {name}")
-    if len(result.caught) > 15:
-        print(f"  ... {len(result.caught) - 15} more")
     print(f"verdict: {result.verdict}")
     print("restored, byte for byte")
 

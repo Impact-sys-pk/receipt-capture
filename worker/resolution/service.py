@@ -37,6 +37,7 @@ from worker.client_copy import (
 from worker.categorisation.fallback import EVENT_ACTION as CHART_FALLBACK_ACTION
 from worker.categorisation.fallback import resolve_against_chart
 from worker.extraction.base import ExtractionResult
+from worker.line_items import from_json as line_items_from_json
 from worker.filing import (
     determine_tax_year,
     make_enriched_sidecar,
@@ -1326,6 +1327,11 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                 receipt_time=merged["receipt_time"],
                 pipeline_version=pipeline_version,
                 update_status=not preserve_status,
+                # Item 33, 2026-11-16: the lines the extractor read. No correction
+                # route can change them, because they are not in CORRECTABLE_FIELDS,
+                # and this row becomes the latest a reader sees. Carried forward like
+                # every field the correction does not name.
+                line_items=line_items_from_json(extraction.get("line_items")),
             )
             # No `note_resolved_at` here, deliberately. See this function's
             # docstring: a stamped failure reads as an applied note and its file
@@ -1379,6 +1385,11 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
             receipt_ref_number=merged["receipt_ref_number"],
             receipt_time=merged["receipt_time"],
             pipeline_version=pipeline_version,
+            # Item 33, 2026-11-16: the lines the extractor read. No correction
+            # route can change them, because they are not in CORRECTABLE_FIELDS,
+            # and this row becomes the latest a reader sees. Carried forward like
+            # every field the correction does not name.
+            line_items=line_items_from_json(extraction.get("line_items")),
         )
 
         # 8. Save the ORIGINAL run's suggestion. Never overwrite suggested_code
@@ -2397,6 +2408,11 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
             receipt_ref_number=merged["receipt_ref_number"],
             receipt_time=merged["receipt_time"],
             pipeline_version=config.get_pipeline_version(),
+            # Item 33, 2026-11-16: the lines the extractor read. Desktop has no
+            # input for them, so a correction cannot have changed them, and this
+            # row becomes the latest a reader sees. Carried forward like
+            # receipt_ref_number and receipt_time above.
+            line_items=line_items_from_json(previous.get("line_items")),
         )
 
         # The ORIGINAL run's suggestion for the audit trail, exactly as 4.3 step

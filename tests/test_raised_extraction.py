@@ -266,6 +266,68 @@ class ALateRaiseMovesTheEmailByTheReceiptTest(unittest.TestCase):
                                  "an ok receipt's email went to the failed folder")
 
 
+class AnEmailOfSeveralReceiptsGoesByItsWorstTest(unittest.TestCase):
+    """Paul's decision of 2026-11-16, flag G2 of
+    `2026-11-15_REPORT_claude_code_f3_flags.md`. His clients email batches of
+    photographs, so one email carrying several receipts is the normal case, and
+    the rule that it goes to the folder of its worst receipt was read rather
+    than driven.
+
+    **Both email routes**, because each has its own late-raise branch and an
+    email reaches only one of them: the embedded-image loop is fed by
+    `fetch_emails_without_attachments()`, so an email with an attachment never
+    reaches it. The capture route has no email to move.
+
+    Only `late_ok.pdf` raises late. The patched copy raises for that receipt,
+    asserting it is `ok` when it does, and calls through for any other, so the
+    other receipt is published as it would be live.
+    """
+
+    LATE = "late_ok.pdf"
+
+    def _drive(self, route, names_to_outcomes):
+        from test_embedded_email_routing import OUTCOMES, Extractor
+        from worker.client_copy import copy_for_published_receipt as real_copy
+
+        raised = []
+
+        def copy(repo, **kwargs):
+            receipt = repo.get_receipt(kwargs["receipt_id"])
+            if receipt["filename"] == self.LATE:
+                self.assertEqual(receipt["status"], "ok")
+                raised.append(receipt["receipt_id"])
+                raise RuntimeError("raised after the publish")
+            return real_copy(repo, **kwargs)
+
+        names = tuple(names_to_outcomes)
+        extractor = Extractor({n: OUTCOMES[o] for n, o in names_to_outcomes.items()})
+        routes = Routes(extractor)
+        with_email_client(self)
+        with patch("worker.extraction_pipeline.copy_for_published_receipt",
+                   side_effect=copy):
+            getattr(routes, route)(names=names,
+                                   data=[b"%PDF-1.4 " + n.encode() for n in names])
+        self.assertEqual(len(raised), 1, "the late raise did not happen exactly once")
+        return routes
+
+    def test_a_late_raising_ok_and_a_failed_receipt_go_to_failed_processing(self):
+        for route in ("email_attachment", "embedded_image"):
+            with self.subTest(route=route), TempEnvironment():
+                routes = self._drive(route, {self.LATE: "ok", "bad.pdf": "failed"})
+                self.assertEqual(routes.only_landing(), "INBOX.Failed Processing",
+                                 "the email did not go by its worst receipt")
+
+    def test_a_late_raising_ok_and_a_clean_ok_go_to_processed_receipts(self):
+        """The companion case, and the one that separates F3a from the ranking:
+        with no genuine failure on the email, a late raise must not send it to
+        Failed Processing."""
+        for route in ("email_attachment", "embedded_image"):
+            with self.subTest(route=route), TempEnvironment():
+                routes = self._drive(route, {self.LATE: "ok", "other.pdf": "ok_other"})
+                self.assertEqual(routes.only_landing(), "INBOX.Processed Receipts",
+                                 "a late raise sent an all-ok email to the failed folder")
+
+
 class ALateRaiseIsCountedUnderItsOwnKeyTest(unittest.TestCase):
     """F3b of the same report, in the shape Paul chose: a NEW run-summary key,
     so historical `runs.ndjson` lines keep their meaning. `extraction_failures`

@@ -2154,7 +2154,9 @@ def process_once():
                 # reaches the operator. It used to stop here, so Paul's photo of
                 # four receipts reached no screen. A raise AFTER the row was
                 # written came from inside that function, which has already
-                # published, and keeps the handling below unchanged.
+                # published, ~~and keeps the handling below unchanged.~~ and
+                # the handling below writes nothing over that row and logs the
+                # raise. Changed by F3, commit a7dfcaa, 2026-11-15.
                 if repo.get_extraction_for_receipt(receipt_id) is None:
                     failed, note = raised_extraction(exc, extractor.name)
                     process_extraction_result(

@@ -197,6 +197,21 @@ VENDOR_KEY_KEY = "vendor_key"
 #: the recovery sweep reads the stored `extractions.line_items` back.
 LINE_ITEM_COUNT_KEY = "line_item_count"
 
+#: A capital item referred to Paul. Outstanding item 55, his decisions of
+#: 2026-11-16, and the field the Receipts screen in IntelliBooks Desktop is
+#: built against, so its name and shape are stated here once.
+#:
+#: **An object where the receipt was referred, and `null` on every other
+#: item**, for `VENDOR_KEY_KEY`'s reason: a stated null is a different answer
+#: from an absent key, which is an item written before this existed.
+#:
+#: The object is `{"gross": <number or null>, "threshold": <number or
+#: null>}`: what was compared, and with what. `threshold` is null where no
+#: threshold was set for the client or the firm, which refers too. A referred
+#: item is also `validation_status` `needs_review`, so Desktop holds it, and
+#: its notes carry one beginning "capital item". See `worker/capital.py`.
+CAPITAL_ITEM_KEY = "capital_item"
+
 #: Every key a published item carries that the sidecar does not, in one place.
 #:
 #: **Added 2026-09-11 because adding the fifth broke a test that had the four
@@ -217,6 +232,7 @@ ITEM_ONLY_KEYS = (
     CATEGORY_UNCONFIRMED_KEY,
     VENDOR_KEY_KEY,
     LINE_ITEM_COUNT_KEY,
+    CAPITAL_ITEM_KEY,
 )
 
 #: The two outcomes a `publish_events` row can carry, sub-step 10f.36. The
@@ -462,7 +478,7 @@ def category_is_unconfirmed(categorisation) -> bool:
 
 
 def extra_for(notes, duplicate_of=None, categorisation=None,
-              vendor_key=None, line_items=None) -> dict:
+              vendor_key=None, line_items=None, capital_item=None) -> dict:
     """The keys amendment 293 adds to a published item, built in one place.
 
     Two callers, `process_extraction_result()` and the recovery sweep in
@@ -495,6 +511,9 @@ def extra_for(notes, duplicate_of=None, categorisation=None,
 
     `line_items` is the extraction's own list, or None, and only its length is
     published, as `LINE_ITEM_COUNT_KEY`. An empty list is `null`, as None is.
+
+    `capital_item` is `worker.capital.referral_for()`'s answer, published as
+    `CAPITAL_ITEM_KEY`, and None is `null` on every item that was not referred.
     """
     if categorisation is not None and vendor_key is not None:
         raise ValueError(
@@ -513,6 +532,7 @@ def extra_for(notes, duplicate_of=None, categorisation=None,
         CATEGORY_UNCONFIRMED_KEY: category_is_unconfirmed(categorisation),
         VENDOR_KEY_KEY: vendor_key or None,
         LINE_ITEM_COUNT_KEY: len(line_items) if line_items else None,
+        CAPITAL_ITEM_KEY: dict(capital_item) if capital_item else None,
     }
     if duplicate_of:
         extra[DUPLICATE_OF_KEY] = duplicate_of

@@ -61,6 +61,12 @@ class AiAccountSuggestion(BaseModel):
 
     code: str = Field(description="The account code, taken exactly from the list of valid codes above")
     name: str = Field(description="The account name shown beside that code in the list above")
+    # Item 55, Paul's decisions of 2026-11-16. The first of his three
+    # questions, asked in the same call as the account rather than in a
+    # second one. **Required, with no default**: a default makes the field
+    # optional in the schema, and a reply that left it out would then read
+    # as "not capital", which is the answer that posts.
+    looks_capital: bool = Field(description="True if the purchase looks like a capital item: equipment or tools bought to be kept and used in the business for more than a year, rather than a running cost or something used up. False otherwise. Answer it whatever code you choose.")
 
 
 # The vendor key rule: NOISE_WORDS, LOCATION_WORDS, DEFAULT_ALIASES,
@@ -111,6 +117,10 @@ class CategorisationResult:
     original_code: Optional[str] = None
     original_name: Optional[str] = None
     chart_note: Optional[str] = None
+    # Item 55. Layer 5's answer to "does it look capital?", and False on
+    # every other layer: nothing else asks, which is how every receipt
+    # behaved before. `worker.capital.referral_for()` reads it.
+    looks_capital: bool = False
 
 
 def fuzzy_match(query: str, candidates: list[str], threshold: float = 0.70) -> list[tuple[str, float]]:
@@ -394,7 +404,8 @@ class CategorisationEngine:
                     # unmatched branch. ~~matched_vendor=vendor_key~~ read as
                     # if a mapping had matched. Paul's decision, 2026-11-14.
                     # The key is on vendor_key above.
-                    matched_vendor=None, needs_review=True
+                    matched_vendor=None, needs_review=True,
+                    looks_capital=ai_result.get("looks_capital") is True,
                 )
 
         # No match
@@ -554,7 +565,12 @@ class CategorisationEngine:
 Valid GL codes:
 {chr(10).join(f"- {code}: {name}" for code, name in coa)}
 
-Return the best matching GL code and name."""
+Return the best matching GL code and name.
+
+Also say whether the purchase looks like a capital item: equipment or tools
+bought to be kept and used in the business for more than a year, rather than
+a running cost or something used up. Choose the GL code from the list above
+either way."""
                     }
                 ],
                 # A model class, not a schema dict. The library only parses the
@@ -589,8 +605,13 @@ Return the best matching GL code and name."""
 
                 # Verify code exists in COA
                 if any(c[0] == code for c in coa):
-                    logger.info(f"AI categorised {vendor_key} -> {code} {name}")
-                    return {"code": code, "name": name}
+                    # Item 55: the capital answer travels beside the code.
+                    # The code is still one of the 66 whatever it says.
+                    looks_capital = parsed.looks_capital is True
+                    logger.info(f"AI categorised {vendor_key} -> {code} {name}"
+                                + (", looks capital" if looks_capital else ""))
+                    return {"code": code, "name": name,
+                            "looks_capital": looks_capital}
 
             logger.warning(f"AI response invalid for {vendor_key}")
             return None

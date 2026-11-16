@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import config
 from worker.database.repository import Repository
 from worker.categorisation.engine import CategorisationEngine
+from worker.capital import note_for, referral_for
 from worker.categorisation.fallback import resolve_against_chart
 from worker.client_copy import copy_for_published_receipt
 from worker.filing import file_review, make_enriched_sidecar
@@ -474,7 +475,15 @@ def process_extraction_result(
             notes=list(validation.notes or []) + [reason],
         )
 
-    # File based on validation outcome
+    # Item 55, Paul's decisions of 2026-11-16, in his order. The categorise
+    # call that follows used to open the `ok` branch below; it is lifted out
+    # of it, unchanged, so that a capital item can still turn the receipt
+    # into a review item before the branch is chosen. Does it look capital?
+    # Is the gross at or above the threshold? Only if not is the expense
+    # account layer 5 named used. A referral takes the review branch like
+    # any other `needs_review`: nothing is categorised or saved, nothing is
+    # copied into Clients, and it is never posted by the system.
+    capital_item = None
     if validation.status == "ok":
         # Categorise first, then build the sidecar once with the result. This
         # used to build the payload with category=None and confidence="high" and
@@ -494,6 +503,18 @@ def process_extraction_result(
             gross_amount=extraction.gross_amount,
             line_items=extraction.line_items,
         )
+        capital_item = referral_for(categorisation, extraction.gross_amount, client_id)
+        if capital_item is not None:
+            validation = ValidationResult(
+                status="needs_review",
+                notes=list(validation.notes or []) + [note_for(capital_item)],
+            )
+            # Its expense account is not used, so it is not saved, checked
+            # against the chart or published.
+            categorisation = None
+
+    # File based on validation outcome
+    if validation.status == "ok":
         # The suggested code has to be one the client's chart holds, whichever
         # layer produced it. Substitutes the published fallback where there is
         # one and the chart has it, and otherwise leaves no code and sends the
@@ -649,7 +670,10 @@ def process_extraction_result(
                         # The ExtractionResult still in hand, on both branches.
                         # Only the count is published. Paul's decision,
                         # 2026-11-14.
-                        line_items=extraction.line_items),
+                        line_items=extraction.line_items,
+                        # Item 55. None, published as null, on every
+                        # receipt that was not referred.
+                        capital_item=capital_item),
     )
 
     # The copy into the firm's client folder, on a successful publish and on

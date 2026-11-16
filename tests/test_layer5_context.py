@@ -86,7 +86,10 @@ class _PromptRecorder:
             "model": model, "response_format": response_format,
             "temperature": temperature, "seed": seed,
         })
-        return _FakeResponse(engine_module.AiAccountSuggestion(code="7391", name="Car wash"))
+        # Item 55, 2026-11-16: looks_capital is a required field of the reply,
+        # so the stub answers it, as the real model must. ~~code and name only~~
+        return _FakeResponse(engine_module.AiAccountSuggestion(
+            code="7391", name="Car wash", looks_capital=False))
 
 
 # Two accounts, and both are deliberate. 7391 Car wash is one of the 66 and is
@@ -149,7 +152,10 @@ class TheyReachThePromptTest(unittest.TestCase):
                           return_value=POOL):
             result = instance._ai_suggest("halfords", "CLIENT001", "Halfords Autocentre",
                                           **kwargs)
-        self.assertEqual(result, {"code": "7391", "name": "Car wash"})
+        # Item 55, 2026-11-16: the capital answer travels beside the code.
+        # ~~{"code": "7391", "name": "Car wash"}~~
+        self.assertEqual(result, {"code": "7391", "name": "Car wash",
+                                  "looks_capital": False})
         self.assertEqual(len(_PromptRecorder.prompts), 1)
         return _PromptRecorder.prompts[0]
 

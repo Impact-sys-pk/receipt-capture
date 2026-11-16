@@ -30,6 +30,7 @@ from worker.extraction.retry_helper import extract_with_transient_retry
 from worker.extraction.stored_reply import reply_is_usable
 from worker.client_copy import copy_for_published_receipt
 from worker.extraction_pipeline import process_extraction_result, raised_extraction
+from worker.capital import note_for, referral_for
 from worker.intake.folder_reader import EMAIL_SOURCE, scan_inbox
 from worker.logging_setup import LOG_FORMAT, attach_log_handler, console_handler
 from worker import line_items, london_time, receipt_rules, supplier_mappings
@@ -829,29 +830,44 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 # asymmetry is the defect the step exists to fix.
                 line_items=stored_lines,
             )
-            # The suggested code has to be one the client's chart holds, whichever
-            # layer produced it. Runs before the code reaches either the
-            # categorisations row or the sidecar, both of which are below. See
-            # resolve_against_chart() in worker/categorisation/fallback.py.
-            categorisation = resolve_against_chart(categorisation, repo=repo)
+            # Item 55, Paul's decisions of 2026-11-16: the sweep publishes, so it
+            # refers a capital item exactly as the poll does, or a receipt the
+            # poll would hold could be posted from here. A referral is a review
+            # item: its expense account is not checked, saved or published,
+            # and it is never copied into Clients.
+            capital_item = referral_for(
+                categorisation, extraction.get("gross_amount"), receipt["client_id"])
+            referred_vendor_key = None
+            if capital_item is not None:
+                validation_status = "needs_review"
+                validation_notes = validation_notes + [note_for(capital_item)]
+                referred_vendor_key = categorisation.vendor_key
+                categorisation = None
 
-            # Save categorisation
-            cat_id = str(uuid.uuid4())
-            repo.save_categorisation(
-                categorisation_id=cat_id,
-                receipt_id=receipt_id,
-                extraction_id=extraction_id,
-                client_id=receipt["client_id"],
-                trade=categorisation.business_type,
-                mapping_id=categorisation.mapping_id,
-                suggested_code=categorisation.suggested_code,
-                suggested_name=categorisation.suggested_name,
-                confidence=categorisation.confidence,
-                match_source=categorisation.match_source,
-                matched_vendor=categorisation.matched_vendor,
-                needs_review=categorisation.needs_review,
-                categorised_at=datetime.now(timezone.utc).isoformat()
-            )
+            if categorisation is not None:
+                # The suggested code has to be one the client's chart holds, whichever
+                # layer produced it. Runs before the code reaches either the
+                # categorisations row or the sidecar, both of which are below. See
+                # resolve_against_chart() in worker/categorisation/fallback.py.
+                categorisation = resolve_against_chart(categorisation, repo=repo)
+
+                # Save categorisation
+                cat_id = str(uuid.uuid4())
+                repo.save_categorisation(
+                    categorisation_id=cat_id,
+                    receipt_id=receipt_id,
+                    extraction_id=extraction_id,
+                    client_id=receipt["client_id"],
+                    trade=categorisation.business_type,
+                    mapping_id=categorisation.mapping_id,
+                    suggested_code=categorisation.suggested_code,
+                    suggested_name=categorisation.suggested_name,
+                    confidence=categorisation.confidence,
+                    match_source=categorisation.match_source,
+                    matched_vendor=categorisation.matched_vendor,
+                    needs_review=categorisation.needs_review,
+                    categorised_at=datetime.now(timezone.utc).isoformat()
+                )
 
             sidecar_payload = make_enriched_sidecar(
                 receipt_id=receipt_id,
@@ -865,9 +881,9 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 vat=extraction.get("vat_amount"),
                 gross=gross,
                 currency=currency,
-                category_code=categorisation.suggested_code,
-                category_name=categorisation.suggested_name,
-                confidence=categorisation.confidence,
+                category_code=(categorisation.suggested_code if categorisation else None),
+                category_name=(categorisation.suggested_name if categorisation else None),
+                confidence=(categorisation.confidence if categorisation else "none"),
                 # Step 10aq: `"ok"` until 2026-09-14. This is what Desktop
                 # routes on, so it is what sends a fallback to the Review queue
                 # rather than into the drain.
@@ -891,8 +907,13 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 # same `category_unconfirmed` answer as one arriving on the
                 # poll. It is the reason `extra_for()` takes the object rather
                 # than a boolean: two call sites, one expression deciding.
+                #
+                # Item 55: a referral publishes no categorisation, so its
+                # vendor key comes in beside it, as on the poll's review branch.
                 extra=extra_for(validation_notes, categorisation=categorisation,
-                                line_items=stored_lines),
+                                vendor_key=referred_vendor_key,
+                                line_items=stored_lines,
+                                capital_item=capital_item),
             )
             if not published:
                 # publish_receipt() has already recorded why and logged it. The
@@ -917,7 +938,8 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 filed_path=receipt.get("filed_path"),
             )
             stats["recovery_published"] = stats.get("recovery_published", 0) + 1
-            if fallbacks:
+            # Item 55: a referral is a review item too.
+            if fallbacks or capital_item is not None:
                 # Step 10aq. The same counter the normal validation path uses
                 # for a receipt it sends to Review, so the run summary counts
                 # all of them together rather than hiding the sweep's in a name
@@ -925,8 +947,10 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 repo.update_receipt_status(receipt_id, validation_status)
                 stats["review_flags_issued"] = stats.get("review_flags_issued", 0) + 1
             logger.info(
-                f"receipt {receipt_id} recovered, categorised as "
-                f"{categorisation.suggested_code}, and published"
+                f"receipt {receipt_id} recovered, "
+                + (f"categorised as {categorisation.suggested_code}" if categorisation
+                   else "referred as a capital item")
+                + ", and published"
                 + (f" for review ({', '.join(fallbacks)} fell back)" if fallbacks else "")
                 + (f"; copied to {dest_path}" if dest_path else ""))
         except Exception as exc:

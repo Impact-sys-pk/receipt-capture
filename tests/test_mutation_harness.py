@@ -353,6 +353,26 @@ class TheReportListsEveryCatchTest(unittest.TestCase):
                 self.assertIn(name, printed, "a catching test was left off the report")
         self.assertNotIn("more\n", printed.split("caught by", 1)[1])
 
+    def test_twenty_changed_lines_print_twenty_lines(self):
+        """J2 of `2026-11-16_REPORT_claude_code_line_items.md`, Paul's decision of
+        2026-11-16. The diff a mutation made was cut at twelve lines with
+        "... N more line(s)", and that diff is the proof the break landed in one
+        place and one only."""
+        import contextlib
+        import io
+
+        from mutation_harness import Result, report
+
+        changed = [f"+    changed_line_{i:02d} = {i}" for i in range(20)]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            report(Result(name="m", hunks=1, changed=list(changed)))
+        printed = out.getvalue()
+        for line in changed:
+            with self.subTest(line=line):
+                self.assertIn(line, printed, "a changed line was left off the report")
+        self.assertNotIn("more line(s)", printed)
+
 
 if __name__ == "__main__":
     unittest.main()

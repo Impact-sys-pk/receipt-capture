@@ -282,10 +282,11 @@ def run_one(mutation: Mutation, command=DEFAULT_COMMAND, repo_root=REPO_ROOT,
 def report(result: Result) -> None:
     print(f"=== {result.name} ===  expects: {result.expect}")
     print(f"one place changed: {result.hunks} hunk(s), {len(result.changed)} line(s)")
-    for line in result.changed[:12]:
+    # Every line, Paul's decision of 2026-11-16. ~~`result.changed[:12]` and
+    # "... N more line(s)"~~: this diff is the proof the break landed in one
+    # place and one only, which is why a mutation is anchored at all.
+    for line in result.changed:
         print(f"    {line}")
-    if len(result.changed) > 12:
-        print(f"    ... {len(result.changed) - 12} more line(s)")
     print(f"last line: {result.last_line}")
     print(f"caught by {len(result.caught)} reported failure(s):")
     # Every one, Paul's decision of 2026-11-16. ~~`result.caught[:15]` and

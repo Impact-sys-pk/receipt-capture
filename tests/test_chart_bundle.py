@@ -359,7 +359,10 @@ class RealBundleTest(unittest.TestCase):
         # client and is asserted in tests/test_receipt_accounts.py.
         for filename, expected in (
             (config.MASTER_CHART_FILENAME, 95),
-            ("PHV_DRIVER.csv", 39),
+            # ~~39~~ 40 from 2026-11-16: the chart gained the office equipment
+            # class, 0060 to 0065, and of the six only 0061 Office equipment -
+            # additions is classifier_eligible. The master's 95 is unchanged.
+            ("PHV_DRIVER.csv", 40),
         ):
             with self.subTest(chart=filename):
                 self.assertEqual(len(chart.load_chart(filename)), expected)

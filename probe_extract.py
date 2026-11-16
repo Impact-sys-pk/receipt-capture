@@ -16,16 +16,23 @@ READ ONLY. It calls the extractor and prints. It writes no database row, no
 sidecar and no file, and it does not move or rename the receipt.
 
 Why it exists. `line_items` was added to `_SYSTEM_PROMPT` in
-`worker/extraction/openai_vision.py` on 2026-09-05 and **nothing stores it**:
+`worker/extraction/openai_vision.py` on 2026-09-05 ~~and **nothing stores it**:
 there is no column on `extractions`, nothing in the sidecar and nothing in
 IntelliBooks. So a live pipeline run cannot show whether the model returns the
 field at all. `probe_layer5.py` cannot show it either, because that one reads the
-database and passes `line_items=None`.
+database and passes `line_items=None`.~~ **Corrected 2026-11-16: they are
+stored**, on `extractions.line_items` as JSON since step 10p on 2026-09-12, and
+`probe_layer5.py` reads them back with `line_items.from_json()`. What this probe
+still adds is a fresh read: it shows what the model returns for the file now,
+where the database holds what an earlier run returned, and NULL for any row
+written before that date.
 
 This runs the extractor itself, on the file, prints what came back, and then puts
 that result through `CategorisationEngine.categorise()` with the AI layer ON, so
-layer 5 sees the supplier, the amount and the line items together. `probe_layer5.py`
-cannot do that: it reads the database, and line items are not stored there.
+layer 5 sees the supplier, the amount and the line items together. ~~`probe_layer5.py`
+cannot do that: it reads the database, and line items are not stored there.~~
+`probe_layer5.py` does the same from the database since 2026-09-12, with the
+lines an earlier run stored; this one uses the lines the model returns now.
 
 The live pipeline still constructs the engine with `enable_ai_fallback=False`, so
 nothing here describes production behaviour. It is a measurement.

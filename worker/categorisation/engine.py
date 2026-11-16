@@ -256,9 +256,14 @@ class CategorisationEngine:
 
         gross_amount and line_items reach layer 5 and no other layer. Layers 0
         to 4 match on the vendor and are unchanged by either. Both default to
-        None and both are allowed to be None: a caller that reads an extraction
+        None and both are allowed to be None: ~~a caller that reads an extraction
         back out of the database has the amount but cannot have the item lines,
-        because line items are not stored.
+        because line items are not stored.~~ **Corrected 2026-11-16: they are
+        stored**, on `extractions.line_items` as JSON since step 10p on
+        2026-09-12, and a caller reading the row back passes
+        `line_items.from_json()` of that column, as the recovery sweep in
+        `app.py` does. A row written before that date holds NULL, which reads
+        back as None.
         """
         if not supplier_name:
             return CategorisationResult(
@@ -442,16 +447,30 @@ class CategorisationEngine:
                 **This passes the amount and does nothing with it.** There is no
                 capitalisation threshold here and there must not be one: Paul's
                 ruling of 2026-09-05 is that the five asset accounts are gated on
-                amount, and the figure is outstanding item 33 and is not decided.
+                amount, ~~and the figure is outstanding item 33 and is not
+                decided.~~ **Corrected 2026-11-16.** The figure is decided: £50,
+                Paul's decision of 2026-11-16. It is the firm default on the firm
+                record, and IntelliBooks Desktop has a Capitalisation threshold
+                field per client on Client Settings and the default on Firm
+                Settings. **There is still no gate, because nothing decides
+                that a purchase is capital.** Paul's order, 2026-11-16: first
+                something decides the purchase is an asset by its nature; only
+                then is the amount compared with the threshold; and a potential
+                capital item is referred to Paul and is never posted by the
+                system. Nothing in this pipeline reads the threshold.
                 None is allowed and the line is then left out of the prompt.
             line_items: The item lines as they appeared on the receipt. Added
                 2026-09-05 for the same run, which answered "7520 Stationery and
                 office supplies" for an Asda Wallington receipt: a supermarket
                 receipt cannot be read from the supplier name, and what was
                 bought is the only thing that distinguishes one from another.
-                They come off the extraction call that was already made and are
+                They come off the extraction call that was already made ~~and are
                 not stored anywhere, so a caller reading an extraction back out
-                of the database passes None and the line is left out.
+                of the database passes None and the line is left out~~.
+                **Corrected 2026-11-16: they are stored**, on
+                `extractions.line_items` since step 10p on 2026-09-12, and a
+                caller reading the row back passes `line_items.from_json()` of
+                that column. None or an empty list leaves the line out.
 
         Returns:
             {code: str, name: str} or None if API fails

@@ -108,9 +108,10 @@ class ThePoolTest(unittest.TestCase):
         # cars - additions" for a Halfords receipt, and rather than build an
         # amount gate the accounts came out of the list. ~~Item 33, the
         # materiality threshold, stays open and no longer blocks anything.~~
-        # Corrected 2026-11-16: the threshold figure is decided, £50 by Paul's
-        # decision of 2026-11-16, and it still blocks nothing here, because
-        # nothing decides that a purchase is capital.
+        # Corrected 2026-11-16: the threshold figure is decided, £50 ~~by Paul's
+        # decision of 2026-11-16~~, first decided by Paul on 2026-09-12,
+        # amendment 349, and restated by him on 2026-11-16. It still blocks
+        # nothing here, because nothing decides that a purchase is capital.
         codes = {code for code, _name in load_receipt_accounts()}
         for code in ("0051", "0061", "0071", "0081", "0091"):
             with self.subTest(code=code):

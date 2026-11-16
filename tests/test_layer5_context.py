@@ -12,9 +12,10 @@ raise if it were called or to a fake that records the prompt it was handed.
 These tests are about context reaching the model. They are deliberately NOT
 about what the model does with it: there is no capitalisation threshold in the
 engine ~~and there must not be one until outstanding item 33 is decided.~~
-**Corrected 2026-11-16.** The figure is decided, £50 by Paul's decision of
-2026-11-16, and there is still no gate, because nothing decides that a
-purchase is capital. A potential capital item is referred to Paul and is never
+**Corrected 2026-11-16.** The figure is decided, £50 ~~by Paul's decision of
+2026-11-16~~, first decided by Paul on 2026-09-12, amendment 349, and
+restated by him on 2026-11-16, and there is still no gate, because nothing
+decides that a purchase is capital. A potential capital item is referred to Paul and is never
 posted by the system.
 """
 

@@ -449,7 +449,9 @@ class CategorisationEngine:
                 ruling of 2026-09-05 is that the five asset accounts are gated on
                 amount, ~~and the figure is outstanding item 33 and is not
                 decided.~~ **Corrected 2026-11-16.** The figure is decided: £50,
-                Paul's decision of 2026-11-16. It is the firm default on the firm
+                ~~Paul's decision of 2026-11-16.~~ first decided by Paul on
+                2026-09-12, amendment 349, and restated by him on 2026-11-16.
+                It is the firm default on the firm
                 record, and IntelliBooks Desktop has a Capitalisation threshold
                 field per client on Client Settings and the default on Firm
                 Settings. **There is still no gate, because nothing decides

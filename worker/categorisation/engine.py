@@ -94,7 +94,7 @@ class CategorisationResult:
     receipt_id: str
     extraction_id: str
     client_id: str
-    business_type: str
+    sector: str
     # The normalised merchant key that the layers look up, "imo" or "apcoa".
     # Always set once a supplier name normalises to anything. Renamed from
     # vendor_code on 2026-09-06: "code" means a four-digit account code
@@ -190,7 +190,7 @@ class CategorisationEngine:
             return None
         return extract_vendor_key(normalise_description(supplier_name), self.aliases) or None
 
-    def _first_matching_rule(self, client_id: str, business_type: str,
+    def _first_matching_rule(self, client_id: str, sector: str,
                              vendor_key: str, supplier_name: str) -> Optional[dict]:
         """Layer 0. The first rule that answers for this client and matches.
 
@@ -203,10 +203,10 @@ class CategorisationEngine:
         `tests/test_receipt_rules.py` holds that on the syntax tree.
 
         The client's firm comes from the registry, the way both production
-        callers already take the trade. Step 10bu.
+        callers already take the sector. Step 10bu.
         """
         firm_id = (config.CLIENTS_BY_ID.get(client_id) or {}).get("firm_id")
-        for rule in self.repo.get_client_rules(client_id, firm_id, business_type):
+        for rule in self.repo.get_client_rules(client_id, firm_id, sector):
             if self._rule_matches(rule, vendor_key, supplier_name):
                 return rule
         return None
@@ -250,7 +250,7 @@ class CategorisationEngine:
         return False
 
     def categorise(self, receipt_id: str, extraction_id: str, supplier_name: str,
-                   client_id: str, business_type: str,
+                   client_id: str, sector: str,
                    gross_amount: Optional[float] = None,
                    line_items: Optional[List[LineItem]] = None) -> CategorisationResult:
         """
@@ -278,7 +278,7 @@ class CategorisationEngine:
         if not supplier_name:
             return CategorisationResult(
                 receipt_id=receipt_id, extraction_id=extraction_id,
-                client_id=client_id, business_type=business_type,
+                client_id=client_id, sector=sector,
                 confidence="none", match_source="unmatched", needs_review=True
             )
 
@@ -288,7 +288,7 @@ class CategorisationEngine:
         if not vendor_key:
             return CategorisationResult(
                 receipt_id=receipt_id, extraction_id=extraction_id,
-                client_id=client_id, business_type=business_type,
+                client_id=client_id, sector=sector,
                 confidence="none", match_source="unmatched", needs_review=True
             )
 
@@ -296,12 +296,12 @@ class CategorisationEngine:
         # mapping because this returns before layer 1 is reached, which is
         # Paul's decision 6 of 2026-11-14 confirmed rather than changed.
         if self.repo:
-            rule = self._first_matching_rule(client_id, business_type,
+            rule = self._first_matching_rule(client_id, sector,
                                              vendor_key, supplier_name)
             if rule:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
-                    client_id=client_id, business_type=business_type,
+                    client_id=client_id, sector=sector,
                     vendor_key=vendor_key, suggested_code=rule["nominal_code"],
                     suggested_name=rule["account_name"],
                     confidence="high", match_source="rule",
@@ -317,7 +317,7 @@ class CategorisationEngine:
             if client_vendor:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
-                    client_id=client_id, business_type=business_type,
+                    client_id=client_id, sector=sector,
                     vendor_key=vendor_key, mapping_id=client_vendor["mapping_id"],
                     suggested_code=client_vendor["nominal_code"],
                     suggested_name=client_vendor["account_name"],
@@ -329,11 +329,11 @@ class CategorisationEngine:
                 )
 
             # Layer 2: Exact match in firm lookup (by business type)
-            firm_vendor = self.repo.get_firm_vendor(business_type, vendor_key, supplier_name)
+            firm_vendor = self.repo.get_firm_vendor(sector, vendor_key, supplier_name)
             if firm_vendor:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
-                    client_id=client_id, business_type=business_type,
+                    client_id=client_id, sector=sector,
                     vendor_key=vendor_key, mapping_id=firm_vendor["mapping_id"],
                     suggested_code=firm_vendor["nominal_code"],
                     suggested_name=firm_vendor["account_name"],
@@ -356,7 +356,7 @@ class CategorisationEngine:
                         conf = "medium" if score >= 0.80 else "low"
                         return CategorisationResult(
                             receipt_id=receipt_id, extraction_id=extraction_id,
-                            client_id=client_id, business_type=business_type,
+                            client_id=client_id, sector=sector,
                             vendor_key=vendor_key, mapping_id=matched_vendor["mapping_id"],
                             suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
@@ -369,17 +369,17 @@ class CategorisationEngine:
                         )
 
             # Layer 4: Fuzzy match in firm lookup
-            firm_vendors = self.repo.list_firm_vendors(business_type)
+            firm_vendors = self.repo.list_firm_vendors(sector)
             if firm_vendors:
                 fuzzy_results = fuzzy_match(vendor_key, firm_vendors, threshold=0.70)
                 if fuzzy_results:
                     best_match, score = fuzzy_results[0]
-                    matched_vendor = self.repo.get_most_seen_firm_vendor(business_type, best_match)
+                    matched_vendor = self.repo.get_most_seen_firm_vendor(sector, best_match)
                     if matched_vendor:
                         conf = "medium" if score >= 0.80 else "low"
                         return CategorisationResult(
                             receipt_id=receipt_id, extraction_id=extraction_id,
-                            client_id=client_id, business_type=business_type,
+                            client_id=client_id, sector=sector,
                             vendor_key=vendor_key, mapping_id=matched_vendor["mapping_id"],
                             suggested_code=matched_vendor["nominal_code"],
                             suggested_name=matched_vendor["account_name"],
@@ -396,7 +396,7 @@ class CategorisationEngine:
             if ai_result:
                 return CategorisationResult(
                     receipt_id=receipt_id, extraction_id=extraction_id,
-                    client_id=client_id, business_type=business_type,
+                    client_id=client_id, sector=sector,
                     vendor_key=vendor_key, suggested_code=ai_result.get("code"),
                     suggested_name=ai_result.get("name"),
                     confidence="low", match_source="ai",
@@ -411,7 +411,7 @@ class CategorisationEngine:
         # No match
         return CategorisationResult(
             receipt_id=receipt_id, extraction_id=extraction_id,
-            client_id=client_id, business_type=business_type,
+            client_id=client_id, sector=sector,
             vendor_key=vendor_key, confidence="none", match_source="unmatched", needs_review=True
         )
 
@@ -434,10 +434,10 @@ class CategorisationEngine:
                 what a later step keys learning on, and because removing it would
                 churn five call sites for nothing.
                 ~~The client, whose published chart bounds what may be
-                suggested.~~ It was business_type until 2026-09-04, which
+                suggested.~~ It was the client's sector until 2026-09-04, which
                 selected one of three hardcoded lists in the deleted coa.py, and
                 then the client id, because the chart a client is on is a
-                property of the client and not of its trade. **The chart is now
+                property of the client and not of its sector. **The chart is now
                 what the answer is checked against afterwards rather than what it
                 is chosen from**, which is fallback.resolve_against_chart().
             supplier_name: The supplier as it appeared on the receipt. Added

@@ -56,7 +56,7 @@ class TempEnvironment:
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "PHV_DRIVER"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "sector": "PHV_DRIVER"}
         }
         return self
 
@@ -138,7 +138,7 @@ class GetResolutionViewTest(unittest.TestCase):
             finally:
                 repo.close()
 
-    def test_client_name_and_business_type_come_from_the_client_lookup(self):
+    def test_client_name_and_sector_come_from_the_client_lookup(self):
         with TempEnvironment() as env:
             repo = Repository()
             try:
@@ -146,7 +146,7 @@ class GetResolutionViewTest(unittest.TestCase):
                 env.add_extraction(repo, "r-1", "ext-1", "2026-07-27T00:00:00+00:00")
                 view = get_resolution_view(repo, "r-1")
                 self.assertEqual(view.client_name, "Test Client")
-                self.assertEqual(view.business_type, "PHV_DRIVER")
+                self.assertEqual(view.sector, "PHV_DRIVER")
             finally:
                 repo.close()
 
@@ -163,7 +163,7 @@ class GetResolutionViewTest(unittest.TestCase):
                 env.add_extraction(repo, "r-1", "ext-1", "2026-07-27T00:00:00+00:00")
                 view = get_resolution_view(repo, "r-1")
                 self.assertEqual(view.client_name, "NOT_IN_THE_REGISTRY")
-                self.assertEqual(view.business_type, "UNSPECIFIED")
+                self.assertEqual(view.sector, "UNSPECIFIED")
             finally:
                 repo.close()
 
@@ -192,7 +192,7 @@ class GetResolutionViewTest(unittest.TestCase):
                     receipt_id="r-1",
                     extraction_id="ext-1",
                     client_id="CLIENT001",
-                    trade="PHV_DRIVER",
+                    sector="PHV_DRIVER",
                     mapping_id=None,
                     suggested_code="271",
                     suggested_name="Parking and tolls",
@@ -301,7 +301,7 @@ class GetResolutionViewTest(unittest.TestCase):
                     last_updated=now, vendor_name="Apcoa Parking",
                 )
                 repo.upsert_firm_vendor(
-                    business_type="PHV_DRIVER", vendor_key="shell",
+                    sector="PHV_DRIVER", vendor_key="shell",
                     nominal_code="500", account_name="Fuel", last_updated=now,
                     vendor_name="Shell",
                 )

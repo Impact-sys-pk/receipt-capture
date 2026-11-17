@@ -752,7 +752,7 @@ class TheTriggerDecidesTest(unittest.TestCase):
             config.CLIENTS_BY_ID = dict(config.CLIENTS_BY_ID)
             config.CLIENTS_BY_ID["CLIENT002"] = {
                 "client_name": "No Folder", "client_id": "CLIENT002",
-                "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
+                "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"}
             source = config.FILES_DIR / "doc.pdf"
             source.write_bytes(DOCUMENT)
             repo = Repository()

@@ -382,7 +382,7 @@ def run_child(tmp: Path, script=CHILD):
         "clients": [{
             "client_id": "CLIENT001", "client_name": "Test Client",
             "client_folder_name": "Test Client", "firm_id": "TESTFIRM001",
-            "emails": ["driver@example.com"], "trade": "UNSPECIFIED",
+            "emails": ["driver@example.com"], "sector": "UNSPECIFIED",
         }],
     }), encoding="utf-8")
     (practice / "Intellibills" / "firms.json").write_text(json.dumps({

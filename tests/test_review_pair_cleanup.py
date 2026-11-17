@@ -74,9 +74,9 @@ class TempEnvironment:
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"},
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"},
             "CLIENT_OTHER": {"client_name": "Other Client", "client_folder_name": "Other Client",
-                             "client_id": "CLIENT_OTHER", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"},
+                             "client_id": "CLIENT_OTHER", "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"},
         }
         return self
 

@@ -79,7 +79,7 @@ class FallbackEnvironment:
         config.CHARTS_DIR = self.path
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_id": "CLIENT001", "firm_id": "TESTFIRM001",
-                          "trade": "UNSPECIFIED"}
+                          "sector": "UNSPECIFIED"}
         }
         # Module-level caches, so they survive between tests unless cleared. They
         # are restored rather than only emptied, so this fixture cannot leave the
@@ -268,7 +268,7 @@ def _result(code="7391", name="Car wash", match_source="client",
             confidence="high", needs_review=False):
     return CategorisationResult(
         receipt_id="r-1", extraction_id="e-1", client_id="CLIENT001",
-        business_type="UNSPECIFIED", vendor_key="canary",
+        sector="UNSPECIFIED", vendor_key="canary",
         suggested_code=code, suggested_name=name, confidence=confidence,
         match_source=match_source, matched_vendor="canary",
         needs_review=needs_review,

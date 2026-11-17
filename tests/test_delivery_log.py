@@ -304,7 +304,7 @@ class TheLogIsAppendOnlyTest(unittest.TestCase):
                 "client_folder_name": "Second Client",
                 "client_id": "CLIENT002",
                 "firm_id": "TESTFIRM001",
-                "trade": "UNSPECIFIED",
+                "sector": "UNSPECIFIED",
             }
             drive_ok(self)
             source = config.FILES_DIR / "other-client.pdf"
@@ -399,7 +399,7 @@ class NoCopyMeansNoLineTest(unittest.TestCase):
             config.CLIENTS_BY_ID = dict(config.CLIENTS_BY_ID)
             config.CLIENTS_BY_ID["CLIENT002"] = {
                 "client_name": "No Folder", "client_id": "CLIENT002",
-                "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
+                "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"}
             source = config.FILES_DIR / "doc.pdf"
             source.write_bytes(DOCUMENT)
             repo = Repository()
@@ -626,7 +626,7 @@ class TheClientIdCannotEscapeTheFolderTest(unittest.TestCase):
         config.CLIENTS_BY_ID[bad_id] = {
             "client_name": "Awkward", "client_folder_name": "Awkward",
             "client_id": bad_id, "firm_id": "TESTFIRM001",
-            "trade": "UNSPECIFIED"}
+            "sector": "UNSPECIFIED"}
         source = config.FILES_DIR / "doc.pdf"
         source.write_bytes(DOCUMENT)
         repo = Repository()

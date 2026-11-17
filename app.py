@@ -808,7 +808,7 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
             ]
 
             # Categorise the receipt (reuse the real extraction_id, don't generate a new one)
-            trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", config.UNSPECIFIED_TRADE)
+            sector = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("sector", config.UNSPECIFIED_SECTOR)
             extraction_id = extraction["extraction_id"]
             # Read once, for the classifier below and for the published item's
             # line item count. Paul's decision of 2026-11-14 for the count.
@@ -818,7 +818,7 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                 extraction_id=extraction_id,
                 supplier_name=supplier,
                 client_id=receipt["client_id"],
-                business_type=trade,
+                sector=sector,
                 # extraction.get("gross_amount"), not the `gross` local above it:
                 # that one is coerced to 0.0 for the sidecar, and 0.0 would tell
                 # layer 5 the receipt was free.
@@ -858,7 +858,7 @@ def _publish_unpublished_receipts(repo: Repository, categorisation_engine: Categ
                     receipt_id=receipt_id,
                     extraction_id=extraction_id,
                     client_id=receipt["client_id"],
-                    trade=categorisation.business_type,
+                    sector=categorisation.sector,
                     mapping_id=categorisation.mapping_id,
                     suggested_code=categorisation.suggested_code,
                     suggested_name=categorisation.suggested_name,

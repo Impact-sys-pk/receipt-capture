@@ -63,7 +63,7 @@ ALSO_IN_CHART = ("7300", "Motor expenses")
 NOT_IN_CHART = ("7391", "Car wash")
 SUPPLIER = "Apcoa Parking"
 KEY = "apcoa parking"
-TRADE = "UNSPECIFIED"
+SECTOR = "UNSPECIFIED"
 FILED_RELATIVE = (
     r"Clients\Test Client\IntelliBooks\Receipts\2026-27"
     r"\2026-04-01_apcoa-parking_96.00.pdf")
@@ -101,7 +101,7 @@ class _Base(unittest.TestCase):
                      mapping_id=None):
         self.repo.save_categorisation(
             categorisation_id=str(uuid.uuid4()), receipt_id="r-1",
-            extraction_id=extraction_id, client_id="CLIENT001", trade=TRADE,
+            extraction_id=extraction_id, client_id="CLIENT001", sector=SECTOR,
             mapping_id=mapping_id, suggested_code=code[0] if code else None,
             suggested_name=code[1] if code else None, confidence=confidence,
             match_source=match_source, matched_vendor=KEY,

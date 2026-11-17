@@ -85,7 +85,7 @@ class TempEnvironment:
         config._CLIENTS_MTIME = config._registry_mtime()
         config.CLIENTS_BY_ID = {
             "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"}
         }
         # A chart holding the codes this file seeds, so the fallback check has
         # something to check against and the test does not read the real bundle

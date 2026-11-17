@@ -63,7 +63,7 @@ from test_corrected_note import (
     values_with,
 )
 
-BUSINESS_TYPE = "UNSPECIFIED"
+SECTOR = "UNSPECIFIED"
 
 #: An account the classifier may name that is NOT in this client's chart, with a
 #: fallback that is. The substitution case, which is where the firm table must
@@ -71,7 +71,7 @@ BUSINESS_TYPE = "UNSPECIFIED"
 NOT_IN_CHART = ("7391", "Car wash")
 
 
-def ai_result(code, name, client_id="CLIENT001", business_type=BUSINESS_TYPE):
+def ai_result(code, name, client_id="CLIENT001", sector=SECTOR):
     """What layer 5 returns, in the shape `categorise()` builds it.
 
     Built here rather than by calling the engine with the fallback enabled,
@@ -81,7 +81,7 @@ def ai_result(code, name, client_id="CLIENT001", business_type=BUSINESS_TYPE):
     """
     return CategorisationResult(
         receipt_id="r-1", extraction_id="e-1",
-        client_id=client_id, business_type=business_type,
+        client_id=client_id, sector=sector,
         vendor_key=VENDOR_KEY, suggested_code=code, suggested_name=name,
         confidence="low", match_source="ai",
         # No variant answers at layer 5. ~~matched_vendor=VENDOR_KEY~~,
@@ -99,11 +99,11 @@ class TheRuleTest(CorrectedNoteTestCase):
     """
 
     def decide(self, *, classifier_code, classifier_name, chosen_code,
-               business_type=BUSINESS_TYPE):
+               sector=SECTOR):
         repo = Repository()
         try:
             result = ai_result(classifier_code, classifier_name,
-                               business_type=business_type)
+                               sector=sector)
             resolve_against_chart(result, repo=repo)
             taught = service._learn_firm_mapping_if_confirmed(
                 repo, {"firm_id": "TESTFIRM001", "client_id": "CLIENT001"},
@@ -123,7 +123,7 @@ class TheRuleTest(CorrectedNoteTestCase):
         self.assertEqual(len(firm), 1)
         self.assertEqual(firm[0]["nominal_code"], IN_CHART[0])
         self.assertEqual(firm[0]["account_name"], IN_CHART[1])
-        self.assertEqual(firm[0]["business_type"], BUSINESS_TYPE)
+        self.assertEqual(firm[0]["sector"], SECTOR)
         self.assertEqual(firm[0]["vendor_key"], VENDOR_KEY)
         self.assertEqual(firm[0]["vendor_name"], SUPPLIER)
         self.assertEqual(firm[0]["firm_id"], "TESTFIRM001")
@@ -173,7 +173,7 @@ class TheSubstitutionTest(CorrectedNoteTestCase):
     The classifier names an account the client's chart does not hold, the
     fallback table substitutes one the client does hold, and the operator
     accepts it. The client gets the fallback; the firm pool must get the
-    account the classifier named, because the pool is shared across a trade and
+    account the classifier named, because the pool is shared across a sector and
     the fallback is this client's chart's business.
     """
 
@@ -212,7 +212,7 @@ class TheSubstitutionTest(CorrectedNoteTestCase):
         self.assertEqual(
             firm[0]["nominal_code"], NOT_IN_CHART[0],
             "the firm pool must hold the account the classifier named. Writing "
-            "the substituted code here would teach every client of this trade "
+            "the substituted code here would teach every client of this sector "
             "one client's fallback")
         self.assertEqual(firm[0]["account_name"], NOT_IN_CHART[1])
 
@@ -313,8 +313,7 @@ class BothRoutesTest(CorrectedNoteTestCase):
         def fake(self_engine, **kwargs):
             return ai_result(code, name,
                              client_id=kwargs.get("client_id", "CLIENT001"),
-                             business_type=kwargs.get("business_type",
-                                                      BUSINESS_TYPE))
+                             sector=kwargs.get("sector", SECTOR))
         return mock.patch(
             "worker.categorisation.engine.CategorisationEngine.categorise",
             new=fake)
@@ -351,7 +350,7 @@ class BothRoutesTest(CorrectedNoteTestCase):
         firm = self.firm()
         self.assertEqual(len(firm), 1, "and so is the firm pool")
         self.assertEqual(firm[0]["nominal_code"], IN_CHART[0])
-        self.assertEqual(firm[0]["business_type"], BUSINESS_TYPE)
+        self.assertEqual(firm[0]["sector"], SECTOR)
         self.assertEqual(firm[0]["vendor_key"], VENDOR_KEY)
 
     def test_the_desktop_route_writes_the_client_table_only_when_they_differ(self):
@@ -392,7 +391,7 @@ class BothRoutesTest(CorrectedNoteTestCase):
         firm = self.firm()
         self.assertEqual(len(firm), 1)
         self.assertEqual(firm[0]["nominal_code"], IN_CHART[0])
-        self.assertEqual(firm[0]["business_type"], BUSINESS_TYPE)
+        self.assertEqual(firm[0]["sector"], SECTOR)
 
     def test_the_settle_route_writes_the_client_table_only_when_they_differ(self):
         self.seed_unfiled()
@@ -463,7 +462,7 @@ class OneCallerTest(unittest.TestCase):
             [("service.py", self.HELPER)],
             "every write of the firm pool must go through amendment 238's "
             "rule. A direct call elsewhere would teach it a code nobody "
-            "confirmed, applied by layer 2 to every client of that trade")
+            "confirmed, applied by layer 2 to every client of that sector")
 
     def test_the_rule_is_called_from_both_learning_routes(self):
         self.assertEqual(

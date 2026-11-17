@@ -107,7 +107,7 @@ from worker.categorisation.engine import CategorisationEngine  # noqa: E402
 from worker.database.repository import Repository  # noqa: E402
 
 CLIENT = "CLIENT001"
-TRADE = "PHV_DRIVER"
+SECTOR = "PHV_DRIVER"
 NOW = "2026-09-11T00:00:00+00:00"
 
 #: One extraction result per validation outcome, the same three
@@ -181,7 +181,7 @@ def categorise(repo, supplier, ai=False):
         engine._ai_suggest = lambda *a, **k: {"code": "7500", "name": "Sundries"}
     return engine.categorise(
         receipt_id="r", extraction_id="e", supplier_name=supplier,
-        client_id=CLIENT, business_type=TRADE, gross_amount=10.0)
+        client_id=CLIENT, sector=SECTOR, gross_amount=10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +207,7 @@ class PerLayerTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                repo.upsert_firm_vendor(TRADE, "apcoa", "7300", "Parking", NOW,
+                repo.upsert_firm_vendor(SECTOR, "apcoa", "7300", "Parking", NOW,
                                         vendor_name="Apcoa")
                 firm = categorise(repo, "Apcoa Parking Leeds")
                 with self.subTest(layer="2 firm exact"):
@@ -249,7 +249,7 @@ class PerLayerTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                repo.upsert_firm_vendor(TRADE, "shell", "7400", "Fuel", NOW,
+                repo.upsert_firm_vendor(SECTOR, "shell", "7400", "Fuel", NOW,
                                         vendor_name="Shell")
                 fuzzy_firm = categorise(repo, "Shel")
                 with self.subTest(layer="4 fuzzy firm"):
@@ -286,7 +286,7 @@ class PerLayerTest(unittest.TestCase):
         with TempEnvironment():
             repo = Repository()
             try:
-                repo.upsert_firm_vendor(TRADE, "shell", "7400", "Fuel", NOW,
+                repo.upsert_firm_vendor(SECTOR, "shell", "7400", "Fuel", NOW,
                                         vendor_name="Shell")
                 repo.upsert_client_vendor(CLIENT, "apcoa parking", "7300",
                                           "Parking", NOW,

@@ -62,7 +62,7 @@ class ChartBundleEnvironment:
             "CLIENTS_BY_ID": config.CLIENTS_BY_ID,
         }
         config.CHARTS_DIR = self.path
-        record = {"client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
+        record = {"client_id": "CLIENT001", "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"}
         if self._chart_code is not None:
             record["chart_code"] = self._chart_code
         config.CLIENTS_BY_ID = {"CLIENT001": record}
@@ -301,7 +301,7 @@ class EngineWiringTest(unittest.TestCase):
     def test_categorise_reaches_the_receipt_accounts_through_its_call_site(self):
         # The test above calls _ai_suggest() directly, so it says nothing about
         # the call site in categorise(). Found by mutation on 2026-09-04: putting
-        # business_type back at that call site left the whole suite green until a
+        # the sector back at that call site, as it was then passed, left the whole suite green until a
         # test like this was added. Kept for the same reason with the new loader,
         # because the call site is still the untested half.
         from worker.categorisation import engine as engine_module
@@ -312,7 +312,7 @@ class EngineWiringTest(unittest.TestCase):
                           return_value=[]) as loader:
             instance.categorise(
                 receipt_id="r-1", extraction_id="e-1", supplier_name="Some Vendor",
-                client_id="CLIENT001", business_type="PHV_DRIVER",
+                client_id="CLIENT001", sector="PHV_DRIVER",
             )
         loader.assert_called_once_with()
 

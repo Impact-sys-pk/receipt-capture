@@ -200,7 +200,7 @@ class ResolutionView:
     duplicate_of_receipt: Optional[Dict[str, Any]]      # when status == 'possible_duplicate'
     duplicate_of_extraction: Optional[Dict[str, Any]]
     client_name: str
-    business_type: str
+    sector: str
     gl_code_options: List[Dict[str, Any]]
     effective_gl_code: Optional[str]            # correction_code if set, else suggested_code
     file_path: str
@@ -519,7 +519,7 @@ def parse_resolution_note(raw: Any) -> ResolutionNote:
     if action in ("discarded", ATTACHED_ACTION):
         # 12.2: values and filed_path are absent for a discard. Present-and-ignored
         # rather than rejected: refusing a legitimate discard over a harmless extra
-        # key would be the wrong trade, and the warning is enough to spot drift.
+        # key would be the wrong sector, and the warning is enough to spot drift.
         #
         # **An `attached` note is the same shape and for a sharper reason.**
         # Sub-step 10f.37: the pipeline composes the client folder name itself,
@@ -692,7 +692,7 @@ def resolve_practice_path(filed_path: str) -> Path:
 
 
 def _client_details(client_id: Optional[str]) -> Tuple[str, str, Optional[str]]:
-    """(client_name, trade, client_folder_name) for a client_id.
+    """(client_name, sector, client_folder_name) for a client_id.
 
     Sub-steps 10d.13 and 10d.14. Keyed on client_id, because there is no client
     code any more, and the folder name is returned rather than derived from the
@@ -707,7 +707,7 @@ def _client_details(client_id: Optional[str]) -> Tuple[str, str, Optional[str]]:
     entry = config.CLIENTS_BY_ID.get(client_id or "") or {}
     return (
         entry.get("client_name") or (client_id or "UNKNOWN"),
-        entry.get("trade", config.UNSPECIFIED_TRADE),
+        entry.get("sector", config.UNSPECIFIED_SECTOR),
         entry.get("client_folder_name") or None,
     )
 
@@ -742,7 +742,7 @@ def get_resolution_view(repo, receipt_id) -> Optional[ResolutionView]:
         if duplicate_of_receipt:
             duplicate_of_extraction = repo.get_extraction_for_receipt(duplicate_of)
 
-    client_name, business_type, _folder = _client_details(receipt.get("client_id"))
+    client_name, sector, _folder = _client_details(receipt.get("client_id"))
 
     return ResolutionView(
         receipt=receipt,
@@ -753,7 +753,7 @@ def get_resolution_view(repo, receipt_id) -> Optional[ResolutionView]:
         duplicate_of_receipt=duplicate_of_receipt,
         duplicate_of_extraction=duplicate_of_extraction,
         client_name=client_name,
-        business_type=business_type,
+        sector=sector,
         # Fallback per 11.1 until the Default CoA is loaded at step 12. The
         # console shows a banner saying the CoA has not been loaded.
         gl_code_options=repo.list_gl_code_options_from_vendors(),
@@ -900,7 +900,7 @@ CLASSIFIER_MATCH_SOURCE = "ai"
 #: not exist, and writing a firm row on a comparison against an unchecked code
 #: is precisely the failure amendment 238 exists to prevent, in its words "a
 #: firm-wide mapping learned from a code whose meaning was never established,
-#: applied confidently by layer 2 to every client of that trade".
+#: applied confidently by layer 2 to every client of that sector".
 #:
 #: `_resolve_category()` already refuses to teach the CLIENT table on an
 #: unreadable chart, for the same reason and in the same words. This is that
@@ -971,7 +971,7 @@ def _learn_firm_mapping_if_confirmed(repo, receipt, categorisation, chosen_code,
         return None
 
     repo.upsert_firm_vendor(
-        business_type=categorisation.business_type,
+        sector=categorisation.sector,
         vendor_key=vendor_key,
         nominal_code=code,
         account_name=name,
@@ -985,7 +985,7 @@ def _learn_firm_mapping_if_confirmed(repo, receipt, categorisation, chosen_code,
 
 
 def _the_original_suggestion(repo, categorisation_engine, receipt, extraction_id,
-                             supplier_name, business_type):
+                             supplier_name, sector):
     """What a correction stores as the engine's suggestion. Sub-step 10bs.11.
 
     **Paul's decision of 2026-11-13, amendment 548 item 11, option B: a
@@ -1033,12 +1033,12 @@ def _the_original_suggestion(repo, categorisation_engine, receipt, extraction_id
     if original is None:
         result = CategorisationResult(
             receipt_id=receipt["receipt_id"], extraction_id=extraction_id,
-            client_id=receipt["client_id"], business_type=business_type,
+            client_id=receipt["client_id"], sector=sector,
             vendor_key=corrected_key)
     else:
         result = CategorisationResult(
             receipt_id=receipt["receipt_id"], extraction_id=extraction_id,
-            client_id=receipt["client_id"], business_type=original["trade"],
+            client_id=receipt["client_id"], sector=original["sector"],
             vendor_key=corrected_key, mapping_id=original["mapping_id"],
             suggested_code=original["suggested_code"],
             suggested_name=original["suggested_name"],
@@ -1404,17 +1404,17 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
         #    layer 5 never saw the item lines on this path whatever its comment
         #    said. `_the_original_suggestion()` copies the original instead and
         #    still runs the chart check.
-        client_name, business_type, client_folder_name = _client_details(receipt.get("client_id"))
+        client_name, sector, client_folder_name = _client_details(receipt.get("client_id"))
         categorisation = _the_original_suggestion(
             repo, categorisation_engine, receipt, extraction_id,
-            supplier_name=merged["supplier_name"], business_type=business_type)
+            supplier_name=merged["supplier_name"], sector=sector)
         categorisation_id = str(uuid.uuid4())
         repo.save_categorisation(
             categorisation_id=categorisation_id,
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             client_id=receipt["client_id"],
-            trade=categorisation.business_type,
+            sector=categorisation.sector,
             mapping_id=categorisation.mapping_id,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
@@ -1707,7 +1707,7 @@ def resolve_receipt(repo, categorisation_engine, receipt_id, corrections,
                         f"receipt {receipt_id}: the operator's {effective_code} "
                         f"confirms the classifier, so {vendor_key} now maps to "
                         f"{taught[0]} {taught[1]} for every "
-                        f"{categorisation.business_type} client of this firm"
+                        f"{categorisation.sector} client of this firm"
                     )
             else:
                 logger.warning(
@@ -2419,17 +2419,17 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         # 8 now does. ~~Categorise for the audit trail~~ **struck 2026-11-13 by
         # sub-step 10bs.11**: the engine is not re-run. The suggestion is never
         # overwritten; Desktop's category goes in the correction columns beside it.
-        client_name, business_type, _folder = _client_details(receipt.get("client_id"))
+        client_name, sector, _folder = _client_details(receipt.get("client_id"))
         categorisation = _the_original_suggestion(
             repo, categorisation_engine, receipt, extraction_id,
-            supplier_name=merged["supplier_name"], business_type=business_type)
+            supplier_name=merged["supplier_name"], sector=sector)
         categorisation_id = str(uuid.uuid4())
         repo.save_categorisation(
             categorisation_id=categorisation_id,
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             client_id=receipt["client_id"],
-            trade=categorisation.business_type,
+            sector=categorisation.sector,
             mapping_id=categorisation.mapping_id,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,
@@ -2474,7 +2474,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
         # table only. The only code Desktop can offer is one from the client's
         # own adopted chart, and the client table is scoped to that client, so
         # it can never reach another. The firm pool is shared across a
-        # business_type and needs the receipt account rather than this one,
+        # sector and needs the receipt account rather than this one,
         # which is a separate decision: item 166, deferred.
         #
         # **Item 166 is the thing amendment 238 closed, so 238 is the deferred
@@ -2532,7 +2532,7 @@ def _apply_filed_note(repo, categorisation_engine, receipt: Dict[str, Any],
                         f"receipt {receipt_id}: the operator's {code} confirms "
                         f"the classifier, so {vendor_key} now maps to "
                         f"{taught[0]} {taught[1]} for every "
-                        f"{categorisation.business_type} client of this firm"
+                        f"{categorisation.sector} client of this firm"
                     )
                 logger.info(
                     f"learned {vendor_key} -> {code} {category_name} for client "

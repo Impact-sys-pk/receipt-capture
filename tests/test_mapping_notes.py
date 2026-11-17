@@ -133,14 +133,14 @@ class TheCodeChangeTest(_Base):
         self.apply(changed(before["mapping_id"]))
         result = self.engine.categorise(
             receipt_id="r", extraction_id="e", supplier_name="Apcoa Parking Leeds",
-            client_id=CLIENT, business_type=config.UNSPECIFIED_TRADE)
+            client_id=CLIENT, sector=config.UNSPECIFIED_SECTOR)
         self.assertEqual((result.match_source, result.suggested_code),
                          ("client", ALSO_IN_CHART[0]))
 
     def test_the_firm_pool_is_not_touched(self):
         """**Today's behaviour, pinned so a change is deliberate.** Whether a
         correction should reach the firm pool is not decided; report 1.4."""
-        self.repo.upsert_firm_vendor(config.UNSPECIFIED_TRADE, "apcoa", IN_CHART[0],
+        self.repo.upsert_firm_vendor(config.UNSPECIFIED_SECTOR, "apcoa", IN_CHART[0],
                                      IN_CHART[1], WHEN, vendor_name="Apcoa Parking Leeds")
         before_firm = rows(self.repo, "SELECT * FROM categorisations_firm_vendors")
         mapping = self.teach()

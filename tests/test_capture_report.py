@@ -290,7 +290,7 @@ class TempReport:
             # that matters.
             CLIENT: {"client_id": CLIENT, "client_name": "Test Client",
                      "client_folder_name": "Test Client Folder",
-                     "firm_id": FIRM, "trade": "PHV_DRIVER"},
+                     "firm_id": FIRM, "sector": "PHV_DRIVER"},
         }
         self.repo = Repository()
         return self

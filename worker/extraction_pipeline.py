@@ -495,7 +495,7 @@ def process_extraction_result(
             extraction_id=extraction_id,
             supplier_name=extraction.supplier_name,
             client_id=client_id,
-            business_type=client.get('trade', config.UNSPECIFIED_TRADE),
+            sector=client.get('sector', config.UNSPECIFIED_SECTOR),
             # The live path, and the only one of the five that can supply
             # line_items: `extraction` is the ExtractionResult still in hand.
             # The other four read a row back out of `extractions`, which has no
@@ -533,7 +533,7 @@ def process_extraction_result(
             receipt_id=receipt_id,
             extraction_id=extraction_id,
             client_id=client_id,
-            trade=categorisation.business_type,
+            sector=categorisation.sector,
             mapping_id=categorisation.mapping_id,
             suggested_code=categorisation.suggested_code,
             suggested_name=categorisation.suggested_name,

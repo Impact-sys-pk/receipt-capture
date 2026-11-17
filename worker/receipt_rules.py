@@ -87,10 +87,10 @@ def _parse_rule(raw: Any) -> dict:
         raise RuleNoteError(f"client {scope_id!r} is not in the registry")
     if scope == config.RULE_SCOPE_FIRM and scope_id not in config.FIRMS:
         raise RuleNoteError(f"firm {scope_id!r} is not in the firm registry")
-    if scope == config.RULE_SCOPE_SECTOR and scope_id == config.UNSPECIFIED_TRADE:
+    if scope == config.RULE_SCOPE_SECTOR and scope_id == config.UNSPECIFIED_SECTOR:
         raise RuleNoteError(
-            f"a sector rule cannot be keyed on {config.UNSPECIFIED_TRADE!r}, which "
-            "every client carries until it is given a trade")
+            f"a sector rule cannot be keyed on {config.UNSPECIFIED_SECTOR!r}, which "
+            "every client carries until it is given a sector")
 
     priority = raw.get(config.RULE_PRIORITY_FIELD)
     if isinstance(priority, bool) or not isinstance(priority, int):
@@ -212,7 +212,7 @@ def payload_for(repo, client_id: str) -> dict:
     """The file's content for one client, built only from the database."""
     client = config.CLIENTS_BY_ID.get(client_id) or {}
     rules = repo.get_client_rules(client_id, client.get("firm_id"),
-                                  client.get("trade"))
+                                  client.get("sector"))
     return {
         config.RULES_SCHEMA_FIELD: config.RECEIPT_RULES_SCHEMA,
         config.RULES_CLIENT_ID_FIELD: client_id,

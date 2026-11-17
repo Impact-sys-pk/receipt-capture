@@ -126,7 +126,7 @@ def main():
             continue
 
         try:
-            business_type = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", config.UNSPECIFIED_TRADE)
+            sector = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("sector", config.UNSPECIFIED_SECTOR)
             extraction_id = extraction.get("extraction_id")
             if not extraction_id:
                 logger.warning(f"Receipt {receipt_id} extraction has no extraction_id, skipping")
@@ -144,7 +144,7 @@ def main():
                     extraction_id=extraction_id,
                     supplier_name=supplier_name,
                     client_id=receipt["client_id"],
-                    business_type=business_type,
+                    sector=sector,
                     # `extraction` here is a dict from
                     # Repository.get_extraction_for_receipt(), which is
                     # SELECT * FROM extractions, so gross_amount is a column and
@@ -169,7 +169,7 @@ def main():
                     receipt_id=receipt_id,
                     extraction_id=extraction_id,
                     client_id=receipt["client_id"],
-                    trade=categorisation.business_type,
+                    sector=categorisation.sector,
                     mapping_id=categorisation.mapping_id,
                     suggested_code=categorisation.suggested_code,
                     suggested_name=categorisation.suggested_name,

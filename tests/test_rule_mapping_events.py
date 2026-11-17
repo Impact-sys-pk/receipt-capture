@@ -243,17 +243,17 @@ class TheFirmPoolLeavesARowTest(_Base):
     """Flag K1, Paul's decision of 2026-11-14: the firm pool gets the same
     treatment as the five client-side writers.
 
-    **Scope `sector`, `scope_id` the trade.** The pool is keyed on
-    `business_type` and shared by every firm, so what a row answers for is
-    every client of one trade, which is what the rule scopes call `sector`.
+    **Scope `sector`, `scope_id` the sector.** The pool is keyed on
+    `sector` and shared by every firm, so what a row answers for is
+    every client of one sector, which is what the rule scopes call `sector`.
     `firm_id` on the pool row is provenance written on insert only, so it is in
     `before`/`after` and is not the scope.
     """
 
-    TRADE = "PHV_DRIVER"
+    SECTOR = "PHV_DRIVER"
 
     def firm(self, code="7301", account="Fuel", name="Shell Harborne", **kw):
-        self.repo.upsert_firm_vendor(self.TRADE, "shell", code, account,
+        self.repo.upsert_firm_vendor(self.SECTOR, "shell", code, account,
                                      "2026-11-14T09:00:00+00:00", vendor_name=name,
                                      firm_id="TESTFIRM001", **kw)
 
@@ -268,7 +268,7 @@ class TheFirmPoolLeavesARowTest(_Base):
             (event["subject"], event["subject_id"], event["act"], event["outcome"],
              event["scope"], event["scope_id"], event["source"]),
             (config.AUDIT_SUBJECT_MAPPING, row["mapping_id"], config.AUDIT_ACT_SAVED,
-             config.AUDIT_OUTCOME_APPLIED, config.RULE_SCOPE_SECTOR, self.TRADE,
+             config.AUDIT_OUTCOME_APPLIED, config.RULE_SCOPE_SECTOR, self.SECTOR,
              "classifier_confirmed"))
         self.assertIsNone(event["before_json"])
         self.assertEqual(json.loads(event["after_json"])["nominal_code"], "7301")
@@ -295,7 +295,7 @@ class TheFirmPoolLeavesARowTest(_Base):
         self.firm()
         found = rows(self.repo, f"SELECT * FROM {TABLE} WHERE subject = ? AND scope = ?",
                      (config.AUDIT_SUBJECT_MAPPING, config.RULE_SCOPE_SECTOR))
-        self.assertEqual([e["scope_id"] for e in found], [self.TRADE])
+        self.assertEqual([e["scope_id"] for e in found], [self.SECTOR])
 
     def test_a_failing_audit_row_does_not_fail_the_pool_write(self):
         with mock.patch.object(Repository, "record_rule_mapping_event",
@@ -306,7 +306,7 @@ class TheFirmPoolLeavesARowTest(_Base):
 
     def test_the_pool_keeps_its_columns(self):
         self.assertEqual(schema.declared_columns()["categorisations_firm_vendors"], [
-            "mapping_id", "business_type", "vendor_key", "nominal_code", "account_name",
+            "mapping_id", "sector", "vendor_key", "nominal_code", "account_name",
             "vendor_name", "times_seen", "last_updated", "firm_id"])
 
 

@@ -112,7 +112,7 @@ class AutoRetryNoLoopTest(unittest.TestCase):
             "CLIENTS_BY_ID": {"CLIENT001": {"client_name": "Test Client",
                                         "client_folder_name": "Test Client",
                                         "client_id": "CLIENT001", "firm_id": "TESTFIRM001",
-                                        "trade": "UNSPECIFIED"}},
+                                        "sector": "UNSPECIFIED"}},
         }
 
     def test_extraction_error_is_recorded_so_the_receipt_is_not_retried_next_poll(self):

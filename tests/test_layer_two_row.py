@@ -34,7 +34,7 @@ empty afterwards, because a test that silently matched at layer 1 would assert
 everything here except `match_source` and would still pass four of its five
 assertions.
 
-`business_type` is `UNSPECIFIED`, which is the `trade` on the fixture's
+The categorisation's `sector` is `UNSPECIFIED`, which is the value on the fixture's
 `CLIENT001` record and what `_client_details()` hands `categorise()`.
 """
 
@@ -56,17 +56,17 @@ from test_corrected_note import (
     values_with,
 )
 
-#: The `trade` on the fixture's client record, which `_client_details()` returns
-#: and `categorise()` receives as `business_type`. Read from the fixture rather
+#: The `sector` on the fixture's client record, which `_client_details()` returns
+#: and `categorise()` receives as `sector`. Read from the fixture rather
 #: than written as a literal twice.
-BUSINESS_TYPE = "UNSPECIFIED"
+SECTOR = "UNSPECIFIED"
 
 
 class LayerTwoTestCase(CorrectedNoteTestCase):
     """The step 10k fixture, with the firm table seeded instead of the client's."""
 
     def seed_only_the_firm_table(self, code=IN_CHART[0], name=IN_CHART[1],
-                                 business_type=BUSINESS_TYPE):
+                                 sector=SECTOR):
         """A mapping layer 2 will match, and nothing layer 1 can answer with.
 
         Returns the row, so a test can compare `mapping_id` against the real row
@@ -75,7 +75,7 @@ class LayerTwoTestCase(CorrectedNoteTestCase):
         repo = Repository()
         try:
             repo.upsert_firm_vendor(
-                business_type=business_type, vendor_key=VENDOR_KEY,
+                sector=sector, vendor_key=VENDOR_KEY,
                 nominal_code=code, account_name=name,
                 last_updated="2026-09-01T00:00:00+00:00",
                 vendor_name=SUPPLIER, firm_id="TESTFIRM001")
@@ -158,7 +158,7 @@ class WhatALayerTwoRowStoresTest(LayerTwoTestCase):
         # And the row belongs to the receipt and the client it was written for.
         self.assertEqual(row["receipt_id"], "r-1")
         self.assertEqual(row["client_id"], "CLIENT001")
-        self.assertEqual(row["trade"], BUSINESS_TYPE)
+        self.assertEqual(row["sector"], SECTOR)
 
 
 class TheEngineAnswersFromTheFirmPoolTest(LayerTwoTestCase):
@@ -169,13 +169,13 @@ class TheEngineAnswersFromTheFirmPoolTest(LayerTwoTestCase):
     or the write is at fault rather than leaving that to be worked out.
     """
 
-    def _categorise(self, business_type=BUSINESS_TYPE, client_id="CLIENT001"):
+    def _categorise(self, sector=SECTOR, client_id="CLIENT001"):
         repo = Repository()
         try:
             engine = CategorisationEngine(repo=repo, enable_ai_fallback=False)
             return engine.categorise(
                 receipt_id="r-1", extraction_id="e-1", supplier_name=SUPPLIER,
-                client_id=client_id, business_type=business_type)
+                client_id=client_id, sector=sector)
         finally:
             repo.close()
 
@@ -203,13 +203,13 @@ class TheEngineAnswersFromTheFirmPoolTest(LayerTwoTestCase):
         self.assertEqual(result.match_source, "client")
         self.assertEqual(result.suggested_code, ALSO_IN_CHART[0])
 
-    def test_another_business_type_does_not_see_this_pool(self):
-        """The firm pool is keyed on `business_type`, so a client of another
-        trade must not match. This is the cross-client reach that makes the
+    def test_another_sector_does_not_see_this_pool(self):
+        """The firm pool is keyed on `sector`, so a client of another
+        sector must not match. This is the cross-client reach that makes the
         table worth having and makes a wrong row in it worse than a wrong row
         in the client table."""
         self.seed_only_the_firm_table()
-        result = self._categorise(business_type="PHV_DRIVER")
+        result = self._categorise(sector="PHV_DRIVER")
         self.assertNotEqual(result.match_source, "firm")
 
 
@@ -335,7 +335,7 @@ class TheFirmTableWritersTest(unittest.TestCase):
             source_guards.defines(tree, "increment_firm_vendor_count"),
             "it was deleted on 2026-09-12 and is back. It can only bump "
             "times_seen on a row that already exists, so it cannot create one, "
-            "and the firm pool reaches every client of a trade")
+            "and the firm pool reaches every client of a sector")
 
     def test_the_writer_is_the_only_one(self):
         """Read off the source: no third function writes this table.

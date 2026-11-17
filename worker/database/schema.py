@@ -18,7 +18,7 @@ import config
 SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS categorisations_firm_vendors (
             mapping_id              TEXT PRIMARY KEY,
-            business_type           TEXT NOT NULL,
+            sector                  TEXT NOT NULL,
             vendor_key              TEXT NOT NULL,
             nominal_code            TEXT NOT NULL,
             account_name            TEXT NOT NULL,
@@ -31,11 +31,11 @@ SCHEMA_SQL = """
             -- column exists so the provenance of a learned mapping is captured
             -- while it is still capturable.
             firm_id                 TEXT,
-            UNIQUE(business_type, vendor_key, vendor_name)
+            UNIQUE(sector, vendor_key, vendor_name)
         );
 
         CREATE INDEX IF NOT EXISTS idx_firm_vendor_key
-            ON categorisations_firm_vendors(business_type, vendor_key);
+            ON categorisations_firm_vendors(sector, vendor_key);
 
         CREATE TABLE IF NOT EXISTS categorisations_client_vendors (
             mapping_id              TEXT PRIMARY KEY,
@@ -63,7 +63,7 @@ SCHEMA_SQL = """
         -- undeclared table is not drift, so it refuses nothing.
         --
         -- scope is client, firm or sector (config.RULE_SCOPES), and scope_id
-        -- is the client_id, firm_id or trade it answers for. One column for
+        -- is the client_id, firm_id or sector it answers for. One column for
         -- the id rather than three nullable ones, so one rule cannot claim two
         -- scopes. The vocabulary is checked by the writer, save_rule(), and not
         -- by a CHECK here, which would be a second definition of it.
@@ -144,7 +144,7 @@ SCHEMA_SQL = """
             receipt_id              TEXT NOT NULL,
             extraction_id           TEXT NOT NULL,
             client_id               TEXT NOT NULL,
-            trade                   TEXT NOT NULL,
+            sector                  TEXT NOT NULL,
             mapping_id              TEXT,
             suggested_code          TEXT,
             suggested_name          TEXT,

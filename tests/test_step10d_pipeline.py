@@ -47,7 +47,7 @@ CLIENT = {
     "client_name": "Test Sole Trader",
     "client_folder_name": "Test Sole Trader",
     "firm_id": "TESTFIRM001",
-    "trade": "UNSPECIFIED",
+    "sector": "UNSPECIFIED",
     "emails": ["st@example.invalid"],
 }
 
@@ -276,10 +276,12 @@ class SchemaShapeTest(unittest.TestCase):
         # the cautious way, and 10d records it as deliberate.
         self.assertEqual(self._columns("categorisations")["needs_review"][4], "1")
 
-    def test_the_categorisation_trade_column_is_named_trade(self):
+    def test_the_categorisation_sector_column_is_named_sector(self):
         columns = self._columns("categorisations")
-        self.assertIn("trade", columns)
-        self.assertNotIn("business_type", columns)
+        self.assertIn("sector", columns)
+        # ~~assertNotIn of the CSV's old name~~ Item 40, 2026-11-17: the sweep
+        # turned it into a contradiction. That no column carries an old name is
+        # `tests/test_sector_name.py`'s, the one test file allowed to spell them.
 
     def test_processed_attachments_gained_a_firm_and_kept_its_key(self):
         self.assertIn("firm_id", self._columns("processed_attachments"))
@@ -294,8 +296,8 @@ class SchemaShapeTest(unittest.TestCase):
         sql = self.conn.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'categorisations_firm_vendors'"
         ).fetchone()[0]
-        self.assertIn("UNIQUE(business_type, vendor_key, vendor_name)", sql)
-        self.assertNotIn("UNIQUE(business_type, vendor_key, vendor_name, firm_id)", sql)
+        self.assertIn("UNIQUE(sector, vendor_key, vendor_name)", sql)
+        self.assertNotIn("UNIQUE(sector, vendor_key, vendor_name, firm_id)", sql)
 
     def test_no_migration_survives(self):
         # 10d.34. Eleven ALTER TABLE ADD COLUMN guards, all removed, and the

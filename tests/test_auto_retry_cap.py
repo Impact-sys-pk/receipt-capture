@@ -111,7 +111,7 @@ class AutoRetryCapTest(unittest.TestCase):
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"}
             }
 
             repo = None
@@ -185,7 +185,7 @@ class AutoRetryCapTest(unittest.TestCase):
             config.RUNS_LOG = config.LOGS_DIR / "runs.ndjson"
             config.CLIENTS_BY_ID = {
                 "CLIENT001": {"client_name": "Test Client", "client_folder_name": "Test Client",
-                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "trade": "UNSPECIFIED"}
+                          "client_id": "CLIENT001", "firm_id": "TESTFIRM001", "sector": "UNSPECIFIED"}
             }
 
             repo = None

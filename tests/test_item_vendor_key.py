@@ -102,7 +102,7 @@ def drive_with(test_case, extraction):
 
 def result(**overrides):
     values = dict(receipt_id="r", extraction_id="e", client_id=CLIENT,
-                  business_type="UNSPECIFIED")
+                  sector="UNSPECIFIED")
     values.update(overrides)
     return CategorisationResult(**values)
 

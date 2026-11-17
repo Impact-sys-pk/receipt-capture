@@ -109,7 +109,7 @@ class RetryDoesNotDoubleWriteTest(unittest.TestCase):
                 "client_folder_name": "Test Client",
                 "client_id": "CLIENT001",
                 "firm_id": "TESTFIRM001",
-                "trade": "UNSPECIFIED",
+                "sector": "UNSPECIFIED",
             }},
         }
 

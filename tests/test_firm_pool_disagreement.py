@@ -5,7 +5,7 @@ of 2026-11-14: tell him on screen.** The firm pool is not written to and is not
 published. What changes is that each published taught mapping says whether the
 firm pool answers differently for the same supplier, and with which code.
 
-**Why.** Every client and every firm-pool row carries trade `UNSPECIFIED`, so
+**Why.** Every client and every firm-pool row carries sector `UNSPECIFIED`, so
 layer 2 answers for every client. Correcting a client's mapping leaves every
 other client on the firm pool's old code, and nothing said so.
 
@@ -29,7 +29,7 @@ from worker.resolution.service import apply_resolution_note
 
 CLIENT = "CLIENT001"
 WHEN = "2026-11-14T09:00:00+00:00"
-TRADE = "UNSPECIFIED"
+SECTOR = "UNSPECIFIED"
 
 
 class _Base(unittest.TestCase):
@@ -42,8 +42,8 @@ class _Base(unittest.TestCase):
     def teach(self, name, key, code, account="Client account"):
         self.repo.upsert_client_vendor(CLIENT, key, code, account, WHEN, vendor_name=name)
 
-    def pool(self, name, key, code, account="Firm account", trade=TRADE):
-        self.repo.upsert_firm_vendor(trade, key, code, account, WHEN, vendor_name=name)
+    def pool(self, name, key, code, account="Firm account", sector=SECTOR):
+        self.repo.upsert_firm_vendor(sector, key, code, account, WHEN, vendor_name=name)
 
     def published(self):
         supplier_mappings.publish_all(self.repo)
@@ -96,9 +96,9 @@ class TheFlagTest(_Base):
         self.pool("Shell Garage", "shell", "7303")
         self.assertEqual(self.flags(), {"Shell Harborne": (None, None)})
 
-    def test_another_trade_is_not_this_clients_pool(self):
+    def test_another_sector_is_not_this_clients_pool(self):
         self.teach("Shell", "shell", "7301")
-        self.pool("Shell", "shell", "7302", trade="Taxi")
+        self.pool("Shell", "shell", "7302", sector="Taxi")
         self.assertEqual(self.flags(), {"Shell": (None, None)})
 
     def test_publishing_writes_nothing_to_the_firm_pool(self):

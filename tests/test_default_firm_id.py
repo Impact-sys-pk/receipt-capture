@@ -102,9 +102,9 @@ class RecordWithNoFirmIsRefusedTest(unittest.TestCase):
             path = Path(temp_dir) / "clients.json"
             _write_registry(path, [
                 {"client_id": "C1", "client_name": "One", "client_folder_name": "One",
-                 "firm_id": "FIRM001", "emails": ["one@example.invalid"], "trade": "PHV_DRIVER"},
+                 "firm_id": "FIRM001", "emails": ["one@example.invalid"], "sector": "PHV_DRIVER"},
                 {"client_id": "C2", "client_name": "Two", "client_folder_name": "Two",
-                 "emails": ["two@example.invalid"], "trade": "CONTRACTOR"},
+                 "emails": ["two@example.invalid"], "sector": "CONTRACTOR"},
             ])
             config.CLIENTS_JSON = path
             by_email, by_id = config.load_clients()

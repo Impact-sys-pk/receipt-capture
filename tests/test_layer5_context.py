@@ -117,7 +117,7 @@ class CategorisePassesTheContextOnTest(unittest.TestCase):
             instance.categorise(
                 receipt_id="r-1", extraction_id="e-1",
                 supplier_name="Halfords Autocentre",
-                client_id="CLIENT001", business_type="PHV_DRIVER",
+                client_id="CLIENT001", sector="PHV_DRIVER",
                 **kwargs,
             )
         suggest.assert_called_once()

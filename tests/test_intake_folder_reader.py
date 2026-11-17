@@ -21,7 +21,7 @@ REGISTRY = {
         "client_name": "Test Client",
         "client_folder_name": "Test Client",
         "firm_id": "TESTFIRM001",
-        "trade": "UNSPECIFIED",
+        "sector": "UNSPECIFIED",
     }
 }
 

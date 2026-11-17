@@ -71,7 +71,7 @@ def write_atomically(path, payload) -> None:
         raise
 
 
-def _firm_pool_disagreement(repo, trade, row) -> tuple:
+def _firm_pool_disagreement(repo, sector, row) -> tuple:
     """(code, account name) where layer 2 answers this supplier name with a
     different code, else (None, None). Flag H2, Paul's decision of 2026-11-14.
 
@@ -79,7 +79,7 @@ def _firm_pool_disagreement(repo, trade, row) -> tuple:
     from what layer 2 does: the exact name first, then the key where every
     name on it agrees. Reads only; nothing here writes the firm pool.
     """
-    firm = repo.get_firm_vendor(trade, row["vendor_key"], row["vendor_name"])
+    firm = repo.get_firm_vendor(sector, row["vendor_key"], row["vendor_name"])
     if firm is None or firm["nominal_code"] == row["nominal_code"]:
         return None, None
     return firm["nominal_code"], firm["account_name"]
@@ -87,11 +87,11 @@ def _firm_pool_disagreement(repo, trade, row) -> tuple:
 
 def payload_for(repo, client_id: str) -> dict:
     """The file's content for one client, built only from the database."""
-    # The client's trade, as the engine takes it at layer 2.
-    trade = (config.CLIENTS_BY_ID.get(client_id) or {}).get("trade") or config.UNSPECIFIED_TRADE
+    # The client's sector, as the engine takes it at layer 2.
+    sector = (config.CLIENTS_BY_ID.get(client_id) or {}).get("sector") or config.UNSPECIFIED_SECTOR
     mappings = []
     for row in repo.list_client_vendor_mappings(client_id):
-        firm_code, firm_name = _firm_pool_disagreement(repo, trade, row)
+        firm_code, firm_name = _firm_pool_disagreement(repo, sector, row)
         mappings.append({
             # Flag F2, 2026-11-14: so Desktop can name one row to change or
             # delete. See config.MAPPING_ID_FIELD for why not the name.

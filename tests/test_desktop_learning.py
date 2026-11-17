@@ -13,7 +13,7 @@ separable:
 
 **The test that matters most here is the one that asserts a negative.**
 `upsert_firm_vendor()` must not be called on this route. The firm pool is shared
-across every client on a business_type, the only code Desktop can send comes from
+across every client on a sector, the only code Desktop can send comes from
 one client's own chart, and Paul deferred the firm half as item 166. Nothing in
 the code says "do not call this", so the assertion is the thing that protects it.
 
@@ -457,7 +457,7 @@ class FiledNoteLearningTest(unittest.TestCase):
 
     def test_the_firm_table_is_never_written_on_this_route(self):
         # Item 166 is deferred, and this assertion is what defers it. The firm
-        # pool is shared across every client on a business_type; the only code
+        # pool is shared across every client on a sector; the only code
         # Desktop can send comes from one client's own chart.
         self.seed()
         self.write_note(note_payload(remember_gl_for_supplier=True))

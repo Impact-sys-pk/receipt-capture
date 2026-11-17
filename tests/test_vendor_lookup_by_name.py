@@ -54,7 +54,7 @@ from worker.categorisation.engine import (
 from worker.database.repository import Repository
 
 CLIENT = "CLIENT001"
-TRADE = "UNSPECIFIED"
+SECTOR = "UNSPECIFIED"
 WHEN = "2026-11-13T12:00:00+00:00"
 LATER = "2026-11-13T13:00:00+00:00"
 
@@ -100,14 +100,14 @@ class _Base(unittest.TestCase):
     def teach_firm(self, name, code, times=1, when=WHEN):
         for _ in range(times):
             self.repo.upsert_firm_vendor(
-                business_type=TRADE, vendor_key=key_of(name),
+                sector=SECTOR, vendor_key=key_of(name),
                 nominal_code=code[0], account_name=code[1],
                 last_updated=when, vendor_name=name, firm_id="TESTFIRM001")
 
     def categorise(self, name):
         return CategorisationEngine(repo=self.repo, enable_ai_fallback=False).categorise(
             receipt_id="r-1", extraction_id="e-1", supplier_name=name,
-            client_id=CLIENT, business_type=TRADE)
+            client_id=CLIENT, sector=SECTOR)
 
 
 class ClientLookupTest(_Base):
@@ -201,7 +201,7 @@ class FirmLookupTest(_Base):
     def test_disagreeing_names_give_an_unseen_name_nothing_from_layer_two(self):
         self.teach_firm(SHELL_EV_LONG, EV, times=3)
         self.teach_firm(SHELL_FUEL, FUEL)
-        self.assertIsNone(self.repo.get_firm_vendor(TRADE, "shell", SHELL_UNSEEN))
+        self.assertIsNone(self.repo.get_firm_vendor(SECTOR, "shell", SHELL_UNSEEN))
         self.assertNotEqual(self.categorise(SHELL_UNSEEN).match_source, "firm")
 
 
@@ -259,7 +259,7 @@ class MatchedVendorIsTheVariantThatAnsweredTest(_Base):
         engine._ai_suggest = lambda *a, **k: {"code": "7500", "name": "Sundries"}
         result = engine.categorise(
             receipt_id="r-1", extraction_id="e-1", supplier_name=SHELL_UNSEEN,
-            client_id=CLIENT, business_type=TRADE)
+            client_id=CLIENT, sector=SECTOR)
         self.assertEqual(result.match_source, "ai")
         self.assertIsNone(result.matched_vendor)
         self.assertEqual(result.vendor_key, "shell", "the key is still on the result")

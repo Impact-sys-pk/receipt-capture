@@ -936,7 +936,7 @@ class Repository:
         ).fetchall()
         return [row["vendor_key"] for row in rows]
 
-    def get_firm_vendor(self, business_type: str, vendor_key: str,
+    def get_firm_vendor(self, sector: str, vendor_key: str,
                         vendor_name: Optional[str]) -> Optional[dict]:
         """Layer 2. The same rule as `get_client_vendor()`, on the firm pool.
 
@@ -946,12 +946,12 @@ class Repository:
         rows = self._conn.execute("""
             SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
             FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_key = ?
+            WHERE sector = ? AND vendor_key = ?
             ORDER BY times_seen DESC, last_updated DESC
-        """, (business_type, vendor_key)).fetchall()
+        """, (sector, vendor_key)).fetchall()
         return _by_name_then_agreeing_key(rows, vendor_name)
 
-    def get_most_seen_firm_vendor(self, business_type: str, vendor_key: str) -> Optional[dict]:
+    def get_most_seen_firm_vendor(self, sector: str, vendor_key: str) -> Optional[dict]:
         """The most-seen variant on a key, whatever its name. Layer 4 only.
 
         What `get_firm_vendor()` was until sub-step 10bs.9. See
@@ -960,13 +960,13 @@ class Repository:
         row = self._conn.execute("""
             SELECT mapping_id, nominal_code, account_name, vendor_name, times_seen
             FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_key = ?
+            WHERE sector = ? AND vendor_key = ?
             ORDER BY times_seen DESC, last_updated DESC
             LIMIT 1
-        """, (business_type, vendor_key)).fetchone()
+        """, (sector, vendor_key)).fetchone()
         return dict(row) if row else None
 
-    def upsert_firm_vendor(self, business_type: str, vendor_key: str,
+    def upsert_firm_vendor(self, sector: str, vendor_key: str,
                           nominal_code: str, account_name: str, last_updated: str,
                           vendor_name: str = None, firm_id: str = None, *,
                           source: Optional[str] = None,
@@ -980,9 +980,9 @@ class Repository:
 
         **What goes in the columns, decided rather than copied.** `subject` is
         `mapping`, because a pool row is a mapping of the same shape as a
-        client's; `scope` is `sector` and `scope_id` is `business_type`,
-        because the pool is keyed on the trade and shared by every firm, so a
-        row answers for every client of that trade, which is what the rule
+        client's; `scope` is `sector` and `scope_id` is the row's sector,
+        because the pool is keyed on the sector and shared by every firm, so a
+        row answers for every client of that sector, which is what the rule
         scopes already call `sector`. `firm_id` is provenance written on insert
         only and is not the scope; it is in `before` and `after`. So `WHERE
         scope = 'sector'` returns pool writes and sector rule writes, told
@@ -1005,8 +1005,8 @@ class Repository:
         # Check if this exact variant exists
         existing = self._conn.execute("""
             SELECT * FROM categorisations_firm_vendors
-            WHERE business_type = ? AND vendor_key = ? AND vendor_name = ?
-        """, (business_type, vendor_key, vendor_name)).fetchone()
+            WHERE sector = ? AND vendor_key = ? AND vendor_name = ?
+        """, (sector, vendor_key, vendor_name)).fetchone()
         before = dict(existing) if existing else None
 
         if existing:
@@ -1022,9 +1022,9 @@ class Repository:
             mapping_id = str(uuid.uuid4())
             self._conn.execute("""
                 INSERT INTO categorisations_firm_vendors
-                    (mapping_id, business_type, vendor_key, nominal_code, account_name, vendor_name, times_seen, last_updated, firm_id)
+                    (mapping_id, sector, vendor_key, nominal_code, account_name, vendor_name, times_seen, last_updated, firm_id)
                 VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-            """, (mapping_id, business_type, vendor_key, nominal_code, account_name, vendor_name, last_updated, firm_id))
+            """, (mapping_id, sector, vendor_key, nominal_code, account_name, vendor_name, last_updated, firm_id))
 
         self._conn.commit()
         after = self._conn.execute(
@@ -1033,15 +1033,15 @@ class Repository:
         self._audit(subject=config.AUDIT_SUBJECT_MAPPING, subject_id=mapping_id,
                     act=config.AUDIT_ACT_CHANGED if before else config.AUDIT_ACT_SAVED,
                     outcome=config.AUDIT_OUTCOME_APPLIED,
-                    scope=config.RULE_SCOPE_SECTOR, scope_id=business_type,
+                    scope=config.RULE_SCOPE_SECTOR, scope_id=sector,
                     before=before, after=dict(after) if after else None,
                     source=source, requested_at=requested_at)
 
-    def list_firm_vendors(self, business_type: str) -> list[str]:
+    def list_firm_vendors(self, sector: str) -> list[str]:
         """Get distinct vendor_keys for a business type for fuzzy matching candidates."""
         rows = self._conn.execute(
-            "SELECT DISTINCT vendor_key FROM categorisations_firm_vendors WHERE business_type = ?",
-            (business_type,)
+            "SELECT DISTINCT vendor_key FROM categorisations_firm_vendors WHERE sector = ?",
+            (sector,)
         ).fetchall()
         return [row["vendor_key"] for row in rows]
 
@@ -1055,30 +1055,33 @@ class Repository:
     # **Amendment 234's reasoning applies word for word.** A dead function that
     # touches the firm pool is one rename away from becoming a silent firm
     # write, and the firm pool is the table that reaches every client of a
-    # trade. `tests/test_layer_two_row.py` asserts the set of functions writing
+    # sector. `tests/test_layer_two_row.py` asserts the set of functions writing
     # that table, so a replacement appearing goes red rather than unnoticed.
 
     def save_categorisation(self, categorisation_id: str, receipt_id: str,
-                           extraction_id: str, client_id: str, trade: str,
+                           extraction_id: str, client_id: str, sector: str,
                            mapping_id: Optional[str], suggested_code: Optional[str],
                            suggested_name: Optional[str], confidence: str,
                            match_source: str, matched_vendor: Optional[str],
                            needs_review: bool, categorised_at: str):
         """Insert categorisation record.
 
-        Sub-step 10d.30 renames the column `categorisations.business_type` to
-        `trade`, per amendment 105, and this parameter goes with it. The
-        categorisation engine's own parameter is still called business_type:
-        10d.30 renames the column, not the engine, and nothing in this step asks
-        for that sweep.
+        ~~Sub-step 10d.30 renames the column to the word amendment 105 chose,
+        and this parameter goes with it. The categorisation engine's own
+        parameter keeps its older name: 10d.30 renames the column, not the
+        engine, and nothing in this step asks for that sweep.~~ **Item 40,
+        2026-11-17: the column, this parameter and the engine's parameter are
+        all `sector`**, Paul's instruction that the word is one word.
+        `migrate_2026_11_17_sector.py` renames the column on a database that
+        already exists.
         """
         self._conn.execute("""
             INSERT INTO categorisations
-                (categorisation_id, receipt_id, extraction_id, client_id, trade,
+                (categorisation_id, receipt_id, extraction_id, client_id, sector,
                  mapping_id, suggested_code, suggested_name, confidence, match_source,
                  matched_vendor, needs_review, categorised_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (categorisation_id, receipt_id, extraction_id, client_id, trade,
+        """, (categorisation_id, receipt_id, extraction_id, client_id, sector,
               mapping_id, suggested_code, suggested_name, confidence, match_source,
               matched_vendor, needs_review, categorised_at))
         self._conn.commit()
@@ -1196,13 +1199,13 @@ class Repository:
     # `worker/receipt_rules.py` is their caller.
 
     def get_client_rules(self, client_id: str, firm_id: Optional[str],
-                         business_type: Optional[str]) -> list[dict]:
+                         sector: Optional[str]) -> list[dict]:
         """Every rule that answers for this client, in the order layer 0 tries them.
 
         A client rule on this client, a firm rule on its firm, and a sector rule
-        on its trade. **A sector rule never answers for
-        `config.UNSPECIFIED_TRADE`**, which every client carries until
-        outstanding item 29 gives them a trade; keyed on it, a sector rule would
+        on its sector. **A sector rule never answers for
+        `config.UNSPECIFIED_SECTOR`**, which every client carries until
+        outstanding item 29 gives them a sector; keyed on it, a sector rule would
         answer for every client of every firm. `firm_id` None leaves firm rules
         out, which is the `UNKNOWN` client's case.
 
@@ -1213,7 +1216,7 @@ class Repository:
         ~~Scope plays no part in the order.~~ **At equal priority the narrower
         scope wins, client then firm then sector, and only then oldest first.**
         Paul's decision on flag F1, amendment 568, 2026-11-14. Firm sits above
-        sector because every client has a firm and no client has a trade.
+        sector because every client has a firm and no client has a sector.
         Priority still overrides scope.
 
         **A rank expression here rather than a stored column.** The rank is a
@@ -1226,7 +1229,8 @@ class Repository:
         Layer 0 and the published rules file both read it and neither re-sorts,
         so the file lists rules in the order the engine tries them.
         """
-        sector = business_type if business_type and business_type != config.UNSPECIFIED_TRADE else None
+        # None matches no rule: `scope_id = NULL` is never true.
+        rule_sector = sector if sector and sector != config.UNSPECIFIED_SECTOR else None
         rows = self._conn.execute("""
             SELECT rule_id, scope, scope_id, rule_name, priority, vendor_key,
                    condition_type, condition_field, condition_value,
@@ -1240,7 +1244,7 @@ class Repository:
                      created_at ASC, rule_id ASC
         """, (config.RULE_SCOPE_CLIENT, client_id,
               config.RULE_SCOPE_FIRM, firm_id,
-              config.RULE_SCOPE_SECTOR, sector,
+              config.RULE_SCOPE_SECTOR, rule_sector,
               *config.RULE_SCOPES)).fetchall()
         return [dict(row) for row in rows]
 

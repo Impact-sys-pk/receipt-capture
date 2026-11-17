@@ -99,7 +99,7 @@ class TempEnvironment:
         config.CLIENTS_BY_ID = {
             "CLIENT001": {
                 "client_name": "Test Client", "client_folder_name": "Test Client",
-                "trade": "UNSPECIFIED",
+                "sector": "UNSPECIFIED",
                 "client_id": "CLIENT001", "firm_id": "TESTFIRM001",
             }
         }

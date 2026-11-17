@@ -99,7 +99,7 @@ def main():
 
     for r in rows:
         client = config.CLIENTS_BY_ID.get(r["client_id"]) or {}
-        trade = client.get("trade", config.UNSPECIFIED_TRADE)
+        sector = client.get("sector", config.UNSPECIFIED_SECTOR)
         chart_code = client.get("chart_code") or "(none)"
         pool = get_eligible_accounts_for_client(r["client_id"])
 
@@ -107,7 +107,7 @@ def main():
         print(f"receipt   {r['receipt_id']}")
         print(f"file      {r['filename']}")
         print(f"status    {r['status']}")
-        print(f"client    {r['client_id']}   trade={trade}   chart_code={chart_code}")
+        print(f"client    {r['client_id']}   sector={sector}   chart_code={chart_code}")
         print(f"supplier  {r['supplier_name']!r}")
         print(f"gross     {r['gross_amount']!r}")
         print(f"pool      {len(pool)} classifier-eligible account(s) offered to layer 5")
@@ -118,7 +118,7 @@ def main():
                 extraction_id="probe",
                 supplier_name=r["supplier_name"] or "",
                 client_id=r["client_id"],
-                business_type=trade,
+                sector=sector,
                 # Read out of the database, where the amount and, from
                 # 2026-09-12, the item lines both are.
                 #

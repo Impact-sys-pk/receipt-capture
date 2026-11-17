@@ -213,7 +213,7 @@ class TheSameInputEveryTimeTest(unittest.TestCase):
             engine.categorise(
                 receipt_id="r-1", extraction_id="e-1",
                 supplier_name="London Borough of Camden",
-                client_id="CLIENT001", business_type="PHV_DRIVER",
+                client_id="CLIENT001", sector="PHV_DRIVER",
                 gross_amount=3.80, line_items=line_items)
         suggest.assert_called_once()
         # **Positionally, not by keyword.** `categorise()` calls

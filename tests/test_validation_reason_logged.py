@@ -338,7 +338,7 @@ class TheReasonIsInTheLogTest(unittest.TestCase):
                 "client_name": "No Folder Client",
                 "client_id": "CLIENT002",
                 "firm_id": FIRM,
-                "trade": "UNSPECIFIED",
+                "sector": "UNSPECIFIED",
             }
             log = drive(self, "ok", client_id="CLIENT002")
             receipt, = receipts()

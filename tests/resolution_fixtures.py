@@ -269,7 +269,7 @@ class TempEnvironment:
                 # registered: the fixture's own client named a firm the
                 # fixture's own record did not hold. The record's id now.
                 "firm_id": live_paths.TEST_FIRM_ID,
-                "trade": "UNSPECIFIED",
+                "sector": "UNSPECIFIED",
             }
         }
         return self
@@ -407,17 +407,17 @@ def categorise_as_the_pipeline_does(repo, receipt_id="r-1", engine=None):
 
     extraction = repo.get_extraction_for_receipt(receipt_id)
     receipt = repo.get_receipt(receipt_id)
-    trade = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("trade", "UNSPECIFIED")
+    sector = (config.CLIENTS_BY_ID.get(receipt["client_id"]) or {}).get("sector", "UNSPECIFIED")
     engine = engine or CategorisationEngine(repo=repo, enable_ai_fallback=False)
     result = engine.categorise(
         receipt_id=receipt_id, extraction_id=extraction["extraction_id"],
         supplier_name=extraction["supplier_name"], client_id=receipt["client_id"],
-        business_type=trade, gross_amount=extraction["gross_amount"])
+        sector=sector, gross_amount=extraction["gross_amount"])
     result = resolve_against_chart(result, repo=repo)
     repo.save_categorisation(
         categorisation_id=str(_uuid.uuid4()), receipt_id=receipt_id,
         extraction_id=extraction["extraction_id"], client_id=receipt["client_id"],
-        trade=result.business_type, mapping_id=result.mapping_id,
+        sector=result.sector, mapping_id=result.mapping_id,
         suggested_code=result.suggested_code, suggested_name=result.suggested_name,
         confidence=result.confidence, match_source=result.match_source,
         matched_vendor=result.matched_vendor, needs_review=result.needs_review,

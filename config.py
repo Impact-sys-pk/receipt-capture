@@ -366,21 +366,25 @@ AUDIT_OUTCOME_REFUSED = "refused"
 # Where a write came from. Teaching writes record their own, see the callers.
 AUDIT_SOURCE_DESKTOP_NOTE = "desktop_note"
 
-# The trade a client carries until somebody sets one. Outstanding item 29: no
-# control sets a trade, so every client carries this today. Named here for
+# The sector a client carries until somebody sets one. Outstanding item 29: no
+# control sets a sector, so every client carries this today. Named here for
 # step 10bu, whose sector rules must never key on it. **Seven other literals of
 # the same string sit in production code and were not changed by 10bu**; they
 # are flagged in its report rather than swept here.
-UNSPECIFIED_TRADE = "UNSPECIFIED"
+UNSPECIFIED_SECTOR = "UNSPECIFIED"
+# The client record's key for it, item 40, and the key IntelliBooks Desktop
+# wrote before item 40. The second is read by `load_clients()` and nowhere else.
+SECTOR_FIELD = "sector"
+LEGACY_SECTOR_FIELD = "trade"
 
 # Receipt rules, layer 0. Step 10bu, amendments 559 and 565.
 #
 # **A rule carries a scope.** `client` answers for one client, `firm` for every
-# client of one firm, `sector` for every client of one trade. `scope_id` holds
-# the client_id, the firm_id or the trade accordingly. A sector rule is stored
+# client of one firm, `sector` for every client of one sector. `scope_id` holds
+# the client_id, the firm_id or the sector accordingly. A sector rule is stored
 # and matched by the same path and can never match while every client is
-# UNSPECIFIED_TRADE, which is decision 2: it starts working the day a client
-# can be given a trade, with no further change here.
+# UNSPECIFIED_SECTOR, which is decision 2: it starts working the day a client
+# can be given a sector, with no further change here.
 RULE_SCOPE_CLIENT = "client"
 RULE_SCOPE_FIRM = "firm"
 RULE_SCOPE_SECTOR = "sector"
@@ -628,10 +632,24 @@ def load_clients():
         client_data["firm_id"] = firm_id
         client_data["client_name"] = record.get("client_name", "")
         client_data["client_folder_name"] = record.get("client_folder_name", "")
-        # `trade` is amendment 105's name for what the CSV called business_type.
-        # The categorisation engine still calls its own parameter business_type,
-        # which is not renamed here: 10d.30 renames the column, not the engine.
-        client_data["trade"] = record.get("trade") or UNSPECIFIED_TRADE
+        # **One word, and it is `sector`.** Item 40, Paul's instruction of
+        # 2026-11-17. ~~`trade` is amendment 105's name for what the CSV called
+        # business_type. The categorisation engine still calls its own parameter
+        # business_type, which is not renamed here: 10d.30 renames the column,
+        # not the engine.~~ The engine, both columns and this record all say
+        # `sector` now.
+        #
+        # **The old key is read once, here, and only where `sector` is absent
+        # from the record.** IntelliBooks Desktop writes `sector` when it saves
+        # a client, so a record nobody has saved since still says the old word.
+        # Presence decides, the same as Desktop's reader: a record carrying
+        # `sector` empty beside an old value reads as unspecified, which is
+        # what Desktop shows for it. **The old key is dropped from the loaded
+        # record**, so nothing downstream can read it, and clients.json is
+        # never written here.
+        legacy = client_data.pop(LEGACY_SECTOR_FIELD, None)
+        sector = record[SECTOR_FIELD] if SECTOR_FIELD in record else legacy
+        client_data[SECTOR_FIELD] = sector or UNSPECIFIED_SECTOR
         clients_by_id[client_id] = client_data
 
         emails = record.get("emails") or []

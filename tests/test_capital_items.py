@@ -116,7 +116,7 @@ class TheClassifierIsAskedTest(unittest.TestCase):
                                   return_value=dict(EXPENSE, looks_capital=looks)):
                     result = engine.categorise(
                         receipt_id="r", extraction_id="e", supplier_name="Halfords",
-                        client_id=CLIENT, business_type="PHV_DRIVER", gross_amount=120.0)
+                        client_id=CLIENT, sector="PHV_DRIVER", gross_amount=120.0)
                 self.assertEqual(result.match_source, "ai")
                 self.assertIs(result.looks_capital, looks)
                 self.assertEqual(result.suggested_code, EXPENSE["code"])
@@ -126,7 +126,7 @@ class TheClassifierIsAskedTest(unittest.TestCase):
         receipt behaves today."""
         self.assertIs(engine_module.CategorisationResult(
             receipt_id="r", extraction_id="e", client_id=CLIENT,
-            business_type="X").looks_capital, False)
+            sector="X").looks_capital, False)
 
     def test_the_prompt_asks_and_no_capital_account_is_offered(self):
         from test_layer5_context import _PromptRecorder

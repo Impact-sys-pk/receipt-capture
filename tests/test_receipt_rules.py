@@ -14,7 +14,7 @@ SQLite chose.
 - `TheTableTest`: one table, `categorisation_rules`, with a scope.
 - `TheOrderTest`: `priority DESC, created_at ASC`, decision 6, across scopes.
 - `TheScopesTest`: client answers for one client, firm for every client of the
-  firm, sector for a trade and never for `UNSPECIFIED`.
+  firm, sector for every client of one sector and never for `UNSPECIFIED`.
 - `TheMatcherTest`: supplier name and vendor key only, decision 5; a rule beats
   a taught mapping, decision 6.
 - `NoLineItemsTest`: decision 1, Paul's "NO", held on the syntax tree.
@@ -107,21 +107,21 @@ class _Base(unittest.TestCase):
             saved_at=saved_at,
         )
 
-    def categorise(self, supplier, client_id=CLIENT, business_type=None):
+    def categorise(self, supplier, client_id=CLIENT, sector=None):
         return self.engine.categorise(
             receipt_id="r-1", extraction_id="e-1", supplier_name=supplier,
             client_id=client_id,
-            business_type=business_type or config.UNSPECIFIED_TRADE)
+            sector=sector or config.UNSPECIFIED_SECTOR)
 
     def apply(self, note):
         return apply_resolution_note(self.repo, self.engine, note)
 
-    def add_client(self, client_id, firm_id=FIRM, trade=None):
+    def add_client(self, client_id, firm_id=FIRM, sector=None):
         config.CLIENTS_BY_ID = dict(config.CLIENTS_BY_ID)
         config.CLIENTS_BY_ID[client_id] = {
             "client_id": client_id, "client_name": client_id,
             "client_folder_name": client_id, "firm_id": firm_id,
-            "trade": trade or config.UNSPECIFIED_TRADE,
+            "sector": sector or config.UNSPECIFIED_SECTOR,
         }
 
 
@@ -164,7 +164,7 @@ class TheOrderTest(_Base):
         self.save("rule-new", saved_at=LATE, code="7400", account="Fuel")
         self.save("rule-old", saved_at=EARLY, code="7300", account="Parking")
         ids = [r["rule_id"] for r in self.repo.get_client_rules(
-            CLIENT, FIRM, config.UNSPECIFIED_TRADE)]
+            CLIENT, FIRM, config.UNSPECIFIED_SECTOR)]
         self.assertEqual(ids, ["rule-old", "rule-new"])
         self.assertEqual(self.categorise("Apcoa Parking Leeds").suggested_code, "7300")
 
@@ -215,15 +215,15 @@ class TheScopeOrderTest(_Base):
     neither `created_at` nor `rule_id` can make the narrower rule win.
     """
 
-    TRADE = "Taxi"
+    SECTOR = "Taxi"
 
     def setUp(self):
         super().setUp()
-        self.add_client(CLIENT, firm_id=FIRM, trade=self.TRADE)
+        self.add_client(CLIENT, firm_id=FIRM, sector=self.SECTOR)
 
     def winner(self):
         return self.categorise("Apcoa Parking Leeds",
-                               business_type=self.TRADE).suggested_code
+                               sector=self.SECTOR).suggested_code
 
     def test_client_beats_firm_at_equal_priority(self):
         self.save("a-firm", saved_at=EARLY, scope=config.RULE_SCOPE_FIRM,
@@ -232,16 +232,16 @@ class TheScopeOrderTest(_Base):
         self.assertEqual(self.winner(), "7400")
 
     def test_firm_beats_sector_at_equal_priority(self):
-        """Firm above sector: every client has a firm and none has a trade."""
+        """Firm above sector: every client has a firm and none has a sector."""
         self.save("a-sector", saved_at=EARLY, scope=config.RULE_SCOPE_SECTOR,
-                  scope_id=self.TRADE, code="7300")
+                  scope_id=self.SECTOR, code="7300")
         self.save("b-firm", saved_at=LATE, scope=config.RULE_SCOPE_FIRM,
                   scope_id=FIRM, code="7400")
         self.assertEqual(self.winner(), "7400")
 
     def test_client_beats_sector_at_equal_priority(self):
         self.save("a-sector", saved_at=EARLY, scope=config.RULE_SCOPE_SECTOR,
-                  scope_id=self.TRADE, code="7300")
+                  scope_id=self.SECTOR, code="7300")
         self.save("b-client", saved_at=LATE, code="7400")
         self.assertEqual(self.winner(), "7400")
 
@@ -257,12 +257,12 @@ class TheScopeOrderTest(_Base):
         """Scopes mixed, saved broadest and oldest first, plus a higher-priority
         sector rule that must still head the list."""
         self.save("a-sector", saved_at=EARLY, scope=config.RULE_SCOPE_SECTOR,
-                  scope_id=self.TRADE, code="7300")
+                  scope_id=self.SECTOR, code="7300")
         self.save("b-firm", saved_at=EARLY, scope=config.RULE_SCOPE_FIRM,
                   scope_id=FIRM, code="7310")
         self.save("c-client", saved_at=LATE, code="7320")
         self.save("d-sector-high", saved_at=LATE, priority=90,
-                  scope=config.RULE_SCOPE_SECTOR, scope_id=self.TRADE,
+                  scope=config.RULE_SCOPE_SECTOR, scope_id=self.SECTOR,
                   value="nothing matches this", code="7330")
         receipt_rules.publish_all(self.repo)
         path = config.RECEIPT_RULES_DIR / f"{CLIENT}{config.RECEIPT_RULES_SUFFIX}"
@@ -290,11 +290,11 @@ class TheScopesTest(_Base):
         self.assertEqual(self.categorise("Apcoa", client_id="CLIENT002").match_source, "rule")
         self.assertNotEqual(self.categorise("Apcoa", client_id="CLIENT003").match_source, "rule")
 
-    def test_a_sector_rule_answers_for_its_trade(self):
-        """Built so it works the day a client can be given a trade."""
+    def test_a_sector_rule_answers_for_its_sector(self):
+        """Built so it works the day a client can be given a sector."""
         self.save(scope=config.RULE_SCOPE_SECTOR, scope_id="Taxi", code="7300")
-        self.assertEqual(self.categorise("Apcoa", business_type="Taxi").match_source, "rule")
-        self.assertNotEqual(self.categorise("Apcoa", business_type="Plumber").match_source, "rule")
+        self.assertEqual(self.categorise("Apcoa", sector="Taxi").match_source, "rule")
+        self.assertNotEqual(self.categorise("Apcoa", sector="Plumber").match_source, "rule")
 
     def test_a_sector_rule_never_answers_for_unspecified(self):
         """Every client carries UNSPECIFIED today, outstanding item 29. A
@@ -305,11 +305,11 @@ class TheScopesTest(_Base):
             " nominal_code, account_name, created_at, updated_at)"
             " VALUES ('r', ?, ?, 'n', 50, NULL, 'contains', ?, 'apcoa', '7300',"
             " 'Parking', ?, ?)",
-            (config.RULE_SCOPE_SECTOR, config.UNSPECIFIED_TRADE,
+            (config.RULE_SCOPE_SECTOR, config.UNSPECIFIED_SECTOR,
              config.RULE_FIELD_SUPPLIER_NAME, EARLY, EARLY))
         self.repo._conn.commit()
         self.assertEqual(self.repo.get_client_rules(
-            CLIENT, FIRM, config.UNSPECIFIED_TRADE), [])
+            CLIENT, FIRM, config.UNSPECIFIED_SECTOR), [])
 
     def test_an_unknown_scope_is_refused_by_the_writer(self):
         with self.assertRaises(ValueError):
@@ -455,7 +455,7 @@ class TheNoteRouteTest(_Base):
             "unregistered client": saved_note(scope_id="CLIENT999"),
             "unknown firm": saved_note(scope=config.RULE_SCOPE_FIRM, scope_id="NOFIRM"),
             "sector on UNSPECIFIED": saved_note(scope=config.RULE_SCOPE_SECTOR,
-                                                scope_id=config.UNSPECIFIED_TRADE),
+                                                scope_id=config.UNSPECIFIED_SECTOR),
             "bad condition type": saved_note(condition_type="fuzzy"),
             "a field other than name or key": saved_note(condition_field="amount"),
             "regex that does not compile": saved_note(condition_type="regex", value="("),

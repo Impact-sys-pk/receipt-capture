@@ -916,7 +916,7 @@ class EveryArrivalRouteReachesTheSameVerdictTest(unittest.TestCase):
                         "client_folder_name": "Other Client",
                         "client_id": CLIENT_B,
                         "firm_id": "TESTFIRM001",
-                        "trade": "UNSPECIFIED",
+                        "sector": "UNSPECIFIED",
                     }
                     with_email_client(self, CLIENT_B)
 

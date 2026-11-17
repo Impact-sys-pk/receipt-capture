@@ -34,8 +34,13 @@ cannot do that: it reads the database, and line items are not stored there.~~
 `probe_layer5.py` does the same from the database since 2026-09-12, with the
 lines an earlier run stored; this one uses the lines the model returns now.
 
-The live pipeline still constructs the engine with `enable_ai_fallback=False`, so
-nothing here describes production behaviour. It is a measurement.
+~~The live pipeline still constructs the engine with `enable_ai_fallback=False`, so
+nothing here describes production behaviour. It is a measurement.~~ **Corrected
+2026-11-17: the classifier is on in the live pipeline.** `app.py` constructs the
+engine with `enable_ai_fallback=config.CLASSIFIER_ENABLED`, which comes from `classifier_enabled` on the firm
+record in `Intellibills\\firms.json`, and that is `true` on `FIRM001`. So this
+probe's layer 5 is what production does for a receipt that reaches layer 5. It
+is still a measurement: it reads the file afresh and writes nothing.
 
 Cost: two OpenAI calls per file, one to extract and one for layer 5. Give it paths,
 or give it nothing and it reads the most recent receipts from the database.
